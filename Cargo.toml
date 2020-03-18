@@ -1,0 +1,10 @@
+[dependencies]
+piston2d-graphics = '0.36.0'
+piston_window = '0.107.0'
+rodio = '0.11.0'
+
+[package]
+authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
+edition = '2018'
+name = 'album'
+version = '0.1.0'

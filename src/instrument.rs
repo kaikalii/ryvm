@@ -49,6 +49,9 @@ pub enum Instrument {
 }
 
 impl Instrument {
+    pub fn balanced(self) -> Balanced {
+        Balanced::from(self)
+    }
     pub fn sine(f: SampleType) -> Self {
         Instrument::Sine { f, i: 0 }
     }

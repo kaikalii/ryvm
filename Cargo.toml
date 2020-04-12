@@ -2,6 +2,7 @@
 rodio = '0.11.0'
 crossbeam = '0.7.3'
 once_cell = "*"
+clap = "*"
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']

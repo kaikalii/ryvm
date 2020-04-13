@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     f32::consts::PI,
     ops::{Index, IndexMut},
     sync::Arc,
@@ -6,9 +7,11 @@ use std::{
 
 use crossbeam::sync::ShardedLock;
 use once_cell::sync::Lazy;
-use rodio::Source;
+use rodio::{Sample, Source};
 
 pub type SampleType = f32;
+pub type InstrId = String;
+pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
 pub const SAMPLE_RATE: u32 = 32000;
@@ -19,8 +22,14 @@ static SINE_SAMPLES: Lazy<Vec<SampleType>> = Lazy::new(|| {
         .collect()
 });
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SourceLock<T>(Arc<ShardedLock<T>>);
+
+impl<T> Clone for SourceLock<T> {
+    fn clone(&self) -> Self {
+        SourceLock(Arc::clone(&self.0))
+    }
+}
 
 impl<T> SourceLock<T> {
     pub fn new(inner: T) -> Self {
@@ -40,26 +49,51 @@ impl<T> SourceLock<T> {
     }
 }
 
+impl<T> Iterator for SourceLock<T>
+where
+    T: Iterator,
+{
+    type Item = T::Item;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.update(Iterator::next)
+    }
+}
+
+impl<T> Source for SourceLock<T>
+where
+    T: Source,
+    T::Item: Sample,
+{
+    fn current_frame_len(&self) -> Option<usize> {
+        self.get(|inner| inner.current_frame_len())
+    }
+    fn channels(&self) -> u16 {
+        self.get(|inner| inner.channels())
+    }
+    fn sample_rate(&self) -> u32 {
+        self.get(|inner| inner.sample_rate())
+    }
+    fn total_duration(&self) -> std::option::Option<std::time::Duration> {
+        self.get(|inner| inner.total_duration())
+    }
+}
+
 /// An instrument for producing sounds
 #[derive(Debug, Clone)]
 pub enum Instrument {
     Sine { f: SampleType, i: u32 },
     Square { f: SampleType, i: u32 },
-    Mixer(Vec<Balanced>),
+    Mixer(Vec<Balanced<InstrId>>),
 }
 
 impl Instrument {
-    pub fn balanced(self) -> Balanced {
-        Balanced::from(self)
-    }
     pub fn sine(f: SampleType) -> Self {
         Instrument::Sine { f, i: 0 }
     }
     pub fn square(f: SampleType) -> Self {
         Instrument::Square { f, i: 0 }
     }
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<(SampleType, SampleType)> {
+    pub fn next(&mut self, instruments: &Instruments) -> Option<(SampleType, SampleType)> {
         match self {
             Instrument::Sine { f, i } => {
                 let s = SINE_SAMPLES[*i as usize];
@@ -83,9 +117,14 @@ impl Instrument {
                         (lacc + l, racc + r)
                     });
                 let (left_sum, right_sum) =
-                    list.iter_mut().fold((0.0, 0.0), |(lacc, racc), instr| {
-                        let (l, r) = instr.stereo_volume();
-                        if let Some((ls, rs)) = instr.instr.next() {
+                    list.iter_mut().fold((0.0, 0.0), |(lacc, racc), bal| {
+                        let (l, r) = bal.stereo_volume();
+                        let id = &bal.instr;
+                        let instr_next = instruments
+                            .map
+                            .get(id)
+                            .and_then(|instr| instr.write().unwrap().next(instruments));
+                        if let Some((ls, rs)) = instr_next {
                             (lacc + ls * l, racc + rs * r)
                         } else {
                             (lacc, racc)
@@ -102,20 +141,10 @@ impl Instrument {
             _ => {}
         }
     }
-    pub fn source(self) -> (InstrumentSource, SourceLock<Instrument>) {
-        let lock = SourceLock::new(self);
-        let lock_clone = lock.clone();
-        let source = InstrumentSource {
-            inner: lock,
-            queue: None,
-            i: 0,
-        };
-        (source, lock_clone)
-    }
 }
 
 impl Index<usize> for Instrument {
-    type Output = Balanced;
+    type Output = Balanced<InstrId>;
     fn index(&self, i: usize) -> &Self::Output {
         if let Instrument::Mixer(list) = self {
             &list[i]
@@ -137,14 +166,14 @@ impl IndexMut<usize> for Instrument {
 
 /// A balance wrapper for an `Instrument`
 #[derive(Debug, Clone)]
-pub struct Balanced {
-    pub instr: Instrument,
+pub struct Balanced<T> {
+    pub instr: T,
     pub volume: SampleType,
     pub pan: SampleType,
 }
 
-impl From<Instrument> for Balanced {
-    fn from(instr: Instrument) -> Self {
+impl<T> From<T> for Balanced<T> {
+    fn from(instr: T) -> Self {
         Balanced {
             instr,
             volume: 1.0,
@@ -153,7 +182,7 @@ impl From<Instrument> for Balanced {
     }
 }
 
-impl Balanced {
+impl<T> Balanced<T> {
     pub fn stereo_volume(&self) -> (SampleType, SampleType) {
         (
             self.volume * (1.0 - self.pan.max(0.0)),
@@ -168,14 +197,33 @@ impl Balanced {
     }
 }
 
-/// A wrapper around an `Instrument` to implement `rodio::Source`
-pub struct InstrumentSource {
-    inner: SourceLock<Instrument>,
+#[derive(Debug, Default)]
+pub struct Instruments {
+    output: Option<InstrId>,
+    map: HashMap<InstrId, ShardedLock<Instrument>>,
     queue: Option<SampleType>,
     i: u32,
 }
 
-impl Iterator for InstrumentSource {
+impl Instruments {
+    pub fn new() -> SourceLock<Self> {
+        SourceLock::new(Self::default())
+    }
+    pub fn set_output<I>(&mut self, id: I)
+    where
+        I: Into<InstrId>,
+    {
+        self.output = Some(id.into());
+    }
+    pub fn add<I>(&mut self, id: I, instr: Instrument)
+    where
+        I: Into<InstrId>,
+    {
+        self.map.insert(id.into(), ShardedLock::new(instr));
+    }
+}
+
+impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
         self.queue
@@ -185,18 +233,20 @@ impl Iterator for InstrumentSource {
                 sample
             })
             .or_else(|| {
-                let queue = &mut self.queue;
-                self.inner.update(|inner| {
-                    inner.next().map(|(left, right)| {
-                        *queue = Some(right);
-                        left
-                    })
-                })
+                if let Some(output_id) = &self.output {
+                    if let Some(output_instr) = self.map.get(output_id) {
+                        if let Some((left, right)) = output_instr.write().unwrap().next(self) {
+                            self.queue = Some(right);
+                            return Some(left);
+                        }
+                    }
+                }
+                None
             })
     }
 }
 
-impl Source for InstrumentSource {
+impl Source for Instruments {
     fn current_frame_len(&self) -> Option<usize> {
         None
     }

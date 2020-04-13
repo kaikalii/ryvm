@@ -78,6 +78,29 @@ where
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Frame {
+    pub left: SampleType,
+    pub right: SampleType,
+    pub velocity: SampleType,
+}
+
+impl Frame {
+    pub fn stereo(left: SampleType, right: SampleType) -> Self {
+        Frame {
+            left,
+            right,
+            velocity: 1.0,
+        }
+    }
+    pub fn mono(both: SampleType) -> Self {
+        Frame::stereo(both, both)
+    }
+    pub fn velocity(self, velocity: SampleType) -> Self {
+        Frame { velocity, ..self }
+    }
+}
+
 /// An instrument for producing sounds
 #[derive(Debug, Clone)]
 pub enum Instrument {
@@ -93,12 +116,12 @@ impl Instrument {
     pub fn square(f: SampleType) -> Self {
         Instrument::Square { f, i: 0 }
     }
-    pub fn next(&mut self, instruments: &Instruments) -> Option<(SampleType, SampleType)> {
+    pub fn next(&mut self, instruments: &Instruments) -> Option<Frame> {
         match self {
             Instrument::Sine { f, i } => {
                 let s = SINE_SAMPLES[*i as usize];
                 *i = (*i + *f as u32) % SAMPLE_RATE;
-                Some((s, s))
+                Some(Frame::mono(s))
             }
             Instrument::Square { f, i } => {
                 let samples_per_cycle = (SAMPLE_RATE as SampleType / *f) as u32;
@@ -108,7 +131,7 @@ impl Instrument {
                     -1.0
                 } * 0.6;
                 *i = (*i + 1) % samples_per_cycle as u32;
-                Some((s, s))
+                Some(Frame::mono(s))
             }
             Instrument::Mixer(list) => {
                 let (left_vol_sum, right_vol_sum) =
@@ -124,13 +147,16 @@ impl Instrument {
                             .map
                             .get(id)
                             .and_then(|instr| instr.write().unwrap().next(instruments));
-                        if let Some((ls, rs)) = instr_next {
-                            (lacc + ls * l, racc + rs * r)
+                        if let Some(frame) = instr_next {
+                            (lacc + frame.left * l, racc + frame.right * r)
                         } else {
                             (lacc, racc)
                         }
                     });
-                Some((left_sum / left_vol_sum, right_sum / right_vol_sum))
+                Some(Frame::stereo(
+                    left_sum / left_vol_sum,
+                    right_sum / right_vol_sum,
+                ))
             }
         }
     }
@@ -235,9 +261,9 @@ impl Iterator for Instruments {
             .or_else(|| {
                 if let Some(output_id) = &self.output {
                     if let Some(output_instr) = self.map.get(output_id) {
-                        if let Some((left, right)) = output_instr.write().unwrap().next(self) {
-                            self.queue = Some(right);
-                            return Some(left);
+                        if let Some(frame) = output_instr.write().unwrap().next(self) {
+                            self.queue = Some(frame.right);
+                            return Some(frame.left);
                         }
                     }
                 }

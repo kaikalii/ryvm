@@ -22,9 +22,9 @@ fn main() {
         instruments.add(
             "mixer",
             Instrument::Mixer(vec![
-                Balanced::from("wave1".to_string()).pan(-1.0),
-                Balanced::from("wave2".to_string()).pan(1.0),
-                Balanced::from("wave3".to_string()).pan(0.0),
+                Balanced::id("wave1").pan(-1.0),
+                Balanced::id("wave2").pan(1.0),
+                Balanced::id("wave3").pan(0.0),
             ]),
         );
         instruments.set_output("mixer");

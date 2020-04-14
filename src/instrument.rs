@@ -17,7 +17,7 @@ pub type InstrId = String;
 pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
-pub const SAMPLE_RATE: u32 = 32000;
+pub const SAMPLE_RATE: u32 = 44100 / 3;
 
 const ORDERING: Ordering = Ordering::Relaxed;
 
@@ -236,6 +236,15 @@ impl<T> From<T> for Balanced<T> {
             volume: 1.0,
             pan: 0.0,
         }
+    }
+}
+
+impl Balanced<InstrId> {
+    pub fn id<I>(id: I) -> Self
+    where
+        I: Into<InstrId>,
+    {
+        Balanced::from(id.into())
     }
 }
 

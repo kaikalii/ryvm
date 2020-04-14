@@ -9,8 +9,10 @@ use std::{
 };
 
 use crossbeam::sync::ShardedLock;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use rodio::Source;
+use serde_derive::{Deserialize, Serialize};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -18,6 +20,9 @@ pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
 pub const SAMPLE_RATE: u32 = 44100 / 3;
+
+/// An error bound for the sample type
+pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
 
 const ORDERING: Ordering = Ordering::Relaxed;
 
@@ -105,17 +110,22 @@ impl Frame {
 type FrameCache = HashMap<InstrId, Frame>;
 
 /// An instrument for producing sounds
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Instrument {
     Number(SampleType),
     Sine {
-        freq: InstrId,
+        input: InstrId,
+        #[serde(skip)]
         li: AtomicU32,
+        #[serde(skip)]
         ri: AtomicU32,
     },
     Square {
-        freq: InstrId,
+        input: InstrId,
+        #[serde(skip)]
         li: AtomicU32,
+        #[serde(skip)]
         ri: AtomicU32,
     },
     Mixer(Vec<Balanced<InstrId>>),
@@ -127,7 +137,7 @@ impl Instrument {
         I: Into<InstrId>,
     {
         Instrument::Sine {
-            freq: id.into(),
+            input: id.into(),
             li: AtomicU32::new(0),
             ri: AtomicU32::new(0),
         }
@@ -137,7 +147,7 @@ impl Instrument {
         I: Into<InstrId>,
     {
         Instrument::Square {
-            freq: id.into(),
+            input: id.into(),
             li: AtomicU32::new(0),
             ri: AtomicU32::new(0),
         }
@@ -145,8 +155,8 @@ impl Instrument {
     pub fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
         match self {
             Instrument::Number(n) => Some(Frame::mono(*n)),
-            Instrument::Sine { freq, li, ri } => {
-                let frame = instruments.next_from(&*freq, cache).unwrap_or_default();
+            Instrument::Sine { input, li, ri } => {
+                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
                 let lix = li.load(ORDERING);
                 let rix = ri.load(ORDERING);
                 let ls = SINE_SAMPLES[lix as usize];
@@ -155,8 +165,8 @@ impl Instrument {
                 ri.store((rix + frame.right as u32) % SAMPLE_RATE, ORDERING);
                 Some(Frame::stereo(ls, rs))
             }
-            Instrument::Square { freq, li, ri } => {
-                let frame = instruments.next_from(&*freq, cache).unwrap_or_default();
+            Instrument::Square { input, li, ri } => {
+                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
                 // spc = samples per cycles
                 let lspc = (SAMPLE_RATE as SampleType / frame.left) as u32;
                 let rspc = (SAMPLE_RATE as SampleType / frame.right) as u32;
@@ -176,7 +186,7 @@ impl Instrument {
                     });
                 let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), bal| {
                     let (l, r) = bal.stereo_volume();
-                    let id = &bal.instr;
+                    let id = &bal.input;
                     if let Some(frame) = instruments.next_from(id, cache) {
                         (
                             lacc + frame.left * l * frame.velocity,
@@ -221,18 +231,38 @@ impl IndexMut<usize> for Instrument {
     }
 }
 
+fn default_volume() -> SampleType {
+    1.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_volume(v: &SampleType) -> bool {
+    (v - default_volume()).abs() < SAMPLE_EPSILON
+}
+
+fn default_pan() -> SampleType {
+    0.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_pan(v: &SampleType) -> bool {
+    (v - default_pan()).abs() < SAMPLE_EPSILON
+}
+
 /// A balance wrapper for an `Instrument`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Balanced<T> {
-    pub instr: T,
+    pub input: T,
+    #[serde(default = "default_volume", skip_serializing_if = "is_default_volume")]
     pub volume: SampleType,
+    #[serde(default = "default_pan", skip_serializing_if = "is_default_pan")]
     pub pan: SampleType,
 }
 
 impl<T> From<T> for Balanced<T> {
-    fn from(instr: T) -> Self {
+    fn from(input: T) -> Self {
         Balanced {
-            instr,
+            input,
             volume: 1.0,
             pan: 0.0,
         }
@@ -263,10 +293,12 @@ impl<T> Balanced<T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Instruments {
     output: Option<InstrId>,
-    map: HashMap<InstrId, Instrument>,
+    #[serde(rename = "instruments")]
+    map: IndexMap<InstrId, Instrument>,
+    #[serde(skip)]
     queue: Option<SampleType>,
 }
 

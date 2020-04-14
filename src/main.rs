@@ -30,7 +30,11 @@ fn main() {
         instruments.set_output("mixer");
     });
 
-    sink.append(instruments);
+    sink.append(instruments.clone());
+
+    instruments.get(|instruments| {
+        serde_yaml::to_writer(std::fs::File::create("test.yaml").unwrap(), instruments).unwrap()
+    });
 
     // Init stdin thread
     let stdin = stdin_recv();
@@ -51,7 +55,6 @@ fn main() {
                 Err(e) => println!("{}", e),
             }
         }
-        // Update
     }
 }
 

@@ -2,7 +2,10 @@ use std::{
     collections::HashMap,
     f32::consts::PI,
     ops::{Index, IndexMut},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc, RwLock,
+    },
 };
 
 use crossbeam::sync::ShardedLock;
@@ -15,6 +18,8 @@ pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
 pub const SAMPLE_RATE: u32 = 32000;
+
+const ORDERING: Ordering = Ordering::Relaxed;
 
 static SINE_SAMPLES: Lazy<Vec<SampleType>> = Lazy::new(|| {
     (0..SAMPLE_RATE)
@@ -78,7 +83,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Frame {
     pub left: SampleType,
     pub right: SampleType,
@@ -101,58 +106,90 @@ impl Frame {
     }
 }
 
+type FrameCache = HashMap<InstrId, Frame>;
+
 /// An instrument for producing sounds
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Instrument {
-    Sine { f: SampleType, i: u32 },
-    Square { f: SampleType, i: u32 },
+    Number(SampleType),
+    Sine {
+        freq: InstrId,
+        li: AtomicU32,
+        ri: AtomicU32,
+    },
+    Square {
+        freq: InstrId,
+        li: AtomicU32,
+        ri: AtomicU32,
+    },
     Mixer(Vec<Balanced<InstrId>>),
 }
 
 impl Instrument {
-    pub fn sine(f: SampleType) -> Self {
-        Instrument::Sine { f, i: 0 }
+    pub fn sine<I>(id: I) -> Self
+    where
+        I: Into<InstrId>,
+    {
+        Instrument::Sine {
+            freq: id.into(),
+            li: AtomicU32::new(0),
+            ri: AtomicU32::new(0),
+        }
     }
-    pub fn square(f: SampleType) -> Self {
-        Instrument::Square { f, i: 0 }
+    pub fn square<I>(id: I) -> Self
+    where
+        I: Into<InstrId>,
+    {
+        Instrument::Square {
+            freq: id.into(),
+            li: AtomicU32::new(0),
+            ri: AtomicU32::new(0),
+        }
     }
-    pub fn next(&mut self, instruments: &Instruments) -> Option<Frame> {
+    pub fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
         match self {
-            Instrument::Sine { f, i } => {
-                let s = SINE_SAMPLES[*i as usize];
-                *i = (*i + *f as u32) % SAMPLE_RATE;
-                Some(Frame::mono(s))
+            Instrument::Number(n) => Some(Frame::mono(*n)),
+            Instrument::Sine { freq, li, ri } => {
+                let frame = instruments.next_from(&*freq, cache).unwrap_or_default();
+                let lix = li.load(ORDERING);
+                let rix = ri.load(ORDERING);
+                let ls = SINE_SAMPLES[lix as usize];
+                let rs = SINE_SAMPLES[rix as usize];
+                li.store((lix + frame.left as u32) % SAMPLE_RATE, ORDERING);
+                ri.store((rix + frame.right as u32) % SAMPLE_RATE, ORDERING);
+                Some(Frame::stereo(ls, rs))
             }
-            Instrument::Square { f, i } => {
-                let samples_per_cycle = (SAMPLE_RATE as SampleType / *f) as u32;
-                let s = if *i < samples_per_cycle / 2 {
-                    1.0
-                } else {
-                    -1.0
-                } * 0.6;
-                *i = (*i + 1) % samples_per_cycle as u32;
-                Some(Frame::mono(s))
+            Instrument::Square { freq, li, ri } => {
+                let frame = instruments.next_from(&*freq, cache).unwrap_or_default();
+                // spc = samples per cycles
+                let lspc = (SAMPLE_RATE as SampleType / frame.left) as u32;
+                let rspc = (SAMPLE_RATE as SampleType / frame.right) as u32;
+                let lix = li.load(ORDERING);
+                let rix = ri.load(ORDERING);
+                let ls = if lix < lspc / 2 { 1.0 } else { -1.0 } * 0.6;
+                li.store((lix + 1) % lspc as u32, ORDERING);
+                let rs = if rix < rspc / 2 { 1.0 } else { -1.0 } * 0.6;
+                ri.store((rix + 1) % rspc as u32, ORDERING);
+                Some(Frame::stereo(ls, rs))
             }
             Instrument::Mixer(list) => {
                 let (left_vol_sum, right_vol_sum) =
-                    list.iter().fold((0.0, 0.0), |(lacc, racc), instr| {
-                        let (l, r) = instr.stereo_volume();
+                    list.iter().fold((0.0, 0.0), |(lacc, racc), bal| {
+                        let (l, r) = bal.stereo_volume();
                         (lacc + l, racc + r)
                     });
-                let (left_sum, right_sum) =
-                    list.iter_mut().fold((0.0, 0.0), |(lacc, racc), bal| {
-                        let (l, r) = bal.stereo_volume();
-                        let id = &bal.instr;
-                        let instr_next = instruments
-                            .map
-                            .get(id)
-                            .and_then(|instr| instr.write().unwrap().next(instruments));
-                        if let Some(frame) = instr_next {
-                            (lacc + frame.left * l, racc + frame.right * r)
-                        } else {
-                            (lacc, racc)
-                        }
-                    });
+                let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), bal| {
+                    let (l, r) = bal.stereo_volume();
+                    let id = &bal.instr;
+                    if let Some(frame) = instruments.next_from(id, cache) {
+                        (
+                            lacc + frame.left * l * frame.velocity,
+                            racc + frame.right * r * frame.velocity,
+                        )
+                    } else {
+                        (lacc, racc)
+                    }
+                });
                 Some(Frame::stereo(
                     left_sum / left_vol_sum,
                     right_sum / right_vol_sum,
@@ -160,11 +197,9 @@ impl Instrument {
             }
         }
     }
-    pub fn set_freq(&mut self, freq: SampleType) {
-        match self {
-            Instrument::Sine { f, .. } => *f = freq,
-            Instrument::Square { f, .. } => *f = freq,
-            _ => {}
+    pub fn set(&mut self, num: SampleType) {
+        if let Instrument::Number(n) = self {
+            *n = num;
         }
     }
 }
@@ -226,9 +261,8 @@ impl<T> Balanced<T> {
 #[derive(Debug, Default)]
 pub struct Instruments {
     output: Option<InstrId>,
-    map: HashMap<InstrId, ShardedLock<Instrument>>,
+    map: HashMap<InstrId, Instrument>,
     queue: Option<SampleType>,
-    i: u32,
 }
 
 impl Instruments {
@@ -245,30 +279,37 @@ impl Instruments {
     where
         I: Into<InstrId>,
     {
-        self.map.insert(id.into(), ShardedLock::new(instr));
+        self.map.insert(id.into(), instr);
+    }
+    fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
+    where
+        I: Into<InstrId>,
+    {
+        let id = id.into();
+        if let Some(frame) = cache.get(&id) {
+            Some(*frame)
+        } else if let Some(frame) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
+            cache.insert(id, frame);
+            Some(frame)
+        } else {
+            None
+        }
     }
 }
 
 impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
-        self.queue
-            .take()
-            .map(|sample| {
-                self.i += 1;
-                sample
-            })
-            .or_else(|| {
-                if let Some(output_id) = &self.output {
-                    if let Some(output_instr) = self.map.get(output_id) {
-                        if let Some(frame) = output_instr.write().unwrap().next(self) {
-                            self.queue = Some(frame.right);
-                            return Some(frame.left);
-                        }
-                    }
+        let mut cache = FrameCache::new();
+        self.queue.take().or_else(|| {
+            if let Some(output_id) = &self.output {
+                if let Some(frame) = self.next_from(output_id, &mut cache) {
+                    self.queue = Some(frame.right);
+                    return Some(frame.left);
                 }
-                None
-            })
+            }
+            None
+        })
     }
 }
 

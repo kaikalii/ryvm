@@ -2,13 +2,13 @@
 rodio = '*'
 crossbeam = '*'
 once_cell = "*"
-clap = "*"
 unicode_reader = "*"
 serde = "*"
 serde_derive = "*"
 serde_yaml = "*"
 indexmap = {  version = "*", features = ["serde-1"] }
 itertools = "*"
+structopt = "*"
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']

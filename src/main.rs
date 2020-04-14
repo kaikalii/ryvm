@@ -6,6 +6,7 @@ mods!(app, instrument);
 
 use std::{io::stdin, iter, sync::mpsc, thread, time::Duration};
 
+use structopt::StructOpt;
 use unicode_reader::CodePoints;
 
 fn main() {
@@ -13,45 +14,39 @@ fn main() {
     let sink = rodio::Sink::new(&device);
 
     let instruments = Instruments::new();
-    instruments.update(|instruments| {
-        instruments.add("f1", Instrument::Number(440.0));
-        instruments.add("f2", Instrument::Number(554.0));
-        instruments.add("wave1", Instrument::square("f1"));
-        instruments.add("wave2", Instrument::square("f2"));
-        instruments.add("wave3", Instrument::sine("f2"));
-        instruments.add(
-            "mixer",
-            Instrument::Mixer(vec![
-                Balanced::id("wave1").pan(-1.0),
-                Balanced::id("wave2").pan(1.0),
-                Balanced::id("wave3").pan(0.0),
-            ]),
-        );
-        instruments.set_output("mixer");
-    });
 
     sink.append(instruments.clone());
 
-    instruments.get(|instruments| {
-        serde_yaml::to_writer(std::fs::File::create("test.yaml").unwrap(), instruments).unwrap()
-    });
-
     // Init stdin thread
     let stdin = stdin_recv();
-    // Init command app
-    let mut app = app();
 
     // Main loop
     loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
             let args = iter::once("ryvm").chain(text.split_whitespace());
-            match app.get_matches_from_safe_borrow(args) {
-                Ok(matches) => {
-                    if matches.subcommand_matches("quit").is_some() {
-                        break;
+            match RyvmApp::from_iter_safe(args) {
+                Ok(app) => match app {
+                    RyvmApp::Quit => break,
+                    RyvmApp::Output { name } => {
+                        instruments.update(|instrs| instrs.set_output(name))
                     }
-                }
+                    RyvmApp::Add { name, app } => {
+                        instruments.update(|instrs| {
+                            instrs.add(
+                                name,
+                                match app {
+                                    AddApp::Number { num } => Instrument::Number(num),
+                                    AddApp::Sine { input } => Instrument::sine(input),
+                                    AddApp::Square { input } => Instrument::square(input),
+                                    AddApp::Mixer { inputs } => Instrument::Mixer(
+                                        inputs.into_iter().map(Balanced::from).collect(),
+                                    ),
+                                },
+                            )
+                        });
+                    }
+                },
                 Err(e) => println!("{}", e),
             }
         }

@@ -345,7 +345,8 @@ impl Iterator for Instruments {
                     return Some(frame.left);
                 }
             }
-            None
+            self.queue = Some(0.0);
+            Some(0.0)
         })
     }
 }

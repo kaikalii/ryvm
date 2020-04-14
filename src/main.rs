@@ -4,7 +4,13 @@ macro_rules! mods {
 
 mods!(app, instrument);
 
-use std::{io::stdin, iter, sync::mpsc, thread, time::Duration};
+use std::{
+    io::stdin,
+    iter::{once, repeat},
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
 
 use structopt::StructOpt;
 use unicode_reader::CodePoints;
@@ -24,7 +30,7 @@ fn main() {
     loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
-            let args = iter::once("ryvm").chain(text.split_whitespace());
+            let args = once("ryvm").chain(text.split_whitespace());
             match RyvmApp::from_iter_safe(args) {
                 Ok(app) => match app {
                     RyvmApp::Quit => break,
@@ -40,15 +46,63 @@ fn main() {
                                     AddApp::Sine { input } => Instrument::sine(input),
                                     AddApp::Square { input } => Instrument::square(input),
                                     AddApp::Mixer { inputs } => Instrument::Mixer(
-                                        inputs.into_iter().map(Balanced::from).collect(),
+                                        inputs
+                                            .into_iter()
+                                            .zip(repeat(Balance::default()))
+                                            .collect(),
                                     ),
                                 },
                             )
                         });
                     }
+                    RyvmApp::Edit {
+                        name,
+                        set,
+                        inputs,
+                        volume,
+                        pan,
+                    } => {
+                        instruments.update(|instrs| {
+                            if let Some(instr) = instrs.get_mut(name) {
+                                match instr {
+                                    Instrument::Number(n) => {
+                                        if let Some(num) = set {
+                                            *n = num;
+                                        }
+                                    }
+                                    Instrument::Sine { input, .. }
+                                    | Instrument::Square { input, .. } => {
+                                        if let Some(new_input) = inputs.into_iter().next() {
+                                            *input = new_input;
+                                        }
+                                    }
+                                    Instrument::Mixer(map) => {
+                                        if let Some(volume) = volume {
+                                            for id in &inputs {
+                                                map.entry(id.clone())
+                                                    .or_insert_with(Balance::default)
+                                                    .volume = volume;
+                                            }
+                                        }
+                                        if let Some(pan) = pan {
+                                            for id in &inputs {
+                                                map.entry(id.clone())
+                                                    .or_insert_with(Balance::default)
+                                                    .pan = pan;
+                                            }
+                                        }
+                                        for input in inputs {
+                                            map.entry(input).or_insert_with(Balance::default);
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
                 },
                 Err(e) => println!("{}", e),
             }
+            instruments.update(|instrs| println!("{:#?}", instrs));
         }
         // Sleep
         thread::sleep(Duration::from_millis(100));

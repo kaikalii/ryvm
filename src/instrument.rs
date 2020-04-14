@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     f32::consts::PI,
-    ops::{Index, IndexMut},
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -128,7 +127,7 @@ pub enum Instrument {
         #[serde(skip)]
         ri: AtomicU32,
     },
-    Mixer(Vec<Balanced<InstrId>>),
+    Mixer(HashMap<InstrId, Balance>),
 }
 
 impl Instrument {
@@ -180,22 +179,22 @@ impl Instrument {
             }
             Instrument::Mixer(list) => {
                 let (left_vol_sum, right_vol_sum) =
-                    list.iter().fold((0.0, 0.0), |(lacc, racc), bal| {
+                    list.values().fold((0.0, 0.0), |(lacc, racc), bal| {
                         let (l, r) = bal.stereo_volume();
                         (lacc + l, racc + r)
                     });
-                let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), bal| {
-                    let (l, r) = bal.stereo_volume();
-                    let id = &bal.input;
-                    if let Some(frame) = instruments.next_from(id, cache) {
-                        (
-                            lacc + frame.left * l * frame.velocity,
-                            racc + frame.right * r * frame.velocity,
-                        )
-                    } else {
-                        (lacc, racc)
-                    }
-                });
+                let (left_sum, right_sum) =
+                    list.iter().fold((0.0, 0.0), |(lacc, racc), (id, bal)| {
+                        let (l, r) = bal.stereo_volume();
+                        if let Some(frame) = instruments.next_from(id, cache) {
+                            (
+                                lacc + frame.left * l * frame.velocity,
+                                racc + frame.right * r * frame.velocity,
+                            )
+                        } else {
+                            (lacc, racc)
+                        }
+                    });
                 Some(Frame::stereo(
                     left_sum / left_vol_sum,
                     right_sum / right_vol_sum,
@@ -206,27 +205,6 @@ impl Instrument {
     pub fn set(&mut self, num: SampleType) {
         if let Instrument::Number(n) = self {
             *n = num;
-        }
-    }
-}
-
-impl Index<usize> for Instrument {
-    type Output = Balanced<InstrId>;
-    fn index(&self, i: usize) -> &Self::Output {
-        if let Instrument::Mixer(list) = self {
-            &list[i]
-        } else {
-            panic!("Attempted to index non-mixer instrument")
-        }
-    }
-}
-
-impl IndexMut<usize> for Instrument {
-    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
-        if let Instrument::Mixer(list) = self {
-            &mut list[i]
-        } else {
-            panic!("Attempted to index non-mixer instrument")
         }
     }
 }
@@ -250,46 +228,35 @@ fn is_default_pan(v: &SampleType) -> bool {
 }
 
 /// A balance wrapper for an `Instrument`
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Balanced<T> {
-    pub input: T,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Balance {
     #[serde(default = "default_volume", skip_serializing_if = "is_default_volume")]
     pub volume: SampleType,
     #[serde(default = "default_pan", skip_serializing_if = "is_default_pan")]
     pub pan: SampleType,
 }
 
-impl<T> From<T> for Balanced<T> {
-    fn from(input: T) -> Self {
-        Balanced {
-            input,
-            volume: 1.0,
-            pan: 0.0,
+impl Default for Balance {
+    fn default() -> Self {
+        Balance {
+            volume: default_volume(),
+            pan: default_pan(),
         }
     }
 }
 
-impl Balanced<InstrId> {
-    pub fn id<I>(id: I) -> Self
-    where
-        I: Into<InstrId>,
-    {
-        Balanced::from(id.into())
-    }
-}
-
-impl<T> Balanced<T> {
-    pub fn stereo_volume(&self) -> (SampleType, SampleType) {
+impl Balance {
+    pub fn stereo_volume(self) -> (SampleType, SampleType) {
         (
             self.volume * (1.0 - self.pan.max(0.0)),
             self.volume * (1.0 + self.pan.min(0.0)),
         )
     }
     pub fn volume(self, volume: SampleType) -> Self {
-        Balanced { volume, ..self }
+        Balance { volume, ..self }
     }
     pub fn pan(self, pan: SampleType) -> Self {
-        Balanced { pan, ..self }
+        Balance { pan, ..self }
     }
 }
 
@@ -317,6 +284,12 @@ impl Instruments {
         I: Into<InstrId>,
     {
         self.map.insert(id.into(), instr);
+    }
+    pub fn get_mut<I>(&mut self, id: I) -> Option<&mut Instrument>
+    where
+        I: Into<InstrId>,
+    {
+        self.map.get_mut(&id.into())
     }
     fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
     where

@@ -13,6 +13,18 @@ pub enum RyvmApp {
         #[structopt(subcommand)]
         app: AddApp,
     },
+    Edit {
+        #[structopt(index = 1)]
+        name: String,
+        #[structopt(long, short)]
+        set: Option<f32>,
+        #[structopt(long = "input", short, index = 2, allow_hyphen_values = true)]
+        inputs: Vec<String>,
+        #[structopt(long, short)]
+        volume: Option<f32>,
+        #[structopt(long, short)]
+        pan: Option<f32>,
+    },
 }
 
 #[derive(Debug, StructOpt)]

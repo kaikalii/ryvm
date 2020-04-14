@@ -4,13 +4,13 @@ use std::{
     ops::{Index, IndexMut},
     sync::{
         atomic::{AtomicU32, Ordering},
-        Arc, RwLock,
+        Arc,
     },
 };
 
 use crossbeam::sync::ShardedLock;
 use once_cell::sync::Lazy;
-use rodio::{Sample, Source};
+use rodio::Source;
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -64,22 +64,18 @@ where
     }
 }
 
-impl<T> Source for SourceLock<T>
-where
-    T: Source,
-    T::Item: Sample,
-{
+impl Source for SourceLock<Instruments> {
     fn current_frame_len(&self) -> Option<usize> {
-        self.get(|inner| inner.current_frame_len())
+        None
     }
     fn channels(&self) -> u16 {
-        self.get(|inner| inner.channels())
+        2
     }
     fn sample_rate(&self) -> u32 {
-        self.get(|inner| inner.sample_rate())
+        SAMPLE_RATE
     }
     fn total_duration(&self) -> std::option::Option<std::time::Duration> {
-        self.get(|inner| inner.total_duration())
+        None
     }
 }
 
@@ -310,20 +306,5 @@ impl Iterator for Instruments {
             }
             None
         })
-    }
-}
-
-impl Source for Instruments {
-    fn current_frame_len(&self) -> Option<usize> {
-        None
-    }
-    fn channels(&self) -> u16 {
-        2
-    }
-    fn sample_rate(&self) -> u32 {
-        SAMPLE_RATE
-    }
-    fn total_duration(&self) -> std::option::Option<std::time::Duration> {
-        None
     }
 }

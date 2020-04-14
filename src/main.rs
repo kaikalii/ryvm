@@ -4,7 +4,7 @@ macro_rules! mods {
 
 mods!(app, instrument);
 
-use std::{io::stdin, iter, sync::mpsc, thread};
+use std::{io::stdin, iter, sync::mpsc, thread, time::Duration};
 
 use unicode_reader::CodePoints;
 
@@ -55,6 +55,8 @@ fn main() {
                 Err(e) => println!("{}", e),
             }
         }
+        // Sleep
+        thread::sleep(Duration::from_millis(100));
     }
 }
 

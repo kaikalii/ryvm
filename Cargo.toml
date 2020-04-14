@@ -8,6 +8,7 @@ serde = "*"
 serde_derive = "*"
 serde_yaml = "*"
 indexmap = {  version = "*", features = ["serde-1"] }
+itertools = "*"
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']

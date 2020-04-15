@@ -1,14 +1,17 @@
 use std::{
     collections::{HashMap, HashSet},
+    error::Error,
     f32::consts::PI,
+    fs,
     iter::{once, repeat},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 
 use crossbeam::sync::ShardedLock;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use rodio::Source;
+use rodio::{Decoder, Source};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::U32Lock;
@@ -170,6 +173,35 @@ fn is_default_voices(v: &u32) -> bool {
 pub enum WaveForm {
     Sine,
     Square,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Sample {
+    pub path: PathBuf,
+    #[serde(skip)]
+    pub samples: Vec<SampleType>,
+}
+
+impl Sample {
+    pub fn open<P>(path: P) -> Result<Self, Box<dyn Error>>
+    where
+        P: AsRef<Path>,
+    {
+        let mut sample = Sample {
+            path: path.as_ref().into(),
+            samples: Vec::new(),
+        };
+        sample.init()?;
+        Ok(sample)
+    }
+    pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
+        if let Ok(decoder) = Decoder::new(fs::File::open(&self.path)?) {
+            self.samples = decoder
+                .map(|i| i as SampleType / std::i16::MAX as SampleType)
+                .collect();
+        }
+        Ok(())
+    }
 }
 
 /// An instrument for producing sounds

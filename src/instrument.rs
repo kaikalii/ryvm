@@ -84,74 +84,74 @@ impl Source for SourceLock<Instruments> {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Frame {
+pub struct Voice {
     pub left: SampleType,
     pub right: SampleType,
     pub velocity: SampleType,
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Frames {
-    pub first: Frame,
-    pub multi: Vec<Frame>,
+pub struct Frame {
+    pub first: Voice,
+    pub extra: Vec<Voice>,
 }
 
-impl Frame {
+impl Voice {
     pub fn stereo(left: SampleType, right: SampleType) -> Self {
-        Frame {
+        Voice {
             left,
             right,
             velocity: 1.0,
         }
     }
     pub fn mono(both: SampleType) -> Self {
-        Frame::stereo(both, both)
+        Voice::stereo(both, both)
     }
     pub fn velocity(self, velocity: SampleType) -> Self {
-        Frame { velocity, ..self }
+        Voice { velocity, ..self }
     }
 }
 
-impl Frames {
+impl Frame {
     pub fn multi<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = Frame>,
+        I: IntoIterator<Item = Voice>,
     {
         let mut iter = iter.into_iter();
-        let mut frames = Frames {
-            first: Frame::default(),
-            multi: Vec::new(),
+        let mut frame = Frame {
+            first: Voice::default(),
+            extra: Vec::new(),
         };
         if let Some(first) = iter.next() {
-            frames.first = first;
+            frame.first = first;
         }
-        frames.multi.extend(iter);
-        frames
+        frame.extra.extend(iter);
+        frame
     }
-    pub fn iter(&self) -> impl Iterator<Item = Frame> + '_ {
-        once(self.first).chain(self.multi.iter().copied())
+    pub fn iter(&self) -> impl Iterator<Item = Voice> + '_ {
+        once(self.first).chain(self.extra.iter().copied())
     }
 }
 
-impl IntoIterator for Frames {
-    type Item = Frame;
-    type IntoIter = Box<dyn Iterator<Item = Frame>>;
+impl IntoIterator for Frame {
+    type Item = Voice;
+    type IntoIter = Box<dyn Iterator<Item = Voice>>;
     fn into_iter(self) -> Self::IntoIter {
-        Box::new(once(self.first).chain(self.multi.into_iter()))
+        Box::new(once(self.first).chain(self.extra.into_iter()))
     }
 }
 
-impl From<Frame> for Frames {
-    fn from(frame: Frame) -> Self {
-        Frames {
-            first: frame,
-            multi: Vec::new(),
+impl From<Voice> for Frame {
+    fn from(voice: Voice) -> Self {
+        Frame {
+            first: voice,
+            extra: Vec::new(),
         }
     }
 }
 
-struct FrameCache {
-    map: HashMap<InstrId, Frames>,
+struct VoiceCache {
+    map: HashMap<InstrId, Frame>,
     visited: HashSet<InstrId>,
     #[allow(dead_code)]
     tempo: SampleType,
@@ -209,55 +209,55 @@ impl Instrument {
         }
         self
     }
-    fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frames> {
+    fn next(&self, cache: &mut VoiceCache, instruments: &Instruments) -> Option<Frame> {
         match self {
-            Instrument::Number(n) => Some(Frame::mono(*n).into()),
+            Instrument::Number(n) => Some(Voice::mono(*n).into()),
             Instrument::Wave {
                 input, form, waves, ..
             } => {
-                let frames = instruments.next_from(&*input, cache).unwrap_or_default();
-                let mix_inputs: Vec<(Frames, Balance)> = frames
+                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
+                let mix_inputs: Vec<(Voice, Balance)> = frame
                     .iter()
                     .zip(waves.iter())
-                    .map(|(frame, i)| {
+                    .map(|(voice, i)| {
                         let ix = i.load();
                         let s = match form {
                             WaveForm::Sine => {
                                 let s = SINE_SAMPLES[ix as usize];
-                                i.store((ix + frame.left as u32) % SAMPLE_RATE);
+                                i.store((ix + voice.left as u32) % SAMPLE_RATE);
                                 s
                             }
                             WaveForm::Square => {
-                                let spc = (SAMPLE_RATE as SampleType / frame.left) as u32;
+                                let spc = (SAMPLE_RATE as SampleType / voice.left) as u32;
                                 let s = if ix < spc / 2 { 1.0 } else { -1.0 } * 0.6;
                                 i.store((ix + 1) % spc as u32);
                                 s
                             }
                         };
-                        Frame::mono(s).into()
+                        Voice::mono(s)
                     })
                     .zip(repeat(Balance::default()))
                     .collect();
                 Some(mix(&mix_inputs))
             }
             Instrument::Mixer(list) => {
-                let next_frames: Vec<(Frames, Balance)> = list
+                let next_frame: Vec<(Voice, Balance)> = list
                     .iter()
                     .map(|(id, bal)| {
-                        if let Some(frames) = instruments.next_from(id, cache) {
-                            (frames, *bal)
+                        if let Some(frame) = instruments.next_from(id, cache) {
+                            (frame.first, *bal)
                         } else {
-                            (Frame::default().into(), Balance::default())
+                            (Voice::default(), Balance::default())
                         }
                     })
                     .collect();
-                Some(mix(&next_frames))
+                Some(mix(&next_frame))
             }
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard(keyboard) => {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
-                Some(Frames::multi(freqs.into_iter().map(Frame::mono)))
+                Some(Frame::multi(freqs.into_iter().map(Voice::mono)))
             }
         }
     }
@@ -268,19 +268,19 @@ impl Instrument {
     }
 }
 
-fn mix(list: &[(Frames, Balance)]) -> Frames {
+fn mix(list: &[(Voice, Balance)]) -> Frame {
     let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
         let (l, r) = bal.stereo_volume();
         (lacc + l, racc + r)
     });
-    let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (frames, bal)| {
+    let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
         let (l, r) = bal.stereo_volume();
         (
-            lacc + frames.first.left * l * frames.first.velocity,
-            racc + frames.first.right * r * frames.first.velocity,
+            lacc + voice.left * l * voice.velocity,
+            racc + voice.right * r * voice.velocity,
         )
     });
-    Frame::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into()
+    Voice::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into()
 }
 
 fn default_volume() -> SampleType {
@@ -379,20 +379,20 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
-    fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frames>
+    fn next_from<I>(&self, id: I, cache: &mut VoiceCache) -> Option<Frame>
     where
         I: Into<InstrId>,
     {
         let id = id.into();
-        if let Some(frame) = cache.map.get(&id) {
-            Some(frame.clone())
+        if let Some(voice) = cache.map.get(&id) {
+            Some(voice.clone())
         } else if cache.visited.contains(&id) {
             None
         } else {
             cache.visited.insert(id.clone());
-            if let Some(frame) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
-                cache.map.insert(id, frame.clone());
-                Some(frame)
+            if let Some(voice) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
+                cache.map.insert(id, voice.clone());
+                Some(voice)
             } else {
                 None
             }
@@ -403,16 +403,16 @@ impl Instruments {
 impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut cache = FrameCache {
+        let mut cache = VoiceCache {
             map: HashMap::new(),
             visited: HashSet::new(),
             tempo: self.tempo,
         };
         self.queue.take().or_else(|| {
             if let Some(output_id) = &self.output {
-                if let Some(frames) = self.next_from(output_id, &mut cache) {
-                    self.queue = Some(frames.first.right);
-                    return Some(frames.first.left);
+                if let Some(frame) = self.next_from(output_id, &mut cache) {
+                    self.queue = Some(frame.first.right);
+                    return Some(frame.first.left);
                 }
             }
             self.queue = Some(0.0);

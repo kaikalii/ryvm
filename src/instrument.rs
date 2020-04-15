@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     f32::consts::PI,
+    iter::once,
     sync::{
         atomic::{AtomicU32, Ordering},
         Arc,
@@ -90,6 +91,12 @@ pub struct Frame {
     pub velocity: SampleType,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Frames {
+    pub first: Frame,
+    pub multi: Vec<Frame>,
+}
+
 impl Frame {
     pub fn stereo(left: SampleType, right: SampleType) -> Self {
         Frame {
@@ -106,8 +113,38 @@ impl Frame {
     }
 }
 
+impl Frames {
+    pub fn multi<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Frame>,
+    {
+        let mut iter = iter.into_iter();
+        let mut frames = Frames {
+            first: Frame::default(),
+            multi: Vec::new(),
+        };
+        if let Some(first) = iter.next() {
+            frames.first = first;
+        }
+        frames.multi.extend(iter);
+        frames
+    }
+    pub fn iter(&self) -> impl Iterator<Item = Frame> + '_ {
+        once(self.first).chain(self.multi.iter().copied())
+    }
+}
+
+impl From<Frame> for Frames {
+    fn from(frame: Frame) -> Self {
+        Frames {
+            first: frame,
+            multi: Vec::new(),
+        }
+    }
+}
+
 struct FrameCache {
-    map: HashMap<InstrId, Frame>,
+    map: HashMap<InstrId, Frames>,
     visited: HashSet<InstrId>,
     tempo: SampleType,
 }
@@ -155,31 +192,31 @@ impl Instrument {
             ri: AtomicU32::new(0),
         }
     }
-    fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
+    fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frames> {
         match self {
-            Instrument::Number(n) => Some(Frame::mono(*n)),
+            Instrument::Number(n) => Some(Frame::mono(*n).into()),
             Instrument::Sine { input, li, ri } => {
-                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
+                let frames = instruments.next_from(&*input, cache).unwrap_or_default();
                 let lix = li.load(ORDERING);
                 let rix = ri.load(ORDERING);
                 let ls = SINE_SAMPLES[lix as usize];
                 let rs = SINE_SAMPLES[rix as usize];
-                li.store((lix + frame.left as u32) % SAMPLE_RATE, ORDERING);
-                ri.store((rix + frame.right as u32) % SAMPLE_RATE, ORDERING);
-                Some(Frame::stereo(ls, rs))
+                li.store((lix + frames.first.left as u32) % SAMPLE_RATE, ORDERING);
+                ri.store((rix + frames.first.right as u32) % SAMPLE_RATE, ORDERING);
+                Some(Frame::stereo(ls, rs).into())
             }
             Instrument::Square { input, li, ri } => {
-                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
+                let frames = instruments.next_from(&*input, cache).unwrap_or_default();
                 // spc = samples per cycles
-                let lspc = (SAMPLE_RATE as SampleType / frame.left) as u32;
-                let rspc = (SAMPLE_RATE as SampleType / frame.right) as u32;
+                let lspc = (SAMPLE_RATE as SampleType / frames.first.left) as u32;
+                let rspc = (SAMPLE_RATE as SampleType / frames.first.right) as u32;
                 let lix = li.load(ORDERING);
                 let rix = ri.load(ORDERING);
                 let ls = if lix < lspc / 2 { 1.0 } else { -1.0 } * 0.6;
                 li.store((lix + 1) % lspc as u32, ORDERING);
                 let rs = if rix < rspc / 2 { 1.0 } else { -1.0 } * 0.6;
                 ri.store((rix + 1) % rspc as u32, ORDERING);
-                Some(Frame::stereo(ls, rs))
+                Some(Frame::stereo(ls, rs).into())
             }
             Instrument::Mixer(list) => {
                 let (left_vol_sum, right_vol_sum) =
@@ -190,19 +227,16 @@ impl Instrument {
                 let (left_sum, right_sum) =
                     list.iter().fold((0.0, 0.0), |(lacc, racc), (id, bal)| {
                         let (l, r) = bal.stereo_volume();
-                        if let Some(frame) = instruments.next_from(id, cache) {
+                        if let Some(frames) = instruments.next_from(id, cache) {
                             (
-                                lacc + frame.left * l * frame.velocity,
-                                racc + frame.right * r * frame.velocity,
+                                lacc + frames.first.left * l * frames.first.velocity,
+                                racc + frames.first.right * r * frames.first.velocity,
                             )
                         } else {
                             (lacc, racc)
                         }
                     });
-                Some(Frame::stereo(
-                    left_sum / left_vol_sum,
-                    right_sum / right_vol_sum,
-                ))
+                Some(Frame::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into())
             }
         }
     }
@@ -309,19 +343,19 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
-    fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
+    fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frames>
     where
         I: Into<InstrId>,
     {
         let id = id.into();
         if let Some(frame) = cache.map.get(&id) {
-            Some(*frame)
+            Some(frame.clone())
         } else if cache.visited.contains(&id) {
             None
         } else {
             cache.visited.insert(id.clone());
             if let Some(frame) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
-                cache.map.insert(id, frame);
+                cache.map.insert(id, frame.clone());
                 Some(frame)
             } else {
                 None
@@ -340,9 +374,9 @@ impl Iterator for Instruments {
         };
         self.queue.take().or_else(|| {
             if let Some(output_id) = &self.output {
-                if let Some(frame) = self.next_from(output_id, &mut cache) {
-                    self.queue = Some(frame.right);
-                    return Some(frame.left);
+                if let Some(frames) = self.next_from(output_id, &mut cache) {
+                    self.queue = Some(frames.first.right);
+                    return Some(frames.first.left);
                 }
             }
             self.queue = Some(0.0);

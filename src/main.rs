@@ -53,11 +53,11 @@ fn main() {
                                     AddApp::Number { num } => Instrument::Number(num),
                                     AddApp::Sine { input, voices } => {
                                         let voices = voices.unwrap_or(10);
-                                        Instrument::sine(input).voices(voices)
+                                        Instrument::wave(input, WaveForm::Sine).voices(voices)
                                     }
                                     AddApp::Square { input, voices } => {
                                         let voices = voices.unwrap_or(10);
-                                        Instrument::square(input).voices(voices)
+                                        Instrument::wave(input, WaveForm::Square).voices(voices)
                                     }
                                     AddApp::Mixer { inputs } => Instrument::Mixer(
                                         inputs
@@ -84,8 +84,7 @@ fn main() {
                                             *n = num;
                                         }
                                     }
-                                    Instrument::Sine { input, .. }
-                                    | Instrument::Square { input, .. } => {
+                                    Instrument::Wave { input, .. } => {
                                         if let Some(new_input) = inputs.into_iter().next() {
                                             *input = new_input;
                                         }
@@ -109,7 +108,6 @@ fn main() {
                                             map.entry(input).or_insert_with(Balance::default);
                                         }
                                     }
-                                    Instrument::VoiceMixer { .. } => {}
                                 }
                             }
                         });

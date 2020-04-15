@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{CloneLock, U32Lock};
+use crate::U32Lock;
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -154,87 +154,86 @@ struct FrameCache {
     tempo: SampleType,
 }
 
+fn default_voices() -> u32 {
+    1
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_voices(v: &u32) -> bool {
+    v == &default_voices()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WaveForm {
+    Sine,
+    Square,
+}
+
 /// An instrument for producing sounds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Instrument {
     Number(SampleType),
-    Sine {
+    Wave {
         input: InstrId,
-        #[serde(skip)]
-        li: U32Lock,
-        #[serde(skip)]
-        ri: U32Lock,
-    },
-    Square {
-        input: InstrId,
-        #[serde(skip)]
-        li: U32Lock,
-        #[serde(skip)]
-        ri: U32Lock,
-    },
-    Mixer(HashMap<InstrId, Balance>),
-    VoiceMixer {
-        template: Box<Instrument>,
+        form: WaveForm,
+        #[serde(default = "default_voices", skip_serializing_if = "is_default_voices")]
         voices: u32,
         #[serde(skip)]
-        copies: CloneLock<Vec<Instrument>>,
+        waves: Vec<U32Lock>,
     },
+    Mixer(HashMap<InstrId, Balance>),
 }
 
 impl Instrument {
-    pub fn sine<I>(id: I) -> Self
+    pub fn wave<I>(id: I, form: WaveForm) -> Self
     where
         I: Into<InstrId>,
     {
-        Instrument::Sine {
+        Instrument::Wave {
             input: id.into(),
-            li: U32Lock::new(0),
-            ri: U32Lock::new(0),
+            form,
+            voices: default_voices(),
+            waves: vec![U32Lock::new(0)],
         }
     }
-    pub fn square<I>(id: I) -> Self
-    where
-        I: Into<InstrId>,
-    {
-        Instrument::Square {
-            input: id.into(),
-            li: U32Lock::new(0),
-            ri: U32Lock::new(0),
+    pub fn voices(mut self, v: u32) -> Self {
+        if let Instrument::Wave { voices, waves, .. } = &mut self {
+            *voices = v;
+            waves.resize(v as usize, U32Lock::new(0));
         }
-    }
-    pub fn voices(self, voices: u32) -> Self {
-        Instrument::VoiceMixer {
-            voices,
-            copies: CloneLock::new(repeat(self.clone()).take(voices as usize).collect()),
-            template: Box::new(self),
-        }
+        self
     }
     fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frames> {
         match self {
             Instrument::Number(n) => Some(Frame::mono(*n).into()),
-            Instrument::Sine { input, li, ri } => {
+            Instrument::Wave {
+                input, form, waves, ..
+            } => {
                 let frames = instruments.next_from(&*input, cache).unwrap_or_default();
-                let lix = li.load();
-                let rix = ri.load();
-                let ls = SINE_SAMPLES[lix as usize];
-                let rs = SINE_SAMPLES[rix as usize];
-                li.store((lix + frames.first.left as u32) % SAMPLE_RATE);
-                ri.store((rix + frames.first.right as u32) % SAMPLE_RATE);
-                Some(Frame::stereo(ls, rs).into())
-            }
-            Instrument::Square { input, li, ri } => {
-                let frames = instruments.next_from(&*input, cache).unwrap_or_default();
-                // spc = samples per cycles
-                let lspc = (SAMPLE_RATE as SampleType / frames.first.left) as u32;
-                let rspc = (SAMPLE_RATE as SampleType / frames.first.right) as u32;
-                let lix = li.load();
-                let rix = ri.load();
-                let ls = if lix < lspc / 2 { 1.0 } else { -1.0 } * 0.6;
-                li.store((lix + 1) % lspc as u32);
-                let rs = if rix < rspc / 2 { 1.0 } else { -1.0 } * 0.6;
-                ri.store((rix + 1) % rspc as u32);
-                Some(Frame::stereo(ls, rs).into())
+                let mix_inputs: Vec<(Frames, Balance)> = frames
+                    .iter()
+                    .zip(waves.iter())
+                    .map(|(frame, i)| {
+                        let ix = i.load();
+                        let s = match form {
+                            WaveForm::Sine => {
+                                let s = SINE_SAMPLES[ix as usize];
+                                i.store((ix + frame.left as u32) % SAMPLE_RATE);
+                                s
+                            }
+                            WaveForm::Square => {
+                                let spc = (SAMPLE_RATE as SampleType / frame.left) as u32;
+                                let s = if ix < spc / 2 { 1.0 } else { -1.0 } * 0.6;
+                                i.store((ix + 1) % spc as u32);
+                                s
+                            }
+                        };
+                        Frame::mono(s).into()
+                    })
+                    .zip(repeat(Balance::default()))
+                    .collect();
+                Some(mix(&mix_inputs))
             }
             Instrument::Mixer(list) => {
                 let next_frames: Vec<(Frames, Balance)> = list
@@ -248,20 +247,6 @@ impl Instrument {
                     })
                     .collect();
                 Some(mix(&next_frames))
-            }
-            Instrument::VoiceMixer { copies, .. } => {
-                let mut input_frames = None;
-                for copy in copies.lock().iter_mut() {
-                    let copy_frames = copy.next(cache, instruments);
-                    input_frames = input_frames.or(copy_frames);
-                }
-                let input_frames = input_frames.unwrap_or_default();
-                let mix_inputs: Vec<(Frames, Balance)> = input_frames
-                    .into_iter()
-                    .map(Into::into)
-                    .zip(repeat(Balance::default()))
-                    .collect();
-                Some(mix(&mix_inputs))
             }
         }
     }

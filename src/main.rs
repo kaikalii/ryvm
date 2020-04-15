@@ -2,7 +2,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; pub use $m::*;)*);
 }
 
-mods!(app, instrument);
+mods!(app, instrument, track);
 
 use std::{
     io::stdin,

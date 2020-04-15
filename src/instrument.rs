@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     f32::consts::PI,
     sync::{
         atomic::{AtomicU32, Ordering},
@@ -106,7 +106,11 @@ impl Frame {
     }
 }
 
-type FrameCache = HashMap<InstrId, Frame>;
+#[derive(Default)]
+struct FrameCache {
+    map: HashMap<InstrId, Frame>,
+    visited: HashSet<InstrId>,
+}
 
 /// An instrument for producing sounds
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,7 +155,7 @@ impl Instrument {
             ri: AtomicU32::new(0),
         }
     }
-    pub fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
+    fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
         match self {
             Instrument::Number(n) => Some(Frame::mono(*n)),
             Instrument::Sine { input, li, ri } => {
@@ -296,13 +300,18 @@ impl Instruments {
         I: Into<InstrId>,
     {
         let id = id.into();
-        if let Some(frame) = cache.get(&id) {
+        if let Some(frame) = cache.map.get(&id) {
             Some(*frame)
-        } else if let Some(frame) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
-            cache.insert(id, frame);
-            Some(frame)
-        } else {
+        } else if cache.visited.contains(&id) {
             None
+        } else {
+            cache.visited.insert(id.clone());
+            if let Some(frame) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
+                cache.map.insert(id, frame);
+                Some(frame)
+            } else {
+                None
+            }
         }
     }
 }
@@ -310,7 +319,7 @@ impl Instruments {
 impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut cache = FrameCache::new();
+        let mut cache = FrameCache::default();
         self.queue.take().or_else(|| {
             if let Some(output_id) = &self.output {
                 if let Some(frame) = self.next_from(output_id, &mut cache) {

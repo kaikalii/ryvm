@@ -191,6 +191,15 @@ pub enum Instrument {
 }
 
 impl Instrument {
+    #[allow(clippy::single_match)]
+    pub fn init(&mut self) {
+        match self {
+            Instrument::Wave { voices, waves, .. } => {
+                waves.resize(*voices as usize, U32Lock::new(0));
+            }
+            _ => {}
+        }
+    }
     pub fn wave<I>(id: I, form: WaveForm) -> Self
     where
         I: Into<InstrId>,

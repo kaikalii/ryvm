@@ -1,10 +1,19 @@
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Mutex, MutexGuard,
+use std::{
+    fmt,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Mutex, MutexGuard,
+    },
 };
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct U32Lock(AtomicU32);
+
+impl fmt::Debug for U32Lock {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.load())
+    }
+}
 
 impl Clone for U32Lock {
     fn clone(&self) -> Self {

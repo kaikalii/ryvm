@@ -2,7 +2,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; pub use $m::*;)*);
 }
 
-mods!(app, instrument, track);
+mods!(app, instrument, track, utility);
 
 #[cfg(feature = "keyboard")]
 mod keyboard;
@@ -103,6 +103,7 @@ fn main() {
                                             map.entry(input).or_insert_with(Balance::default);
                                         }
                                     }
+                                    Instrument::VoiceMixer { .. } => {}
                                 }
                             }
                         });

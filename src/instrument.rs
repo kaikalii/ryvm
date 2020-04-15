@@ -1,11 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
     f32::consts::PI,
-    iter::once,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc,
-    },
+    iter::{once, repeat},
+    sync::Arc,
 };
 
 use crossbeam::sync::ShardedLock;
@@ -13,6 +10,8 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
+
+use crate::{CloneLock, U32Lock};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -23,8 +22,6 @@ pub const SAMPLE_RATE: u32 = 44100 / 3;
 
 /// An error bound for the sample type
 pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
-
-const ORDERING: Ordering = Ordering::Relaxed;
 
 static SINE_SAMPLES: Lazy<Vec<SampleType>> = Lazy::new(|| {
     (0..SAMPLE_RATE)
@@ -134,6 +131,14 @@ impl Frames {
     }
 }
 
+impl IntoIterator for Frames {
+    type Item = Frame;
+    type IntoIter = Box<dyn Iterator<Item = Frame>>;
+    fn into_iter(self) -> Self::IntoIter {
+        Box::new(once(self.first).chain(self.multi.into_iter()))
+    }
+}
+
 impl From<Frame> for Frames {
     fn from(frame: Frame) -> Self {
         Frames {
@@ -150,25 +155,31 @@ struct FrameCache {
 }
 
 /// An instrument for producing sounds
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Instrument {
     Number(SampleType),
     Sine {
         input: InstrId,
         #[serde(skip)]
-        li: AtomicU32,
+        li: U32Lock,
         #[serde(skip)]
-        ri: AtomicU32,
+        ri: U32Lock,
     },
     Square {
         input: InstrId,
         #[serde(skip)]
-        li: AtomicU32,
+        li: U32Lock,
         #[serde(skip)]
-        ri: AtomicU32,
+        ri: U32Lock,
     },
     Mixer(HashMap<InstrId, Balance>),
+    VoiceMixer {
+        template: Box<Instrument>,
+        voices: u32,
+        #[serde(skip)]
+        copies: CloneLock<Vec<Instrument>>,
+    },
 }
 
 impl Instrument {
@@ -178,8 +189,8 @@ impl Instrument {
     {
         Instrument::Sine {
             input: id.into(),
-            li: AtomicU32::new(0),
-            ri: AtomicU32::new(0),
+            li: U32Lock::new(0),
+            ri: U32Lock::new(0),
         }
     }
     pub fn square<I>(id: I) -> Self
@@ -188,8 +199,15 @@ impl Instrument {
     {
         Instrument::Square {
             input: id.into(),
-            li: AtomicU32::new(0),
-            ri: AtomicU32::new(0),
+            li: U32Lock::new(0),
+            ri: U32Lock::new(0),
+        }
+    }
+    pub fn voices(self, voices: u32) -> Self {
+        Instrument::VoiceMixer {
+            voices,
+            copies: CloneLock::new(repeat(self.clone()).take(voices as usize).collect()),
+            template: Box::new(self),
         }
     }
     fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frames> {
@@ -197,12 +215,12 @@ impl Instrument {
             Instrument::Number(n) => Some(Frame::mono(*n).into()),
             Instrument::Sine { input, li, ri } => {
                 let frames = instruments.next_from(&*input, cache).unwrap_or_default();
-                let lix = li.load(ORDERING);
-                let rix = ri.load(ORDERING);
+                let lix = li.load();
+                let rix = ri.load();
                 let ls = SINE_SAMPLES[lix as usize];
                 let rs = SINE_SAMPLES[rix as usize];
-                li.store((lix + frames.first.left as u32) % SAMPLE_RATE, ORDERING);
-                ri.store((rix + frames.first.right as u32) % SAMPLE_RATE, ORDERING);
+                li.store((lix + frames.first.left as u32) % SAMPLE_RATE);
+                ri.store((rix + frames.first.right as u32) % SAMPLE_RATE);
                 Some(Frame::stereo(ls, rs).into())
             }
             Instrument::Square { input, li, ri } => {
@@ -210,33 +228,40 @@ impl Instrument {
                 // spc = samples per cycles
                 let lspc = (SAMPLE_RATE as SampleType / frames.first.left) as u32;
                 let rspc = (SAMPLE_RATE as SampleType / frames.first.right) as u32;
-                let lix = li.load(ORDERING);
-                let rix = ri.load(ORDERING);
+                let lix = li.load();
+                let rix = ri.load();
                 let ls = if lix < lspc / 2 { 1.0 } else { -1.0 } * 0.6;
-                li.store((lix + 1) % lspc as u32, ORDERING);
+                li.store((lix + 1) % lspc as u32);
                 let rs = if rix < rspc / 2 { 1.0 } else { -1.0 } * 0.6;
-                ri.store((rix + 1) % rspc as u32, ORDERING);
+                ri.store((rix + 1) % rspc as u32);
                 Some(Frame::stereo(ls, rs).into())
             }
             Instrument::Mixer(list) => {
-                let (left_vol_sum, right_vol_sum) =
-                    list.values().fold((0.0, 0.0), |(lacc, racc), bal| {
-                        let (l, r) = bal.stereo_volume();
-                        (lacc + l, racc + r)
-                    });
-                let (left_sum, right_sum) =
-                    list.iter().fold((0.0, 0.0), |(lacc, racc), (id, bal)| {
-                        let (l, r) = bal.stereo_volume();
+                let next_frames: Vec<(Frames, Balance)> = list
+                    .iter()
+                    .map(|(id, bal)| {
                         if let Some(frames) = instruments.next_from(id, cache) {
-                            (
-                                lacc + frames.first.left * l * frames.first.velocity,
-                                racc + frames.first.right * r * frames.first.velocity,
-                            )
+                            (frames, *bal)
                         } else {
-                            (lacc, racc)
+                            (Frame::default().into(), Balance::default())
                         }
-                    });
-                Some(Frame::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into())
+                    })
+                    .collect();
+                Some(mix(&next_frames))
+            }
+            Instrument::VoiceMixer { copies, .. } => {
+                let mut input_frames = None;
+                for copy in copies.lock().iter_mut() {
+                    let copy_frames = copy.next(cache, instruments);
+                    input_frames = input_frames.or(copy_frames);
+                }
+                let input_frames = input_frames.unwrap_or_default();
+                let mix_inputs: Vec<(Frames, Balance)> = input_frames
+                    .into_iter()
+                    .map(Into::into)
+                    .zip(repeat(Balance::default()))
+                    .collect();
+                Some(mix(&mix_inputs))
             }
         }
     }
@@ -245,6 +270,21 @@ impl Instrument {
             *n = num;
         }
     }
+}
+
+fn mix(list: &[(Frames, Balance)]) -> Frames {
+    let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
+        let (l, r) = bal.stereo_volume();
+        (lacc + l, racc + r)
+    });
+    let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (frames, bal)| {
+        let (l, r) = bal.stereo_volume();
+        (
+            lacc + frames.first.left * l * frames.first.velocity,
+            racc + frames.first.right * r * frames.first.velocity,
+        )
+    });
+    Frame::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into()
 }
 
 fn default_volume() -> SampleType {

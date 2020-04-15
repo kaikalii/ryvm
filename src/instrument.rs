@@ -228,10 +228,14 @@ impl Instrument {
                                 s
                             }
                             WaveForm::Square => {
-                                let spc = (SAMPLE_RATE as SampleType / voice.left) as u32;
-                                let s = if ix < spc / 2 { 1.0 } else { -1.0 } * 0.6;
-                                i.store((ix + 1) % spc as u32);
-                                s
+                                if voice.left != 0.0 {
+                                    let spc = (SAMPLE_RATE as SampleType / voice.left) as u32;
+                                    let s = if ix < spc / 2 { 1.0 } else { -1.0 } * 0.6;
+                                    i.store((ix + 1) % spc as u32);
+                                    s
+                                } else {
+                                    0.0
+                                }
                             }
                         };
                         Voice::mono(s)

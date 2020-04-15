@@ -5,7 +5,12 @@ pub enum RyvmApp {
     #[structopt(about = "Quit ryvm", alias = "exit")]
     Quit,
     Output {
+        #[structopt(index = 1)]
         name: String,
+    },
+    Tempo {
+        #[structopt(index = 1)]
+        tempo: f32,
     },
     Add {
         #[structopt(index = 1)]

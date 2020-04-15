@@ -37,6 +37,9 @@ fn main() {
                     RyvmApp::Output { name } => {
                         instruments.update(|instrs| instrs.set_output(name))
                     }
+                    RyvmApp::Tempo { tempo } => {
+                        instruments.update(|instrs| instrs.set_tempo(tempo))
+                    }
                     RyvmApp::Add { name, app } => {
                         instruments.update(|instrs| {
                             instrs.add(

@@ -106,10 +106,10 @@ impl Frame {
     }
 }
 
-#[derive(Default)]
 struct FrameCache {
     map: HashMap<InstrId, Frame>,
     visited: HashSet<InstrId>,
+    tempo: SampleType,
 }
 
 /// An instrument for producing sounds
@@ -264,6 +264,15 @@ impl Balance {
     }
 }
 
+fn default_tempo() -> SampleType {
+    120.0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_default_tempo(tempo: &SampleType) -> bool {
+    (tempo - default_tempo()).abs() < SAMPLE_EPSILON
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Instruments {
     output: Option<InstrId>,
@@ -271,6 +280,8 @@ pub struct Instruments {
     map: IndexMap<InstrId, Instrument>,
     #[serde(skip)]
     queue: Option<SampleType>,
+    #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
+    tempo: SampleType,
 }
 
 impl Instruments {
@@ -282,6 +293,9 @@ impl Instruments {
         I: Into<InstrId>,
     {
         self.output = Some(id.into());
+    }
+    pub fn set_tempo(&mut self, tempo: SampleType) {
+        self.tempo = tempo;
     }
     pub fn add<I>(&mut self, id: I, instr: Instrument)
     where
@@ -319,7 +333,11 @@ impl Instruments {
 impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut cache = FrameCache::default();
+        let mut cache = FrameCache {
+            map: HashMap::new(),
+            visited: HashSet::new(),
+            tempo: self.tempo,
+        };
         self.queue.take().or_else(|| {
             if let Some(output_id) = &self.output {
                 if let Some(frame) = self.next_from(output_id, &mut cache) {

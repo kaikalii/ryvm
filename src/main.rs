@@ -51,8 +51,14 @@ fn main() {
                                 name,
                                 match app {
                                     AddApp::Number { num } => Instrument::Number(num),
-                                    AddApp::Sine { input } => Instrument::sine(input),
-                                    AddApp::Square { input } => Instrument::square(input),
+                                    AddApp::Sine { input, voices } => {
+                                        let voices = voices.unwrap_or(10);
+                                        Instrument::sine(input).voices(voices)
+                                    }
+                                    AddApp::Square { input, voices } => {
+                                        let voices = voices.unwrap_or(10);
+                                        Instrument::square(input).voices(voices)
+                                    }
                                     AddApp::Mixer { inputs } => Instrument::Mixer(
                                         inputs
                                             .into_iter()

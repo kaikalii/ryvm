@@ -37,9 +37,17 @@ pub enum AddApp {
     #[structopt(about = "A number", alias = "num")]
     Number { num: f32 },
     #[structopt(about = "A sine wave synthesizer")]
-    Sine { input: String },
+    Sine {
+        input: String,
+        #[structopt(long, short)]
+        voices: Option<u32>,
+    },
     #[structopt(about = "A square wave synthesizer")]
-    Square { input: String },
+    Square {
+        input: String,
+        #[structopt(long, short)]
+        voices: Option<u32>,
+    },
     #[structopt(about = "A mixer")]
     Mixer { inputs: Vec<String> },
 }

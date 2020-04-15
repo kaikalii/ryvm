@@ -4,6 +4,11 @@ macro_rules! mods {
 
 mods!(app, instrument, track);
 
+#[cfg(feature = "keyboard")]
+mod keyboard;
+#[cfg(feature = "keyboard")]
+pub use keyboard::*;
+
 use std::{
     io::stdin,
     iter::{once, repeat},

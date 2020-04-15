@@ -16,10 +16,14 @@ impl Note {
     }
     pub fn letter(letter: Letter, octave: u8, dur: SampleType) -> Note {
         Note {
-            freq: *NOTES.get(&(letter, octave)).unwrap(),
+            freq: freq(letter, octave),
             dur,
         }
     }
+}
+
+fn freq(letter: Letter, octave: u8) -> SampleType {
+    *NOTES.get(&(letter, octave)).unwrap()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

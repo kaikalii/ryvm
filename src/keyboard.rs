@@ -10,24 +10,52 @@ use std::{
 use crossbeam::sync::ShardedLock;
 use once_cell::sync::Lazy;
 use piston_window::*;
+use serde_derive::{Deserialize, Serialize};
 
 use crate::Letter;
 
+/// Struct used as a definitation for serializing a keyboard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeyboardDef {
+    pub name: String,
+    pub base_octave: u8,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(into = "KeyboardDef", from = "KeyboardDef")]
 pub struct Keyboard {
+    name: String,
+    base_octave: u8,
     pressed: Arc<ShardedLock<HashSet<(Letter, u8)>>>,
-    handle: Option<JoinHandle<()>>,
+    handle: Option<Arc<JoinHandle<()>>>,
     done: Arc<AtomicBool>,
+}
+
+impl From<Keyboard> for KeyboardDef {
+    fn from(keyboard: Keyboard) -> Self {
+        KeyboardDef {
+            name: keyboard.name.clone(),
+            base_octave: keyboard.base_octave,
+        }
+    }
+}
+
+impl From<KeyboardDef> for Keyboard {
+    fn from(def: KeyboardDef) -> Self {
+        Keyboard::new(&def.name, def.base_octave)
+    }
 }
 
 impl Keyboard {
     pub fn new(name: &str, base_octave: u8) -> Keyboard {
         let done = Arc::new(AtomicBool::new(false));
         let done_clone = Arc::clone(&done);
-        let name = name.to_string();
+        let name_string = name.to_string();
         let pressed = Arc::new(ShardedLock::new(HashSet::new()));
         let pressed_clone = Arc::clone(&pressed);
         let handle = thread::spawn(move || {
-            let mut window: PistonWindow = WindowSettings::new(name, [400; 2]).build().unwrap();
+            let mut window: PistonWindow =
+                WindowSettings::new(name_string, [400; 2]).build().unwrap();
             while let Some(event) = window.next() {
                 // Clear
                 window.draw_2d(&event, |_, graphics, _| clear([0.0; 4], graphics));
@@ -61,8 +89,10 @@ impl Keyboard {
             done_clone.store(true, Ordering::Relaxed);
         });
         Keyboard {
+            name: name.into(),
+            base_octave,
             pressed,
-            handle: Some(handle),
+            handle: Some(Arc::new(handle)),
             done,
         }
     }
@@ -77,7 +107,9 @@ impl Keyboard {
 impl Drop for Keyboard {
     fn drop(&mut self) {
         self.done.store(true, Ordering::Relaxed);
-        let _ = self.handle.take().unwrap().join();
+        if let Ok(handle) = Arc::try_unwrap(self.handle.take().unwrap()) {
+            let _ = handle.join();
+        }
     }
 }
 

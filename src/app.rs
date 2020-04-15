@@ -50,4 +50,7 @@ pub enum AddApp {
     },
     #[structopt(about = "A mixer")]
     Mixer { inputs: Vec<String> },
+    #[cfg(feature = "keyboard")]
+    #[structopt(about = "Use you computer kyeboard as a music keyboard")]
+    Keyboard { base_octave: Option<u8> },
 }

@@ -22,7 +22,7 @@ impl Note {
     }
 }
 
-fn freq(letter: Letter, octave: u8) -> SampleType {
+pub fn freq(letter: Letter, octave: u8) -> SampleType {
     *NOTES.get(&(letter, octave)).unwrap()
 }
 

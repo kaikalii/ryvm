@@ -12,6 +12,8 @@ use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::U32Lock;
+#[cfg(feature = "keyboard")]
+use crate::{freq, Keyboard};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -151,6 +153,7 @@ impl From<Frame> for Frames {
 struct FrameCache {
     map: HashMap<InstrId, Frames>,
     visited: HashSet<InstrId>,
+    #[allow(dead_code)]
     tempo: SampleType,
 }
 
@@ -170,7 +173,7 @@ pub enum WaveForm {
 }
 
 /// An instrument for producing sounds
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Instrument {
     Number(SampleType),
@@ -183,6 +186,8 @@ pub enum Instrument {
         waves: Vec<U32Lock>,
     },
     Mixer(HashMap<InstrId, Balance>),
+    #[cfg(feature = "keyboard")]
+    Keyboard(Keyboard),
 }
 
 impl Instrument {
@@ -247,6 +252,12 @@ impl Instrument {
                     })
                     .collect();
                 Some(mix(&next_frames))
+            }
+            #[cfg(feature = "keyboard")]
+            Instrument::Keyboard(keyboard) => {
+                let freqs: Vec<SampleType> = keyboard
+                    .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
+                Some(Frames::multi(freqs.into_iter().map(Frame::mono)))
             }
         }
     }

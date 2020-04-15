@@ -48,22 +48,32 @@ fn main() {
                     RyvmApp::Add { name, app } => {
                         instruments.update(|instrs| {
                             instrs.add(
-                                name,
+                                name.clone(),
                                 match app {
                                     AddApp::Number { num } => Instrument::Number(num),
                                     AddApp::Sine { input, voices } => {
-                                        let voices = voices.unwrap_or(10);
-                                        Instrument::wave(input, WaveForm::Sine).voices(voices)
+                                        let mut instr = Instrument::wave(input, WaveForm::Sine);
+                                        if let Some(voices) = voices {
+                                            instr = instr.voices(voices);
+                                        }
+                                        instr
                                     }
                                     AddApp::Square { input, voices } => {
-                                        let voices = voices.unwrap_or(10);
-                                        Instrument::wave(input, WaveForm::Square).voices(voices)
+                                        let mut instr = Instrument::wave(input, WaveForm::Square);
+                                        if let Some(voices) = voices {
+                                            instr = instr.voices(voices);
+                                        }
+                                        instr
                                     }
                                     AddApp::Mixer { inputs } => Instrument::Mixer(
                                         inputs
                                             .into_iter()
                                             .zip(repeat(Balance::default()))
                                             .collect(),
+                                    ),
+                                    #[cfg(feature = "keyboard")]
+                                    AddApp::Keyboard { base_octave } => Instrument::Keyboard(
+                                        Keyboard::new(&name, base_octave.unwrap_or(4)),
                                     ),
                                 },
                             )
@@ -108,6 +118,8 @@ fn main() {
                                             map.entry(input).or_insert_with(Balance::default);
                                         }
                                     }
+                                    #[cfg(feature = "keyboard")]
+                                    Instrument::Keyboard(_) => {}
                                 }
                             }
                         });

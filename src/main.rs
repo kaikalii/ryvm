@@ -2,7 +2,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; pub use $m::*;)*);
 }
 
-mods!(app, drum, instrument, track, utility);
+mods!(app, drum, instrument, instruments, track, utility);
 
 #[cfg(feature = "keyboard")]
 mod keyboard;
@@ -75,9 +75,7 @@ fn main() {
                                     AddApp::Keyboard { base_octave } => Instrument::Keyboard(
                                         Keyboard::new(&name, base_octave.unwrap_or(4)),
                                     ),
-                                    AddApp::Drums => Instrument::DrumMachine {
-                                        samplings: Vec::new(),
-                                    },
+                                    AddApp::Drums => Instrument::DrumMachine(Vec::new()),
                                 },
                             )
                         });
@@ -135,7 +133,7 @@ fn main() {
                         beat,
                     } => {
                         instruments.update(|instrs| {
-                            if let Some(Instrument::DrumMachine { samplings }) =
+                            if let Some(Instrument::DrumMachine(samplings)) =
                                 instrs.get_mut(machine)
                             {
                                 samplings.resize(index + 1, Sampling::default());

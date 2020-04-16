@@ -60,6 +60,18 @@ pub enum AddApp {
         #[structopt(long, short)]
         voices: Option<u32>,
     },
+    #[structopt(about = "A saw wave synthesizer")]
+    Saw {
+        input: String,
+        #[structopt(long, short)]
+        voices: Option<u32>,
+    },
+    #[structopt(about = "A triangle wave synthesizer", alias = "tri")]
+    Triangle {
+        input: String,
+        #[structopt(long, short)]
+        voices: Option<u32>,
+    },
     #[structopt(about = "A mixer")]
     Mixer { inputs: Vec<String> },
     #[cfg(feature = "keyboard")]

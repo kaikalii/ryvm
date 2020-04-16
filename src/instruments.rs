@@ -131,6 +131,20 @@ impl Instruments {
                         }
                         instr
                     }
+                    AddApp::Saw { input, voices } => {
+                        let mut instr = Instrument::wave(input, WaveForm::Saw);
+                        if let Some(voices) = voices {
+                            instr = instr.voices(voices);
+                        }
+                        instr
+                    }
+                    AddApp::Triangle { input, voices } => {
+                        let mut instr = Instrument::wave(input, WaveForm::Triangle);
+                        if let Some(voices) = voices {
+                            instr = instr.voices(voices);
+                        }
+                        instr
+                    }
                     AddApp::Mixer { inputs } => Instrument::Mixer(
                         inputs.into_iter().zip(repeat(Balance::default())).collect(),
                     ),

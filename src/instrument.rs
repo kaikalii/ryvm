@@ -6,7 +6,6 @@ use std::{
 };
 
 use crossbeam::sync::ShardedLock;
-use once_cell::sync::Lazy;
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
@@ -22,12 +21,6 @@ pub const SAMPLE_RATE: u32 = 44100;
 
 /// An error bound for the sample type
 pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
-
-static SINE_SAMPLES: Lazy<Vec<SampleType>> = Lazy::new(|| {
-    (0..SAMPLE_RATE)
-        .map(|i| (i as SampleType / SAMPLE_RATE as SampleType * 2.0 * PI).sin())
-        .collect()
-});
 
 #[derive(Debug)]
 pub struct SourceLock<T>(Arc<ShardedLock<T>>);
@@ -151,6 +144,20 @@ fn is_default_voices(v: &u32) -> bool {
 pub enum WaveForm {
     Sine,
     Square,
+    Saw,
+    Triangle,
+}
+
+impl WaveForm {
+    const MIN_ENERGY: SampleType = 0.5;
+    pub fn energy(self) -> SampleType {
+        match self {
+            WaveForm::Sine => FRAC_2_PI,
+            WaveForm::Square => 1.0,
+            WaveForm::Saw => 0.5,
+            WaveForm::Triangle => 0.5,
+        }
+    }
 }
 
 /// An instrument for producing sounds
@@ -212,23 +219,26 @@ impl Instrument {
                     .zip(waves.iter())
                     .map(|(voice, i)| {
                         let ix = i.load();
+                        if voice.left == 0.0 {
+                            return Voice::mono(0.0);
+                        }
+                        // spc = samples per cycle
+                        let spc = SAMPLE_RATE as SampleType / voice.left;
+                        let t = ix as SampleType / spc;
                         let s = match form {
-                            WaveForm::Sine => {
-                                let s = SINE_SAMPLES[ix as usize];
-                                i.store((ix + voice.left as u32) % SAMPLE_RATE);
-                                s
-                            }
+                            WaveForm::Sine => (t * 2.0 * PI).sin(),
                             WaveForm::Square => {
-                                if voice.left != 0.0 {
-                                    let spc = (SAMPLE_RATE as SampleType / voice.left) as u32;
-                                    let s = if ix < spc / 2 { 1.0 } else { -1.0 } * FRAC_2_PI;
-                                    i.store((ix + 1) % spc as u32);
-                                    s
+                                if t < 0.5 {
+                                    1.0
                                 } else {
-                                    0.0
+                                    -1.0
                                 }
                             }
-                        };
+                            WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
+                            WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
+                        } * WaveForm::MIN_ENERGY
+                            / form.energy();
+                        i.store((ix + 1) % spc as u32);
                         Voice::mono(s)
                     })
                     .zip(repeat(Balance::default()))

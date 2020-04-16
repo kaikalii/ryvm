@@ -11,9 +11,9 @@ use once_cell::sync::Lazy;
 use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::U32Lock;
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
+use crate::{SampleBeat, U32Lock, MAX_BEATS};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -188,6 +188,11 @@ pub enum Instrument {
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
     Keyboard(Keyboard),
+    DrumMachine {
+        samples: Vec<SampleBeat>,
+        #[serde(skip)]
+        i: U32Lock,
+    },
 }
 
 impl Instrument {
@@ -271,6 +276,25 @@ impl Instrument {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
                 Some(Frame::multi(freqs.into_iter().map(Voice::mono)))
+            }
+            Instrument::DrumMachine { samples, i } => {
+                let mut voices = Vec::new();
+                let ix = i.load();
+                for sample in samples {
+                    let samples = &sample.sample.samples;
+                    let sample_count = samples.len() as u32;
+                    for b in 0..MAX_BEATS {
+                        let start = sample_count * b as u32;
+                        if sample.beat.get(b) && ix >= start {
+                            let si = (ix - start) as usize;
+                            if si < samples.len() {
+                                voices.push((samples[si], Balance::default()));
+                            }
+                        }
+                    }
+                }
+                i.store(ix + 1);
+                Some(mix(&voices))
             }
         }
     }

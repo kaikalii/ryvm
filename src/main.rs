@@ -120,6 +120,7 @@ fn main() {
                                     }
                                     #[cfg(feature = "keyboard")]
                                     Instrument::Keyboard(_) => {}
+                                    Instrument::DrumMachine { .. } => {}
                                 }
                             }
                         });

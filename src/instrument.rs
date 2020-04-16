@@ -309,7 +309,11 @@ fn mix(list: &[(Voice, Balance)]) -> Frame {
                 racc * voice.right * r * voice.velocity,
             )
         });
-    Voice::stereo(left_sum - left_product, right_sum - right_product).into()
+    Voice::stereo(
+        left_sum - left_product.abs() * left_sum.signum(),
+        right_sum - right_product.abs() * right_sum.signum(),
+    )
+    .into()
 }
 
 fn default_volume() -> SampleType {

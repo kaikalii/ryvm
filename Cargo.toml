@@ -14,7 +14,7 @@ piston_window = { version = "*", optional = true }
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'
-name = 'album'
+name = 'ryvm'
 version = '0.1.0'
 
 [features]

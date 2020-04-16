@@ -2,7 +2,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; pub use $m::*;)*);
 }
 
-mods!(app, instrument, track, utility);
+mods!(app, drum, instrument, track, utility);
 
 #[cfg(feature = "keyboard")]
 mod keyboard;

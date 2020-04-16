@@ -75,6 +75,9 @@ fn main() {
                                     AddApp::Keyboard { base_octave } => Instrument::Keyboard(
                                         Keyboard::new(&name, base_octave.unwrap_or(4)),
                                     ),
+                                    AddApp::Drums => Instrument::DrumMachine {
+                                        samplings: Vec::new(),
+                                    },
                                 },
                             )
                         });
@@ -125,10 +128,32 @@ fn main() {
                             }
                         });
                     }
+                    RyvmApp::Drum {
+                        machine,
+                        index,
+                        path,
+                        beat,
+                    } => {
+                        instruments.update(|instrs| {
+                            if let Some(Instrument::DrumMachine { samplings }) =
+                                instrs.get_mut(machine)
+                            {
+                                samplings.resize(index + 1, Sampling::default());
+                                if let Some(path) = path {
+                                    if let Err(e) = samplings[index].sample.set_path(path) {
+                                        println!("{}", e);
+                                    }
+                                }
+                                if let Some(be) = beat {
+                                    samplings[index].beat = be.parse().unwrap();
+                                }
+                            }
+                        });
+                    }
                 },
                 Err(e) => println!("{}", e),
             }
-            instruments.update(|instrs| println!("{:#?}", instrs));
+            // instruments.update(|instrs| println!("{:#?}", instrs));
         }
         // Sleep
         thread::sleep(Duration::from_millis(100));

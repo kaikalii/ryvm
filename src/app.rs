@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -30,6 +32,16 @@ pub enum RyvmApp {
         #[structopt(long, short)]
         pan: Option<f32>,
     },
+    Drum {
+        #[structopt(index = 1)]
+        machine: String,
+        #[structopt(index = 2)]
+        index: usize,
+        #[structopt(long, short)]
+        path: Option<PathBuf>,
+        #[structopt(long, short, allow_hyphen_values = true)]
+        beat: Option<String>,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -52,5 +64,10 @@ pub enum AddApp {
     Mixer { inputs: Vec<String> },
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Use you computer kyeboard as a music keyboard")]
-    Keyboard { base_octave: Option<u8> },
+    Keyboard {
+        #[structopt(long, short = "o")]
+        base_octave: Option<u8>,
+    },
+    #[structopt(about = "A drum machine")]
+    Drums,
 }

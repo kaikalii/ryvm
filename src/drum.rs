@@ -12,35 +12,70 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{SampleType, Voice};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SampleBeat {
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Sampling {
     pub sample: Sample,
     pub beat: BeatPattern,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Sample {
-    pub path: PathBuf,
-    pub sample_rate: u32,
+    path: Option<PathBuf>,
+    sample_rate: u32,
     #[serde(skip)]
-    pub samples: Vec<Voice>,
+    samples: Vec<Voice>,
+}
+
+impl fmt::Debug for Sample {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sample")
+            .field("path", &self.path)
+            .field("sample_rate", &self.sample_rate)
+            .field("samples", &self.samples.len())
+            .finish()
+    }
+}
+
+impl Default for Sample {
+    fn default() -> Self {
+        Sample {
+            path: None,
+            sample_rate: 1,
+            samples: Vec::new(),
+        }
+    }
 }
 
 impl Sample {
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_ref().map(|p| p.as_ref())
+    }
+    pub fn set_path<P>(&mut self, path: P) -> Result<(), Box<dyn Error>>
+    where
+        P: AsRef<Path>,
+    {
+        self.path = Some(path.as_ref().into());
+        self.init()?;
+        Ok(())
+    }
     pub fn open<P>(path: P) -> Result<Self, Box<dyn Error>>
     where
         P: AsRef<Path>,
     {
         let mut sample = Sample {
-            path: path.as_ref().into(),
-            sample_rate: 1,
-            samples: Vec::new(),
+            path: Some(path.as_ref().into()),
+            ..Sample::default()
         };
         sample.init()?;
         Ok(sample)
     }
     pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
-        if let Ok(decoder) = Decoder::new(fs::File::open(&self.path)?) {
+        let path = if let Some(path) = &self.path {
+            path
+        } else {
+            return Ok(());
+        };
+        if let Ok(decoder) = Decoder::new(fs::File::open(path)?) {
             self.sample_rate = decoder.sample_rate();
             let channels = decoder.channels();
             self.samples = if channels == 1 {
@@ -62,17 +97,26 @@ impl Sample {
         }
         Ok(())
     }
+    pub fn samples(&self) -> &[Voice] {
+        &self.samples
+    }
 }
 
 pub const MAX_BEATS: u8 = 32;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(into = "BeatPatternRep", from = "BeatPatternRep")]
 pub struct BeatPattern(pub u32);
 
 impl BeatPattern {
     pub fn get(self, beat: u8) -> bool {
         bit_at(self.0, beat)
+    }
+}
+
+impl fmt::Debug for BeatPattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -104,10 +148,10 @@ impl FromStr for BeatPattern {
         }
         let u = v
             .into_iter()
-            .take(32)
+            .take(MAX_BEATS as usize)
             .enumerate()
             .fold(0u32, |acc, (i, n)| {
-                acc + if n > 0 { 2 ^ i } else { 0 } as u32
+                acc + if n > 0 { 2u32.pow(i as u32) } else { 0 }
             });
         Ok(BeatPattern(u))
     }

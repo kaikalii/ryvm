@@ -13,14 +13,14 @@ use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
-use crate::{SampleBeat, U32Lock, MAX_BEATS};
+use crate::{Sampling, U32Lock, MAX_BEATS};
 
 pub type SampleType = f32;
 pub type InstrId = String;
 pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
-pub const SAMPLE_RATE: u32 = 44100 / 3;
+pub const SAMPLE_RATE: u32 = 44100;
 
 /// An error bound for the sample type
 pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
@@ -150,11 +150,9 @@ impl From<Voice> for Frame {
     }
 }
 
-struct VoiceCache {
+struct FrameCache {
     map: HashMap<InstrId, Frame>,
     visited: HashSet<InstrId>,
-    #[allow(dead_code)]
-    tempo: SampleType,
 }
 
 fn default_voices() -> u32 {
@@ -189,9 +187,7 @@ pub enum Instrument {
     #[cfg(feature = "keyboard")]
     Keyboard(Keyboard),
     DrumMachine {
-        samples: Vec<SampleBeat>,
-        #[serde(skip)]
-        i: U32Lock,
+        samplings: Vec<Sampling>,
     },
 }
 
@@ -223,7 +219,7 @@ impl Instrument {
         }
         self
     }
-    fn next(&self, cache: &mut VoiceCache, instruments: &Instruments) -> Option<Frame> {
+    fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
         match self {
             Instrument::Number(n) => Some(Voice::mono(*n).into()),
             Instrument::Wave {
@@ -277,15 +273,20 @@ impl Instrument {
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
                 Some(Frame::multi(freqs.into_iter().map(Voice::mono)))
             }
-            Instrument::DrumMachine { samples, i } => {
+            Instrument::DrumMachine { samplings } => {
+                if samplings.is_empty() {
+                    return None;
+                }
                 let mut voices = Vec::new();
-                let ix = i.load();
-                for sample in samples {
-                    let samples = &sample.sample.samples;
-                    let sample_count = samples.len() as u32;
+                let samples_per_measure =
+                    SAMPLE_RATE as SampleType / (instruments.tempo / 60.0) * 4.0;
+                let samples_per_sub = samples_per_measure / MAX_BEATS as SampleType;
+                let ix = instruments.i % samples_per_measure as u32;
+                for sampling in samplings {
+                    let samples = &sampling.sample.samples();
                     for b in 0..MAX_BEATS {
-                        let start = sample_count * b as u32;
-                        if sample.beat.get(b) && ix >= start {
+                        let start = (samples_per_sub * b as f32) as u32;
+                        if sampling.beat.get(b) && ix >= start {
                             let si = (ix - start) as usize;
                             if si < samples.len() {
                                 voices.push((samples[si], Balance::default()));
@@ -293,7 +294,6 @@ impl Instrument {
                         }
                     }
                 }
-                i.store(ix + 1);
                 Some(mix(&voices))
             }
         }
@@ -380,7 +380,7 @@ fn is_default_tempo(tempo: &SampleType) -> bool {
     (tempo - default_tempo()).abs() < SAMPLE_EPSILON
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Instruments {
     output: Option<InstrId>,
     #[serde(rename = "instruments")]
@@ -389,6 +389,20 @@ pub struct Instruments {
     queue: Option<SampleType>,
     #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
     tempo: SampleType,
+    #[serde(skip)]
+    i: u32,
+}
+
+impl Default for Instruments {
+    fn default() -> Self {
+        Instruments {
+            output: None,
+            map: IndexMap::new(),
+            queue: None,
+            tempo: 120.0,
+            i: 0,
+        }
+    }
 }
 
 impl Instruments {
@@ -416,7 +430,7 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
-    fn next_from<I>(&self, id: I, cache: &mut VoiceCache) -> Option<Frame>
+    fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
     where
         I: Into<InstrId>,
     {
@@ -440,20 +454,25 @@ impl Instruments {
 impl Iterator for Instruments {
     type Item = SampleType;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut cache = VoiceCache {
+        let mut cache = FrameCache {
             map: HashMap::new(),
             visited: HashSet::new(),
-            tempo: self.tempo,
         };
-        self.queue.take().or_else(|| {
-            if let Some(output_id) = &self.output {
-                if let Some(frame) = self.next_from(output_id, &mut cache) {
-                    self.queue = Some(frame.first.right);
-                    return Some(frame.first.left);
+        self.queue
+            .take()
+            .map(|samp| {
+                self.i += 1;
+                samp
+            })
+            .or_else(|| {
+                if let Some(output_id) = &self.output {
+                    if let Some(frame) = self.next_from(output_id, &mut cache) {
+                        self.queue = Some(frame.first.right);
+                        return Some(frame.first.left);
+                    }
                 }
-            }
-            self.queue = Some(0.0);
-            Some(0.0)
-        })
+                self.queue = Some(0.0);
+                Some(0.0)
+            })
     }
 }

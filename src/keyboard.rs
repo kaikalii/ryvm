@@ -115,7 +115,8 @@ impl Drop for Keyboard {
 
 static KEYBINDS: Lazy<HashMap<Key, (Letter, u8)>> = Lazy::new(|| {
     let mut map = HashMap::new();
-    for &(key, letter, octave) in &[
+    #[allow(clippy::useless_vec)]
+    for (key, letter, octave) in vec![
         (Key::Z, Letter::C, 0),
         (Key::S, Letter::Csh, 0),
         (Key::X, Letter::D, 0),
@@ -131,8 +132,12 @@ static KEYBINDS: Lazy<HashMap<Key, (Letter, u8)>> = Lazy::new(|| {
         (Key::Comma, Letter::C, 1),
         (Key::Q, Letter::C, 1),
         (Key::D2, Letter::Csh, 1),
+        (Key::L, Letter::Csh, 1),
+        (Key::Period, Letter::D, 1),
         (Key::W, Letter::D, 1),
+        (Key::Semicolon, Letter::Dsh, 1),
         (Key::D3, Letter::Dsh, 1),
+        (Key::Slash, Letter::E, 1),
         (Key::E, Letter::E, 1),
         (Key::R, Letter::F, 1),
         (Key::D5, Letter::Fsh, 1),
@@ -142,6 +147,10 @@ static KEYBINDS: Lazy<HashMap<Key, (Letter, u8)>> = Lazy::new(|| {
         (Key::D7, Letter::Ash, 1),
         (Key::U, Letter::B, 1),
         (Key::I, Letter::C, 2),
+        (Key::D9, Letter::Csh, 2),
+        (Key::O, Letter::D, 2),
+        (Key::D0, Letter::Dsh, 2),
+        (Key::P, Letter::E, 2),
     ] {
         map.insert(key, (letter, octave));
     }

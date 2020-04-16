@@ -12,7 +12,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::Keyboard;
 use crate::{
     AddApp, Balance, Frame, FrameCache, InstrId, Instrument, RyvmApp, SampleType, Sampling,
-    SourceLock, WaveForm, MAX_BEATS, SAMPLE_EPSILON, SAMPLE_RATE,
+    SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {

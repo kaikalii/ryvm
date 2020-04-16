@@ -252,7 +252,12 @@ impl Instrument {
             Instrument::Keyboard(keyboard) => {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
-                Some(Frame::multi(freqs.into_iter().map(Voice::mono)))
+                let voices: Vec<Voice> = freqs.into_iter().map(Voice::mono).collect();
+                if voices.is_empty() {
+                    None
+                } else {
+                    Some(Frame::multi(voices))
+                }
             }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
@@ -285,10 +290,10 @@ impl Instrument {
 }
 
 fn mix(list: &[(Voice, Balance)]) -> Frame {
-    let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
-        let (l, r) = bal.stereo_volume();
-        (lacc + l, racc + r)
-    });
+    // let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
+    //     let (l, r) = bal.stereo_volume();
+    //     (lacc + l, racc + r)
+    // });
     let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
         let (l, r) = bal.stereo_volume();
         (
@@ -296,7 +301,15 @@ fn mix(list: &[(Voice, Balance)]) -> Frame {
             racc + voice.right * r * voice.velocity,
         )
     });
-    Voice::stereo(left_sum / left_vol_sum, right_sum / right_vol_sum).into()
+    let (left_product, right_product) =
+        list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
+            let (l, r) = bal.stereo_volume();
+            (
+                lacc * voice.left * l * voice.velocity,
+                racc * voice.right * r * voice.velocity,
+            )
+        });
+    Voice::stereo(left_sum - left_product, right_sum - right_product).into()
 }
 
 fn default_volume() -> SampleType {

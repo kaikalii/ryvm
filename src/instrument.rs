@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    f32::consts::PI,
+    f32::consts::{FRAC_2_PI, PI},
     iter::{once, repeat},
     sync::Arc,
 };
@@ -221,7 +221,7 @@ impl Instrument {
                             WaveForm::Square => {
                                 if voice.left != 0.0 {
                                     let spc = (SAMPLE_RATE as SampleType / voice.left) as u32;
-                                    let s = if ix < spc / 2 { 1.0 } else { -1.0 } * 0.6;
+                                    let s = if ix < spc / 2 { 1.0 } else { -1.0 } * FRAC_2_PI;
                                     i.store((ix + 1) % spc as u32);
                                     s
                                 } else {

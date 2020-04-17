@@ -313,8 +313,12 @@ impl Instrument {
                 frames,
             } => {
                 let mut frames = frames.lock();
-                let frames_per_loop = instruments.frames_per_measure() * *measures as u32;
-                let loop_i = instruments.i() % frames_per_loop;
+                // The correct number of frames per loop at the current tempo
+                let ideal_fpl = instruments.frames_per_measure() * *measures as u32;
+                // The actual number of frames per loop
+                let actual_fpl = frames.len() as u32;
+                let loop_i = ((instruments.i() % ideal_fpl) as u64 * actual_fpl as u64
+                    / ideal_fpl as u64) as u32;
                 if loop_i == 0 {
                     for frame in frames.iter_mut() {
                         frame.new = false;

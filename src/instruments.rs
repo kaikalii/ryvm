@@ -88,9 +88,7 @@ impl Instruments {
         let id = id.into();
         let input_id = format!("{}-input", id);
         // Create the loop instrument
-        let frame_count = (SAMPLE_RATE as SampleType / (self.tempo / 60.0)
-            * 4.0
-            * measures as SampleType) as usize;
+        let frame_count = self.frames_per_measure() as usize * measures as usize;
         let loop_instr = Instrument::Loop {
             input: input_id.clone(),
             measures,

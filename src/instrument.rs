@@ -243,7 +243,7 @@ impl Instrument {
                     })
                     .zip(repeat(Balance::default()))
                     .collect();
-                Some(mix(&mix_inputs))
+                mix(&mix_inputs)
             }
             Instrument::Mixer(list) => {
                 let next_frame: Vec<(Voice, Balance)> = list
@@ -256,7 +256,7 @@ impl Instrument {
                         }
                     })
                     .collect();
-                Some(mix(&next_frame))
+                mix(&next_frame)
             }
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard(keyboard) => {
@@ -288,7 +288,7 @@ impl Instrument {
                         }
                     }
                 }
-                Some(mix(&voices))
+                mix(&voices)
             }
         }
     }
@@ -299,11 +299,14 @@ impl Instrument {
     }
 }
 
-fn mix(list: &[(Voice, Balance)]) -> Frame {
+fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
     // let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
     //     let (l, r) = bal.stereo_volume();
     //     (lacc + l, racc + r)
     // });
+    if list.is_empty() {
+        return None;
+    }
     let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
         let (l, r) = bal.stereo_volume();
         (
@@ -319,11 +322,13 @@ fn mix(list: &[(Voice, Balance)]) -> Frame {
                 racc * voice.right * r * voice.velocity,
             )
         });
-    Voice::stereo(
-        left_sum - left_product.abs() * left_sum.signum(),
-        right_sum - right_product.abs() * right_sum.signum(),
+    Some(
+        Voice::stereo(
+            left_sum - left_product.abs() * left_sum.signum(),
+            right_sum - right_product.abs() * right_sum.signum(),
+        )
+        .into(),
     )
-    .into()
 }
 
 fn default_volume() -> SampleType {

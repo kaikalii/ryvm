@@ -160,7 +160,15 @@ impl Instruments {
     pub fn queue_command(&mut self, app: RyvmApp) {
         self.command_queue.push(app);
     }
+    pub fn stop_recording_all(&mut self) {
+        for instr in self.map.values_mut() {
+            if let Instrument::Loop { recording, .. } = instr {
+                *recording = false;
+            }
+        }
+    }
     fn process_command(&mut self, app: RyvmApp) {
+        self.stop_recording_all();
         let name = app.name.unwrap_or_default();
         if let Some(command) = app.command {
             match command {

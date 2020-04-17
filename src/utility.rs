@@ -4,9 +4,50 @@ use std::{
         atomic::{AtomicU32, Ordering},
         Mutex, MutexGuard,
     },
+    thread::{self, JoinHandle},
 };
 
 use serde_derive::{Deserialize, Serialize};
+
+pub enum Delayed<T> {
+    Running(Option<JoinHandle<T>>),
+    Done(T),
+}
+
+impl<T> Default for Delayed<T>
+where
+    T: Default,
+{
+    fn default() -> Self {
+        Delayed::Done(T::default())
+    }
+}
+
+impl<T> Delayed<T>
+where
+    T: Send + 'static,
+{
+    pub fn new<F>(f: F) -> Self
+    where
+        F: FnOnce() -> T + Send + 'static,
+    {
+        Delayed::Running(Some(thread::spawn(f)))
+    }
+    pub fn resolve(&mut self) -> &mut T {
+        match self {
+            Delayed::Running(handle) => {
+                let val = handle.take().unwrap().join().unwrap();
+                *self = Delayed::Done(val);
+                if let Delayed::Done(val) = self {
+                    val
+                } else {
+                    unreachable!()
+                }
+            }
+            Delayed::Done(val) => val,
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct U32Lock(AtomicU32);

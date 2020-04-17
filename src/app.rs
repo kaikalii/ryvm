@@ -42,6 +42,12 @@ pub enum RyvmApp {
         #[structopt(long, short, allow_hyphen_values = true)]
         beat: Option<String>,
     },
+    Loop {
+        #[structopt(index = 1)]
+        input: String,
+        #[structopt(index = 2)]
+        measures: u8,
+    },
 }
 
 #[derive(Debug, StructOpt)]

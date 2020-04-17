@@ -160,8 +160,14 @@ impl WaveForm {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoopFrame {
+    pub(crate) frame: Option<Frame>,
+    pub(crate) new: bool,
+}
+
 /// An instrument for producing sounds
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Instrument {
     Number(SampleType),
@@ -182,7 +188,7 @@ pub enum Instrument {
         measures: u8,
         #[serde(skip)]
         recording: bool,
-        frames: Vec<CloneLock<Option<Frame>>>,
+        frames: CloneLock<Vec<LoopFrame>>,
     },
 }
 
@@ -305,15 +311,33 @@ impl Instrument {
                 recording,
                 frames,
             } => {
+                let mut frames = frames.lock();
                 let frames_per_loop = instruments.frames_per_measure() * *measures as u32;
                 let loop_i = instruments.i() % frames_per_loop;
-                if *recording {
-                    let input_frame = instruments.next_from(&*input, cache);
-                    let mut guard = frames[loop_i as usize].lock();
-                    *guard = input_frame.clone();
+                if loop_i == 0 {
+                    for frame in frames.iter_mut() {
+                        frame.new = false;
+                    }
+                }
+                let input_frame = instruments.next_from(&*input, cache);
+                if *recording && input_frame.is_some() {
+                    frames[loop_i as usize] = LoopFrame {
+                        frame: input_frame.clone(),
+                        new: true,
+                    };
+                    for i in (0..(loop_i as usize)).rev() {
+                        if frames[i].new {
+                            break;
+                        } else {
+                            frames[i] = LoopFrame {
+                                frame: None,
+                                new: true,
+                            }
+                        }
+                    }
                     input_frame
                 } else {
-                    frames[loop_i as usize].lock().clone()
+                    frames[loop_i as usize].frame.clone()
                 }
             }
         }

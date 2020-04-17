@@ -11,8 +11,8 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    AddApp, Balance, Frame, FrameCache, InstrId, Instrument, RyvmApp, SampleType, Sampling,
-    SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
+    AddApp, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
+    SampleType, Sampling, SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -79,6 +79,44 @@ impl Instruments {
         I: Into<InstrId>,
     {
         self.map.insert(id.into(), instr);
+    }
+    pub fn add_loop<I>(&mut self, id: I, measures: u8)
+    where
+        I: Into<InstrId>,
+    {
+        // Create new input id
+        let id = id.into();
+        let input_id = format!("{}-input", id);
+        // Create the loop instrument
+        let frame_count = (SAMPLE_RATE as SampleType / (self.tempo / 60.0)
+            * 4.0
+            * measures as SampleType) as usize;
+        let loop_instr = Instrument::Loop {
+            input: input_id.clone(),
+            measures,
+            recording: true,
+            frames: CloneLock::new(vec![
+                LoopFrame {
+                    frame: None,
+                    new: true,
+                };
+                frame_count
+            ]),
+        };
+        // Stop recording on all other loops
+        for instr in self.map.values_mut() {
+            if let Instrument::Loop { recording, .. } = instr {
+                *recording = false;
+            }
+        }
+        // Remove the input
+        let input_instr = self.map.remove(&input_id).or_else(|| self.map.remove(&id));
+        // Insert the loop
+        self.map.insert(id, loop_instr);
+        // Insert the input
+        if let Some(instr) = input_instr {
+            self.add(input_id, instr);
+        }
     }
     pub fn get_mut<I>(&mut self, id: I) -> Option<&mut Instrument>
     where
@@ -217,6 +255,7 @@ impl Instruments {
                     }
                 }
             }
+            RyvmApp::Loop { input, measures } => self.add_loop(input, measures),
         }
     }
 }

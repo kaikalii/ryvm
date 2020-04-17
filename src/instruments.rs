@@ -11,7 +11,7 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    AddApp, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
+    Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp, RyvmCommand,
     SampleType, Sampling, SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
@@ -124,6 +124,19 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
+    pub fn get_mut_skip_loops<I>(&mut self, id: I) -> Option<&mut Instrument>
+    where
+        I: Into<InstrId>,
+    {
+        let mut id = id.into();
+        loop {
+            if let Some(Instrument::Loop { input, .. }) = self.get_mut(&id) {
+                id = input.clone();
+            } else {
+                break self.get_mut(&id);
+            }
+        }
+    }
     pub(crate) fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
     where
         I: Into<InstrId>,
@@ -147,115 +160,103 @@ impl Instruments {
         self.command_queue.push(app);
     }
     fn process_command(&mut self, app: RyvmApp) {
-        match app {
-            RyvmApp::Quit => {}
-            RyvmApp::Output { name } => self.set_output(name),
-            RyvmApp::Tempo { tempo } => self.set_tempo(tempo),
-            RyvmApp::Add { name, app } => self.add(
-                name.clone(),
-                match app {
-                    AddApp::Number { num } => Instrument::Number(num),
-                    AddApp::Sine { input, voices } => {
-                        let mut instr = Instrument::wave(input, WaveForm::Sine);
-                        if let Some(voices) = voices {
-                            instr = instr.voices(voices);
-                        }
-                        instr
+        let name = app.name.unwrap_or_default();
+        if let Some(command) = app.command {
+            match command {
+                RyvmCommand::Quit => {}
+                RyvmCommand::Output { name } => self.set_output(name),
+                RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
+                RyvmCommand::Number { num } => self.add(name, Instrument::Number(num)),
+                RyvmCommand::Sine { input, voices } => {
+                    let mut instr = Instrument::wave(input, WaveForm::Sine);
+                    if let Some(voices) = voices {
+                        instr = instr.voices(voices);
                     }
-                    AddApp::Square { input, voices } => {
-                        let mut instr = Instrument::wave(input, WaveForm::Square);
-                        if let Some(voices) = voices {
-                            instr = instr.voices(voices);
-                        }
-                        instr
+                    self.add(name, instr);
+                }
+                RyvmCommand::Square { input, voices } => {
+                    let mut instr = Instrument::wave(input, WaveForm::Square);
+                    if let Some(voices) = voices {
+                        instr = instr.voices(voices);
                     }
-                    AddApp::Saw { input, voices } => {
-                        let mut instr = Instrument::wave(input, WaveForm::Saw);
-                        if let Some(voices) = voices {
-                            instr = instr.voices(voices);
-                        }
-                        instr
+                    self.add(name, instr);
+                }
+                RyvmCommand::Saw { input, voices } => {
+                    let mut instr = Instrument::wave(input, WaveForm::Saw);
+                    if let Some(voices) = voices {
+                        instr = instr.voices(voices);
                     }
-                    AddApp::Triangle { input, voices } => {
-                        let mut instr = Instrument::wave(input, WaveForm::Triangle);
-                        if let Some(voices) = voices {
-                            instr = instr.voices(voices);
-                        }
-                        instr
+                    self.add(name, instr);
+                }
+                RyvmCommand::Triangle { input, voices } => {
+                    let mut instr = Instrument::wave(input, WaveForm::Triangle);
+                    if let Some(voices) = voices {
+                        instr = instr.voices(voices);
                     }
-                    AddApp::Mixer { inputs } => Instrument::Mixer(
-                        inputs.into_iter().zip(repeat(Balance::default())).collect(),
-                    ),
-                    #[cfg(feature = "keyboard")]
-                    AddApp::Keyboard { base_octave } => {
-                        Instrument::Keyboard(Keyboard::new(&name, base_octave.unwrap_or(4)))
-                    }
-                    AddApp::Drums => Instrument::DrumMachine(Vec::new()),
-                },
-            ),
-            RyvmApp::Edit {
-                name,
-                set,
-                inputs,
-                volume,
-                pan,
-            } => {
-                if let Some(instr) = self.get_mut(name) {
-                    match instr {
-                        Instrument::Number(n) => {
-                            if let Some(num) = set {
-                                *n = num;
+                    self.add(name, instr);
+                }
+                RyvmCommand::Mixer { inputs } => self.add(
+                    name,
+                    Instrument::Mixer(inputs.into_iter().zip(repeat(Balance::default())).collect()),
+                ),
+                #[cfg(feature = "keyboard")]
+                RyvmCommand::Keyboard { base_octave } => self.add(
+                    name.clone(),
+                    Instrument::Keyboard(Keyboard::new(&name, base_octave.unwrap_or(4))),
+                ),
+                RyvmCommand::Drums => self.add(name, Instrument::DrumMachine(Vec::new())),
+                RyvmCommand::Drum {
+                    machine,
+                    index,
+                    path,
+                    beat,
+                    remove,
+                } => {
+                    if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(machine) {
+                        samplings.resize(index + 1, Sampling::default());
+                        if let Some(path) = path {
+                            if let Err(e) = samplings[index].sample.set_path(path) {
+                                println!("{}", e);
                             }
                         }
-                        Instrument::Wave { input, .. } => {
-                            if let Some(new_input) = inputs.into_iter().next() {
-                                *input = new_input;
-                            }
+                        if let Some(be) = beat {
+                            samplings[index].beat = be.parse().unwrap();
                         }
-                        Instrument::Mixer(map) => {
-                            if let Some(volume) = volume {
-                                for id in &inputs {
-                                    map.entry(id.clone())
-                                        .or_insert_with(Balance::default)
-                                        .volume = volume;
-                                }
-                            }
-                            if let Some(pan) = pan {
-                                for id in &inputs {
-                                    map.entry(id.clone()).or_insert_with(Balance::default).pan =
-                                        pan;
-                                }
-                            }
-                            for input in inputs {
-                                map.entry(input).or_insert_with(Balance::default);
-                            }
+                        if remove {
+                            samplings[index] = Sampling::default();
                         }
-                        #[cfg(feature = "keyboard")]
-                        Instrument::Keyboard(_) => {}
-                        Instrument::DrumMachine { .. } => {}
-                        Instrument::Loop { .. } => {}
                     }
                 }
+                RyvmCommand::Loop { input, measures } => self.add_loop(input, measures),
             }
-            RyvmApp::Drum {
-                machine,
-                index,
-                path,
-                beat,
-            } => {
-                if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(machine) {
-                    samplings.resize(index + 1, Sampling::default());
-                    if let Some(path) = path {
-                        if let Err(e) = samplings[index].sample.set_path(path) {
-                            println!("{}", e);
-                        }
-                    }
-                    if let Some(be) = beat {
-                        samplings[index].beat = be.parse().unwrap();
+        } else if let Some(instr) = self.get_mut_skip_loops(name) {
+            match instr {
+                Instrument::Number(num) => {
+                    if let Some(n) = app
+                        .inputs
+                        .into_iter()
+                        .next()
+                        .and_then(|input| input.parse::<f32>().ok())
+                    {
+                        *num = n
                     }
                 }
+                Instrument::Mixer(inputs) => {
+                    for input in app.inputs {
+                        inputs.entry(input).or_insert_with(Balance::default);
+                    }
+                    for input in app.remove {
+                        inputs.remove(&input);
+                    }
+                }
+                Instrument::Wave { input, .. } => {
+                    if let Some(new_input) = app.inputs.into_iter().next() {
+                        *input = new_input;
+                    }
+                }
+                Instrument::Loop { .. } => unreachable!(),
+                _ => {}
             }
-            RyvmApp::Loop { input, measures } => self.add_loop(input, measures),
         }
     }
 }

@@ -141,6 +141,7 @@ fn is_default_voices(v: &u32) -> bool {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum WaveForm {
     Sine,
     Square,

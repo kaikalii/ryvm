@@ -3,7 +3,19 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-pub enum RyvmApp {
+pub struct RyvmApp {
+    #[structopt(index = 1)]
+    pub name: Option<String>,
+    #[structopt(index = 2)]
+    pub inputs: Vec<String>,
+    #[structopt(long, short)]
+    pub remove: Vec<String>,
+    #[structopt(subcommand)]
+    pub command: Option<RyvmCommand>,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum RyvmCommand {
     #[structopt(about = "Quit ryvm", alias = "exit")]
     Quit,
     Output {
@@ -14,44 +26,6 @@ pub enum RyvmApp {
         #[structopt(index = 1)]
         tempo: f32,
     },
-    Add {
-        #[structopt(index = 1)]
-        name: String,
-        #[structopt(subcommand)]
-        app: AddApp,
-    },
-    Edit {
-        #[structopt(index = 1)]
-        name: String,
-        #[structopt(long, short)]
-        set: Option<f32>,
-        #[structopt(long = "input", short, index = 2, allow_hyphen_values = true)]
-        inputs: Vec<String>,
-        #[structopt(long, short)]
-        volume: Option<f32>,
-        #[structopt(long, short)]
-        pan: Option<f32>,
-    },
-    Drum {
-        #[structopt(index = 1)]
-        machine: String,
-        #[structopt(index = 2)]
-        index: usize,
-        #[structopt(long, short)]
-        path: Option<PathBuf>,
-        #[structopt(long, short, allow_hyphen_values = true)]
-        beat: Option<String>,
-    },
-    Loop {
-        #[structopt(index = 1)]
-        input: String,
-        #[structopt(index = 2)]
-        measures: u8,
-    },
-}
-
-#[derive(Debug, StructOpt)]
-pub enum AddApp {
     #[structopt(about = "A number", alias = "num")]
     Number { num: f32 },
     #[structopt(about = "A sine wave synthesizer")]
@@ -88,4 +62,22 @@ pub enum AddApp {
     },
     #[structopt(about = "A drum machine")]
     Drums,
+    Drum {
+        #[structopt(index = 1)]
+        machine: String,
+        #[structopt(index = 2)]
+        index: usize,
+        #[structopt(long, short)]
+        path: Option<PathBuf>,
+        #[structopt(long, short, allow_hyphen_values = true)]
+        beat: Option<String>,
+        #[structopt(long, short, conflicts_with_all = &["path", "beat"])]
+        remove: bool,
+    },
+    Loop {
+        #[structopt(index = 1)]
+        input: String,
+        #[structopt(index = 2)]
+        measures: u8,
+    },
 }

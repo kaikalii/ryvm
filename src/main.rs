@@ -32,7 +32,10 @@ fn main() {
             let args = once("ryvm").chain(text.split_whitespace());
             match RyvmApp::from_iter_safe(args) {
                 Ok(app) => match app {
-                    RyvmApp::Quit => break,
+                    RyvmApp {
+                        command: Some(RyvmCommand::Quit),
+                        ..
+                    } => break,
                     app => instruments.update(|instrs| instrs.queue_command(app)),
                 },
                 Err(e) => println!("{}", e),

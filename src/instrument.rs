@@ -59,14 +59,14 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Voice {
     pub left: SampleType,
     pub right: SampleType,
     pub velocity: SampleType,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Frame {
     pub first: Voice,
     pub extra: Vec<Voice>,
@@ -177,6 +177,13 @@ pub enum Instrument {
     #[cfg(feature = "keyboard")]
     Keyboard(Keyboard),
     DrumMachine(Vec<Sampling>),
+    Loop {
+        input: InstrId,
+        measures: u8,
+        #[serde(skip)]
+        recording: bool,
+        frames: Vec<Frame>,
+    },
 }
 
 impl Instrument {

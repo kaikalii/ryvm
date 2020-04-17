@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
-use crate::{Instruments, Sampling, U32Lock, MAX_BEATS};
+use crate::{CloneLock, Instruments, Sampling, U32Lock, MAX_BEATS};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -182,7 +182,7 @@ pub enum Instrument {
         measures: u8,
         #[serde(skip)]
         recording: bool,
-        frames: Vec<Frame>,
+        frames: Vec<CloneLock<Option<Frame>>>,
     },
 }
 
@@ -220,9 +220,10 @@ impl Instrument {
             Instrument::Wave {
                 input, form, waves, ..
             } => {
-                let frame = instruments.next_from(&*input, cache).unwrap_or_default();
-                let mix_inputs: Vec<(Voice, Balance)> = frame
-                    .iter()
+                let input_frame = instruments.next_from(&*input, cache);
+                let mix_inputs: Vec<(Voice, Balance)> = input_frame
+                    .into_iter()
+                    .flat_map(|f| f.into_iter())
                     .zip(waves.iter())
                     .map(|(voice, i)| {
                         let ix = i.load();
@@ -281,12 +282,13 @@ impl Instrument {
                     return None;
                 }
                 let mut voices = Vec::new();
-                let samples_per_sub = instruments.samples_per_measure() / MAX_BEATS as SampleType;
+                let frames_per_sub =
+                    instruments.frames_per_measure() as SampleType / MAX_BEATS as SampleType;
                 let ix = instruments.measure_i();
                 for sampling in samplings {
                     let samples = &sampling.sample.samples();
                     for b in 0..MAX_BEATS {
-                        let start = (samples_per_sub * b as f32) as u32;
+                        let start = (frames_per_sub * b as f32) as u32;
                         if sampling.beat.get(b) && ix >= start {
                             let si = (ix - start) as usize;
                             if si < samples.len() {
@@ -296,6 +298,23 @@ impl Instrument {
                     }
                 }
                 mix(&voices)
+            }
+            Instrument::Loop {
+                input,
+                measures,
+                recording,
+                frames,
+            } => {
+                let frames_per_loop = instruments.frames_per_measure() * *measures as u32;
+                let loop_i = instruments.i() % frames_per_loop;
+                if *recording {
+                    let input_frame = instruments.next_from(&*input, cache);
+                    let mut guard = frames[loop_i as usize].lock();
+                    *guard = input_frame.clone();
+                    input_frame
+                } else {
+                    frames[loop_i as usize].lock().clone()
+                }
             }
         }
     }

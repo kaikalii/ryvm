@@ -6,6 +6,8 @@ use std::{
     },
 };
 
+use serde_derive::{Deserialize, Serialize};
+
 #[derive(Default)]
 pub struct U32Lock(AtomicU32);
 
@@ -33,7 +35,8 @@ impl U32Lock {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct CloneLock<T>(Mutex<T>);
 
 impl<T> Clone for CloneLock<T>

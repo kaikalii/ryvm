@@ -56,14 +56,14 @@ impl Instruments {
     pub fn new() -> SourceLock<Self> {
         SourceLock::new(Self::default())
     }
-    pub fn samples_per_measure(&self) -> SampleType {
-        SAMPLE_RATE as SampleType / (self.tempo / 60.0) * 4.0
+    pub fn frames_per_measure(&self) -> u32 {
+        (SAMPLE_RATE as SampleType / (self.tempo / 60.0) * 4.0) as u32
     }
     pub fn i(&self) -> u32 {
         self.i
     }
     pub fn measure_i(&self) -> u32 {
-        self.i % self.samples_per_measure() as u32
+        self.i % self.frames_per_measure()
     }
     pub fn set_output<I>(&mut self, id: I)
     where
@@ -195,6 +195,7 @@ impl Instruments {
                         #[cfg(feature = "keyboard")]
                         Instrument::Keyboard(_) => {}
                         Instrument::DrumMachine { .. } => {}
+                        Instrument::Loop { .. } => {}
                     }
                 }
             }

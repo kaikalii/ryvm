@@ -64,9 +64,9 @@ pub enum RyvmCommand {
     Drums,
     Drum {
         #[structopt(index = 1)]
-        machine: String,
+        machine: Option<String>,
         #[structopt(index = 2)]
-        index: usize,
+        index: Option<usize>,
         #[structopt(long, short)]
         path: Option<PathBuf>,
         #[structopt(long, short, allow_hyphen_values = true)]

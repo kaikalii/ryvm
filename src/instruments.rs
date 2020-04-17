@@ -37,6 +37,8 @@ pub struct Instruments {
     tempo: SampleType,
     #[serde(skip)]
     i: u32,
+    #[serde(skip)]
+    last_drums: Option<InstrId>,
 }
 
 impl Default for Instruments {
@@ -48,6 +50,7 @@ impl Default for Instruments {
             command_queue: Vec::new(),
             tempo: 120.0,
             i: 0,
+            last_drums: None,
         }
     }
 }
@@ -202,7 +205,10 @@ impl Instruments {
                     name.clone(),
                     Instrument::Keyboard(Keyboard::new(&name, base_octave.unwrap_or(4))),
                 ),
-                RyvmCommand::Drums => self.add(name, Instrument::DrumMachine(Vec::new())),
+                RyvmCommand::Drums => {
+                    self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
+                    self.last_drums = Some(name);
+                }
                 RyvmCommand::Drum {
                     machine,
                     index,
@@ -210,7 +216,14 @@ impl Instruments {
                     beat,
                     remove,
                 } => {
+                    let machine = if let Some(machine) = machine {
+                        self.last_drums = Some(machine.clone());
+                        machine
+                    } else {
+                        self.last_drums.clone().unwrap_or_default()
+                    };
                     if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(machine) {
+                        let index = index.unwrap_or_else(|| samplings.len());
                         samplings.resize(index + 1, Sampling::default());
                         if let Some(path) = path {
                             if let Err(e) = samplings[index].sample.set_path(path) {

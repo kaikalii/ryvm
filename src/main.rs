@@ -29,7 +29,7 @@ fn main() {
     loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
-            let args = once("ryvm").chain(text.split_whitespace());
+            let args = once("ryvm".into()).chain(parse_args(&text));
             match RyvmApp::from_iter_safe(args) {
                 Ok(app) => match app {
                     RyvmApp {

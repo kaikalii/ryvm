@@ -9,6 +9,43 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
+pub fn parse_args(s: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut in_quotes = false;
+    let mut arg = String::new();
+    macro_rules! insert_arg {
+        () => {{
+            let mut next_arg = String::new();
+            std::mem::swap(&mut next_arg, &mut arg);
+            args.push(next_arg);
+        }};
+    }
+    for c in s.chars() {
+        match c {
+            '"' => {
+                if in_quotes {
+                    in_quotes = false;
+                    insert_arg!();
+                } else {
+                    in_quotes = true;
+                }
+            }
+            c if c.is_whitespace() => {
+                if in_quotes {
+                    arg.push(c)
+                } else if !arg.is_empty() {
+                    insert_arg!();
+                }
+            }
+            c => arg.push(c),
+        }
+    }
+    if !arg.is_empty() {
+        insert_arg!();
+    }
+    args
+}
+
 pub enum Delayed<T> {
     Running(Option<JoinHandle<T>>),
     Done(T),

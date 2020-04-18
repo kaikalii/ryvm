@@ -10,6 +10,10 @@ pub struct RyvmApp {
     pub inputs: Vec<String>,
     #[structopt(long, short)]
     pub remove: Vec<String>,
+    #[structopt(long, short)]
+    pub volume: Option<f32>,
+    #[structopt(long, short)]
+    pub pan: Option<f32>,
     #[structopt(subcommand)]
     pub command: Option<RyvmCommand>,
 }

@@ -293,7 +293,13 @@ impl Instruments {
                 }
                 Instrument::Mixer(inputs) => {
                     for input in app.inputs {
-                        inputs.entry(input).or_insert_with(Balance::default);
+                        let balance = inputs.entry(input).or_insert_with(Balance::default);
+                        if let Some(volume) = app.volume {
+                            balance.volume = volume;
+                        }
+                        if let Some(pan) = app.pan {
+                            balance.pan = pan;
+                        }
                     }
                     for input in app.remove {
                         inputs.remove(&input);

@@ -131,6 +131,7 @@ impl From<Voice> for Frame {
 pub(crate) struct FrameCache {
     pub map: HashMap<InstrId, Vec<Frame>>,
     pub visited: HashSet<InstrId>,
+    pub default_frames: Vec<Frame>,
 }
 
 fn default_voices() -> u32 {
@@ -231,10 +232,10 @@ impl Instrument {
             } => {
                 instruments
                     .next_from(&*input, cache)
-                    .into_iter()
+                    .iter()
                     .filter_map(|input_frame| {
                         let mix_inputs: Vec<(Voice, Balance)> = input_frame
-                            .into_iter()
+                            .iter()
                             .zip(waves.iter())
                             .map(|(voice, i)| {
                                 let ix = i.load();
@@ -271,7 +272,7 @@ impl Instrument {
                 .flat_map(|(id, bal)| {
                     let next_frame: Vec<(Voice, Balance)> = instruments
                         .next_from(id, cache)
-                        .into_iter()
+                        .iter()
                         .map(|frame| (frame.first, *bal))
                         .collect();
                     mix(&next_frame)
@@ -342,7 +343,7 @@ impl Instrument {
                             }
                         }
                     }
-                    input_frame
+                    input_frame.to_vec()
                 } else {
                     frames[loop_i as usize].frame.clone().into_iter().collect()
                 }

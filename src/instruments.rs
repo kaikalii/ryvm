@@ -161,22 +161,23 @@ impl Instruments {
             }
         }
     }
-    pub(crate) fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Vec<Frame>
+    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a [Frame]
     where
         I: Into<InstrId>,
     {
         let id = id.into();
-        if let Some(frames) = cache.map.get(&id) {
-            frames.clone()
+        if cache.map.contains_key(&id) {
+            cache.map.get(&id).unwrap()
         } else if cache.visited.contains(&id) {
-            Vec::new()
+            &cache.default_frames
         } else {
             cache.visited.insert(id.clone());
-            if let Some(frames) = self.map.get(&id).map(|instr| instr.next(cache, self)) {
-                cache.map.insert(id, frames.clone());
-                frames
+            if let Some(instr) = self.map.get(&id) {
+                let frames = instr.next(cache, self);
+                cache.map.insert(id.clone(), frames);
+                cache.map.get(&id).unwrap()
             } else {
-                Vec::new()
+                &cache.default_frames
             }
         }
     }
@@ -345,6 +346,7 @@ impl Iterator for Instruments {
         let mut cache = FrameCache {
             map: HashMap::new(),
             visited: HashSet::new(),
+            default_frames: Default::default(),
         };
         // Get next sample
         self.sample_queue
@@ -357,7 +359,7 @@ impl Iterator for Instruments {
                 if let Some(output_id) = &self.output {
                     let frames = self.next_from(output_id, &mut cache);
                     let next_frame: Vec<(Voice, Balance)> = frames
-                        .into_iter()
+                        .iter()
                         .map(|frame| (frame.first, Balance::default()))
                         .collect();
                     if let Some(frame) = mix(&next_frame) {

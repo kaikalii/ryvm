@@ -12,7 +12,7 @@ use serde_derive::{Deserialize, Serialize};
 use crate::Keyboard;
 use crate::{
     Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp, RyvmCommand,
-    SampleType, Sampling, SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
+    SampleBank, SampleType, Sampling, SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -39,6 +39,8 @@ pub struct Instruments {
     i: u32,
     #[serde(skip)]
     last_drums: Option<InstrId>,
+    #[serde(skip)]
+    pub(crate) sample_bank: SampleBank,
 }
 
 impl Default for Instruments {
@@ -51,6 +53,7 @@ impl Default for Instruments {
             tempo: 120.0,
             i: 0,
             last_drums: None,
+            sample_bank: SampleBank::new(),
         }
     }
 }
@@ -158,6 +161,12 @@ impl Instruments {
         }
     }
     pub fn queue_command(&mut self, app: RyvmApp) {
+        if let Some(RyvmCommand::Drum {
+            path: Some(path), ..
+        }) = &app.command
+        {
+            self.sample_bank.load(path.clone(), true);
+        }
         self.command_queue.push(app);
     }
     pub fn stop_recording_all(&mut self) {
@@ -234,9 +243,7 @@ impl Instruments {
                         let index = index.unwrap_or_else(|| samplings.len());
                         samplings.resize(index + 1, Sampling::default());
                         if let Some(path) = path {
-                            if let Err(e) = samplings[index].sample.set_path(path) {
-                                println!("{}", e);
-                            }
+                            samplings[index].path = path;
                         }
                         if let Some(be) = beat {
                             samplings[index].beat = be.parse().unwrap();

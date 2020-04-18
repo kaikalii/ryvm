@@ -4,9 +4,13 @@ use std::{
     fmt, fs,
     path::{Path, PathBuf},
     str::FromStr,
+    sync::Arc,
+    thread,
+    time::Duration,
 };
 
 use itertools::Itertools;
+use lockfree::{map::Map, set::Set};
 use rodio::{Decoder, Source};
 use serde_derive::{Deserialize, Serialize};
 
@@ -14,32 +18,19 @@ use crate::{SampleType, Voice};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Sampling {
-    pub sample: Sample,
+    pub path: PathBuf,
     pub beat: BeatPattern,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct Sample {
-    path: Option<PathBuf>,
     sample_rate: u32,
-    #[serde(skip)]
     samples: Vec<Voice>,
-}
-
-impl fmt::Debug for Sample {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sample")
-            .field("path", &self.path)
-            .field("sample_rate", &self.sample_rate)
-            .field("samples", &self.samples.len())
-            .finish()
-    }
 }
 
 impl Default for Sample {
     fn default() -> Self {
         Sample {
-            path: None,
             sample_rate: 1,
             samples: Vec::new(),
         }
@@ -47,58 +38,94 @@ impl Default for Sample {
 }
 
 impl Sample {
-    pub fn path(&self) -> Option<&Path> {
-        self.path.as_ref().map(|p| p.as_ref())
-    }
-    pub fn set_path<P>(&mut self, path: P) -> Result<(), Box<dyn Error>>
-    where
-        P: AsRef<Path>,
-    {
-        self.path = Some(path.as_ref().into());
-        self.init()?;
-        Ok(())
-    }
     pub fn open<P>(path: P) -> Result<Self, Box<dyn Error>>
     where
         P: AsRef<Path>,
     {
-        let mut sample = Sample {
-            path: Some(path.as_ref().into()),
-            ..Sample::default()
-        };
-        sample.init()?;
-        Ok(sample)
-    }
-    pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
-        let path = if let Some(path) = &self.path {
-            path
+        let decoder = Decoder::new(fs::File::open(path)?)?;
+        let sample_rate = decoder.sample_rate();
+        let channels = decoder.channels();
+        let samples = if channels == 1 {
+            decoder
+                .map(|i| Voice::mono(i as SampleType / std::i16::MAX as SampleType))
+                .collect()
         } else {
-            return Ok(());
+            decoder
+                .chunks(channels as usize)
+                .into_iter()
+                .map(|mut lr| {
+                    Voice::stereo(
+                        lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
+                        lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
+                    )
+                })
+                .collect()
         };
-        if let Ok(decoder) = Decoder::new(fs::File::open(path)?) {
-            self.sample_rate = decoder.sample_rate();
-            let channels = decoder.channels();
-            self.samples = if channels == 1 {
-                decoder
-                    .map(|i| Voice::mono(i as SampleType / std::i16::MAX as SampleType))
-                    .collect()
-            } else {
-                decoder
-                    .chunks(channels as usize)
-                    .into_iter()
-                    .map(|mut lr| {
-                        Voice::stereo(
-                            lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
-                            lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
-                        )
-                    })
-                    .collect()
-            };
-        }
-        Ok(())
+        Ok(Sample {
+            sample_rate,
+            samples,
+        })
     }
     pub fn samples(&self) -> &[Voice] {
         &self.samples
+    }
+}
+
+#[derive(Debug)]
+pub struct SampleBank {
+    inputs: Arc<Set<PathBuf>>,
+    samples: Arc<Map<PathBuf, Result<Sample, String>>>,
+}
+
+impl Default for SampleBank {
+    fn default() -> Self {
+        SampleBank::new()
+    }
+}
+
+impl SampleBank {
+    pub fn new() -> Self {
+        let samples = Arc::new(Map::new());
+        let samples_clone = Arc::clone(&samples);
+        let inputs = Arc::new(Set::new());
+        let inputs_clone = Arc::clone(&inputs);
+
+        thread::spawn(move || loop {
+            if let Some(path) = inputs_clone.iter().next().map(|g| PathBuf::clone(&g)) {
+                let res = Sample::open(&path).map_err(|e| e.to_string());
+                if let Err(e) = &res {
+                    println!("{}", e);
+                }
+                samples_clone.insert(path.clone(), res);
+                inputs_clone.remove(&path);
+            }
+            thread::sleep(Duration::from_millis(50));
+        });
+        SampleBank { inputs, samples }
+    }
+    pub fn load(&self, path: PathBuf, force: bool) {
+        if force || (self.inputs.get(&path).is_none() || self.samples.get(&path).is_none()) {
+            let _ = self.inputs.insert(path);
+        }
+    }
+    pub fn get<P, F, R>(&self, path: P, f: F) -> Option<R>
+    where
+        P: AsRef<Path>,
+        F: FnOnce(&Sample) -> R,
+    {
+        let res = self.samples.get(path.as_ref());
+        if res.is_none() {
+            self.load(path.as_ref().to_path_buf(), false);
+        }
+        if let Some(guard) = res {
+            if let Ok(samples) = guard.val() {
+                Some(f(samples))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 

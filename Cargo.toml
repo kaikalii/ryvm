@@ -1,15 +1,16 @@
 [dependencies]
 rodio = '*'
 crossbeam = '*'
-once_cell = "*"
-unicode_reader = "*"
-serde = "*"
-serde_derive = "*"
-serde_yaml = "*"
-indexmap = {  version = "*", features = ["serde-1"] }
-itertools = "*"
-structopt = { version = "*", default-features = false }
-piston_window = { version = "*", optional = true }
+once_cell = '*'
+unicode_reader = '*'
+serde = '*'
+serde_derive = '*'
+serde_yaml = '*'
+indexmap = {  version = '*', features = ['serde-1'] }
+itertools = '*'
+structopt = { version = '*', default-features = false }
+piston_window = { version = '*', optional = true }
+lockfree = '*'
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
@@ -18,11 +19,11 @@ name = 'ryvm'
 version = '0.1.0'
 
 [features]
-default = ["keyboard"]
-keyboard = ["piston_window"]
+default = ['keyboard']
+keyboard = ['piston_window']
 
 [profile.dev.package.ryvm]
 opt-level = 1
 
-[profile.dev.package."*"]
+[profile.dev.package.'*']
 opt-level = 0

@@ -42,6 +42,8 @@ pub struct Instruments {
     last_drums: Option<InstrId>,
     #[serde(skip)]
     pub(crate) sample_bank: SampleBank,
+    #[serde(skip)]
+    loops: HashMap<InstrId, HashSet<InstrId>>,
 }
 
 impl Default for Instruments {
@@ -55,6 +57,7 @@ impl Default for Instruments {
             i: 0,
             last_drums: None,
             sample_bank: SampleBank::new(),
+            loops: HashMap::new(),
         }
     }
 }
@@ -87,17 +90,35 @@ impl Instruments {
     {
         self.map.insert(id.into(), instr);
     }
-    pub fn add_loop<I>(&mut self, id: I, measures: u8)
+    fn update_loops(&mut self) {
+        self.loops.clear();
+        for (id, instr) in &self.map {
+            if let Instrument::Loop { input, .. } = instr {
+                self.loops
+                    .entry(input.clone())
+                    .or_insert_with(HashSet::new)
+                    .insert(id.clone());
+            }
+        }
+    }
+    pub fn add_loop<I>(&mut self, loop_id: Option<String>, id: I, measures: u8)
     where
         I: Into<InstrId>,
     {
-        // Create new input id
+        // Create new loop id
         let id = id.into();
-        let input_id = format!("{}-input", id);
+        let mut i = 1;
+        let loop_id = loop_id.unwrap_or_else(|| loop {
+            let possible = format!("loop{}", i);
+            if self.get(&possible).is_none() {
+                break possible;
+            }
+            i += 1;
+        });
         // Create the loop instrument
         let frame_count = self.frames_per_measure() as usize * measures as usize;
         let loop_instr = Instrument::Loop {
-            input: input_id.clone(),
+            input: id,
             measures,
             recording: true,
             frames: CloneLock::new(vec![
@@ -109,19 +130,11 @@ impl Instruments {
             ]),
         };
         // Stop recording on all other loops
-        for instr in self.map.values_mut() {
-            if let Instrument::Loop { recording, .. } = instr {
-                *recording = false;
-            }
-        }
-        // Remove the input
-        let input_instr = self.map.remove(&input_id).or_else(|| self.map.remove(&id));
+        self.stop_recording_all();
         // Insert the loop
-        self.map.insert(id, loop_instr);
-        // Insert the input
-        if let Some(instr) = input_instr {
-            self.add(input_id, instr);
-        }
+        self.map.insert(loop_id, loop_instr);
+        // Update loops
+        self.update_loops();
     }
     pub fn get<I>(&self, id: I) -> Option<&Instrument>
     where
@@ -167,14 +180,28 @@ impl Instruments {
     {
         let id = id.into();
         if cache.map.contains_key(&id) {
+            // Get cached result
             cache.map.get(&id).unwrap()
         } else if cache.visited.contains(&id) {
+            // Avoid infinite loops
             &cache.default_frames
         } else {
             cache.visited.insert(id.clone());
             if let Some(instr) = self.map.get(&id) {
-                let frames = instr.next(cache, self);
-                cache.map.insert(id.clone(), frames);
+                // Get the next set of frames
+                let mut frames = instr.next(cache, self);
+                // Cache this initial version
+                cache.map.insert(id.clone(), frames.clone());
+                // Append loop frames
+                if let Some(loop_ids) = self.loops.get(&id) {
+                    for loop_id in loop_ids {
+                        if let Some(instr) = self.map.get(loop_id) {
+                            frames.extend(instr.next(cache, self));
+                        }
+                    }
+                    // Cache the result
+                    *cache.map.get_mut(&id).unwrap() = frames;
+                }
                 cache.map.get(&id).unwrap()
             } else {
                 &cache.default_frames
@@ -285,7 +312,7 @@ impl Instruments {
                         }
                     }
                 }
-                RyvmCommand::Loop { input, measures } => self.add_loop(input, measures),
+                RyvmCommand::Loop { input, measures } => self.add_loop(app.name, input, measures),
             }
         } else if let Some(instr) = self.get_mut_skip_loops(name) {
             match instr {

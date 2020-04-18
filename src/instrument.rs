@@ -267,17 +267,15 @@ impl Instrument {
                     })
                     .collect()
             }
-            Instrument::Mixer(list) => list
-                .iter()
-                .flat_map(|(id, bal)| {
-                    let next_frame: Vec<(Voice, Balance)> = instruments
-                        .next_from(id, cache)
-                        .iter()
-                        .map(|frame| (frame.first, *bal))
-                        .collect();
-                    mix(&next_frame)
-                })
-                .collect(),
+            Instrument::Mixer(list) => {
+                let mut voices = Vec::new();
+                for (id, bal) in list {
+                    for frame in instruments.next_from(id, cache) {
+                        voices.push((frame.first, *bal));
+                    }
+                }
+                mix(&voices).into_iter().collect()
+            }
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard(keyboard) => {
                 let freqs: Vec<SampleType> = keyboard
@@ -343,7 +341,7 @@ impl Instrument {
                             }
                         }
                     }
-                    input_frame.to_vec()
+                    Vec::new()
                 } else {
                     frames[loop_i as usize].frame.clone().into_iter().collect()
                 }

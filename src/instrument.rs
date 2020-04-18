@@ -89,7 +89,7 @@ impl Voice {
 }
 
 impl Frame {
-    pub fn multi<I>(iter: I) -> Self
+    pub fn multi<I>(iter: I) -> Option<Self>
     where
         I: IntoIterator<Item = Voice>,
     {
@@ -100,9 +100,11 @@ impl Frame {
         };
         if let Some(first) = iter.next() {
             frame.first = first;
+            frame.extra.extend(iter);
+            Some(frame)
+        } else {
+            None
         }
-        frame.extra.extend(iter);
-        frame
     }
     pub fn iter(&self) -> impl Iterator<Item = Voice> + '_ {
         once(self.first).chain(self.extra.iter().copied())
@@ -280,11 +282,7 @@ impl Instrument {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
                 let voices: Vec<Voice> = freqs.into_iter().map(Voice::mono).collect();
-                if voices.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![Frame::multi(voices)]
-                }
+                Frame::multi(voices).into_iter().collect()
             }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {

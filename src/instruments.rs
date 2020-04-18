@@ -280,9 +280,9 @@ impl Instruments {
                     Instrument::Mixer(inputs.into_iter().zip(repeat(Balance::default())).collect()),
                 ),
                 #[cfg(feature = "keyboard")]
-                RyvmCommand::Keyboard { base_octave } => self.add(
+                RyvmCommand::Keyboard { octave } => self.add(
                     name.clone(),
-                    Instrument::Keyboard(Keyboard::new(&name, base_octave.unwrap_or(4))),
+                    Instrument::Keyboard(Keyboard::new(&name, octave.unwrap_or(4))),
                 ),
                 RyvmCommand::Drums => {
                     self.add(name.clone(), Instrument::DrumMachine(Vec::new()));

@@ -63,8 +63,8 @@ pub enum RyvmCommand {
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Use you computer kyeboard as a music keyboard")]
     Keyboard {
-        #[structopt(long, short = "o")]
-        base_octave: Option<u8>,
+        #[structopt(long, short)]
+        octave: Option<u8>,
     },
     #[structopt(about = "A drum machine")]
     Drums,

@@ -310,6 +310,11 @@ impl Instruments {
                         *input = new_input;
                     }
                 }
+                Instrument::Keyboard(keyboard) => {
+                    if let Some(octave) = app.octave {
+                        keyboard.set_base_octave(octave);
+                    }
+                }
                 Instrument::Loop { .. } => unreachable!(),
                 _ => {}
             }

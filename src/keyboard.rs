@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc,
     },
     thread::{self, JoinHandle},
@@ -25,7 +25,7 @@ pub struct KeyboardDef {
 #[serde(into = "KeyboardDef", from = "KeyboardDef")]
 pub struct Keyboard {
     name: String,
-    base_octave: u8,
+    base_octave: Arc<AtomicU8>,
     pressed: Arc<ShardedLock<HashSet<(Letter, u8)>>>,
     handle: Option<Arc<JoinHandle<()>>>,
     done: Arc<AtomicBool>,
@@ -35,7 +35,7 @@ impl From<Keyboard> for KeyboardDef {
     fn from(keyboard: Keyboard) -> Self {
         KeyboardDef {
             name: keyboard.name.clone(),
-            base_octave: keyboard.base_octave,
+            base_octave: keyboard.base_octave.load(Ordering::Relaxed),
         }
     }
 }
@@ -53,6 +53,8 @@ impl Keyboard {
         let name_string = name.to_string();
         let pressed = Arc::new(ShardedLock::new(HashSet::new()));
         let pressed_clone = Arc::clone(&pressed);
+        let base_octave = Arc::new(AtomicU8::new(base_octave));
+        let base_octave_clone = Arc::clone(&base_octave);
         let handle = thread::spawn(move || {
             let mut window: PistonWindow =
                 WindowSettings::new(name_string, [400; 2]).build().unwrap();
@@ -72,10 +74,16 @@ impl Keyboard {
                     if let Some(&(l, o)) = KEYBINDS.get(&key) {
                         match state {
                             ButtonState::Press => {
-                                pressed_clone.write().unwrap().insert((l, o + base_octave));
+                                pressed_clone
+                                    .write()
+                                    .unwrap()
+                                    .insert((l, o + base_octave_clone.load(Ordering::Relaxed)));
                             }
                             ButtonState::Release => {
-                                pressed_clone.write().unwrap().remove(&(l, o + base_octave));
+                                pressed_clone
+                                    .write()
+                                    .unwrap()
+                                    .remove(&(l, o + base_octave_clone.load(Ordering::Relaxed)));
                             }
                         }
                     }
@@ -95,6 +103,9 @@ impl Keyboard {
             handle: Some(Arc::new(handle)),
             done,
         }
+    }
+    pub fn set_base_octave(&self, base_octave: u8) {
+        self.base_octave.store(base_octave, Ordering::Relaxed);
     }
     pub fn pressed<F, R>(&self, f: F) -> R
     where

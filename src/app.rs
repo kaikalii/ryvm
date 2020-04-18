@@ -14,6 +14,8 @@ pub struct RyvmApp {
     pub volume: Option<f32>,
     #[structopt(long, short)]
     pub pan: Option<f32>,
+    #[structopt(long, short)]
+    pub octave: Option<u8>,
     #[structopt(subcommand)]
     pub command: Option<RyvmCommand>,
 }

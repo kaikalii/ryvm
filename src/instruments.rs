@@ -195,19 +195,25 @@ impl Instruments {
             }
         }
     }
+    #[cfg_attr(not(feature = "keyboard"), allow(unused_variables))]
     pub fn default_voices_from<I>(&self, id: I) -> u32
     where
         I: Into<InstrId>,
     {
-        if let Some(instr) = self.get_skip_loops(id) {
-            if let Instrument::Keyboard(_) = instr {
-                6
+        #[cfg(feature = "keyboard")]
+        {
+            if let Some(instr) = self.get_skip_loops(id) {
+                if let Instrument::Keyboard(_) = instr {
+                    6
+                } else {
+                    1
+                }
             } else {
                 1
             }
-        } else {
-            1
         }
+        #[cfg(not(feature = "keyboard"))]
+        1
     }
     fn process_command(&mut self, app: RyvmApp) {
         self.stop_recording_all();
@@ -310,6 +316,7 @@ impl Instruments {
                         *input = new_input;
                     }
                 }
+                #[cfg(feature = "keyboard")]
                 Instrument::Keyboard(keyboard) => {
                     if let Some(octave) = app.octave {
                         keyboard.set_base_octave(octave);

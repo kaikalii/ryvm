@@ -84,4 +84,12 @@ pub enum RyvmCommand {
         #[structopt(index = 2)]
         measures: u8,
     },
+    Start {
+        #[structopt(index = 1, required = true)]
+        inputs: Vec<String>,
+    },
+    Stop {
+        #[structopt(index = 1, required = true)]
+        inputs: Vec<String>,
+    },
 }

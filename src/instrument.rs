@@ -192,6 +192,7 @@ pub enum Instrument {
         measures: u8,
         #[serde(skip)]
         recording: bool,
+        playing: bool,
         frames: CloneLock<Vec<LoopFrame>>,
     },
 }
@@ -311,6 +312,7 @@ impl Instrument {
                 input,
                 measures,
                 recording,
+                playing,
                 frames,
             } => {
                 let mut frames = frames.lock();
@@ -342,8 +344,10 @@ impl Instrument {
                         }
                     }
                     Vec::new()
-                } else {
+                } else if *playing {
                     frames[loop_i as usize].frame.clone().into_iter().collect()
+                } else {
+                    Vec::new()
                 }
             }
         }

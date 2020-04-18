@@ -121,6 +121,7 @@ impl Instruments {
             input: id,
             measures,
             recording: true,
+            playing: true,
             frames: CloneLock::new(vec![
                 LoopFrame {
                     frame: None,
@@ -132,6 +133,7 @@ impl Instruments {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Insert the loop
+        println!("Added loop {:?}", loop_id);
         self.map.insert(loop_id, loop_instr);
         // Update loops
         self.update_loops();
@@ -313,6 +315,20 @@ impl Instruments {
                     }
                 }
                 RyvmCommand::Loop { input, measures } => self.add_loop(app.name, input, measures),
+                RyvmCommand::Start { inputs } => {
+                    for input in inputs {
+                        if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&input) {
+                            *playing = true;
+                        }
+                    }
+                }
+                RyvmCommand::Stop { inputs } => {
+                    for input in inputs {
+                        if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&input) {
+                            *playing = false;
+                        }
+                    }
+                }
             }
         } else if let Some(instr) = self.get_mut_skip_loops(name) {
             match instr {

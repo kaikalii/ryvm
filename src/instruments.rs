@@ -11,8 +11,9 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp, RyvmCommand,
-    SampleBank, SampleType, Sampling, SourceLock, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
+    mix, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
+    RyvmCommand, SampleBank, SampleType, Sampling, SourceLock, Voice, WaveForm, SAMPLE_EPSILON,
+    SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -160,22 +161,22 @@ impl Instruments {
             }
         }
     }
-    pub(crate) fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Option<Frame>
+    pub(crate) fn next_from<I>(&self, id: I, cache: &mut FrameCache) -> Vec<Frame>
     where
         I: Into<InstrId>,
     {
         let id = id.into();
-        if let Some(voice) = cache.map.get(&id) {
-            Some(voice.clone())
+        if let Some(frames) = cache.map.get(&id) {
+            frames.clone()
         } else if cache.visited.contains(&id) {
-            None
+            Vec::new()
         } else {
             cache.visited.insert(id.clone());
-            if let Some(voice) = self.map.get(&id).and_then(|instr| instr.next(cache, self)) {
-                cache.map.insert(id, voice.clone());
-                Some(voice)
+            if let Some(frames) = self.map.get(&id).map(|instr| instr.next(cache, self)) {
+                cache.map.insert(id, frames.clone());
+                frames
             } else {
-                None
+                Vec::new()
             }
         }
     }
@@ -354,7 +355,12 @@ impl Iterator for Instruments {
             })
             .or_else(|| {
                 if let Some(output_id) = &self.output {
-                    if let Some(frame) = self.next_from(output_id, &mut cache) {
+                    let frames = self.next_from(output_id, &mut cache);
+                    let next_frame: Vec<(Voice, Balance)> = frames
+                        .into_iter()
+                        .map(|frame| (frame.first, Balance::default()))
+                        .collect();
+                    if let Some(frame) = mix(&next_frame) {
                         self.sample_queue = Some(frame.first.right);
                         return Some(frame.first.left);
                     }

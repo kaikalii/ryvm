@@ -127,7 +127,7 @@ impl From<Voice> for Frame {
 }
 
 pub(crate) struct FrameCache {
-    pub map: HashMap<InstrId, Frame>,
+    pub map: HashMap<InstrId, Vec<Frame>>,
     pub visited: HashSet<InstrId>,
 }
 
@@ -221,72 +221,74 @@ impl Instrument {
         }
         self
     }
-    pub(crate) fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Option<Frame> {
+    pub(crate) fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Vec<Frame> {
         match self {
-            Instrument::Number(n) => Some(Voice::mono(*n).into()),
+            Instrument::Number(n) => vec![Voice::mono(*n).into()],
             Instrument::Wave {
                 input, form, waves, ..
             } => {
-                let input_frame = instruments.next_from(&*input, cache);
-                let mix_inputs: Vec<(Voice, Balance)> = input_frame
+                instruments
+                    .next_from(&*input, cache)
                     .into_iter()
-                    .flat_map(|f| f.into_iter())
-                    .zip(waves.iter())
-                    .map(|(voice, i)| {
-                        let ix = i.load();
-                        if voice.left == 0.0 {
-                            return Voice::mono(0.0);
-                        }
-                        // spc = samples per cycle
-                        let spc = SAMPLE_RATE as SampleType / voice.left;
-                        let t = ix as SampleType / spc;
-                        let s = match form {
-                            WaveForm::Sine => (t * 2.0 * PI).sin(),
-                            WaveForm::Square => {
-                                if t < 0.5 {
-                                    1.0
-                                } else {
-                                    -1.0
+                    .filter_map(|input_frame| {
+                        let mix_inputs: Vec<(Voice, Balance)> = input_frame
+                            .into_iter()
+                            .zip(waves.iter())
+                            .map(|(voice, i)| {
+                                let ix = i.load();
+                                if voice.left == 0.0 {
+                                    return Voice::mono(0.0);
                                 }
-                            }
-                            WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
-                            WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
-                        } * WaveForm::MIN_ENERGY
-                            / form.energy();
-                        i.store((ix + 1) % spc as u32);
-                        Voice::mono(s)
+                                // spc = samples per cycle
+                                let spc = SAMPLE_RATE as SampleType / voice.left;
+                                let t = ix as SampleType / spc;
+                                let s = match form {
+                                    WaveForm::Sine => (t * 2.0 * PI).sin(),
+                                    WaveForm::Square => {
+                                        if t < 0.5 {
+                                            1.0
+                                        } else {
+                                            -1.0
+                                        }
+                                    }
+                                    WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
+                                    WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
+                                } * WaveForm::MIN_ENERGY
+                                    / form.energy();
+                                i.store((ix + 1) % spc as u32);
+                                Voice::mono(s)
+                            })
+                            .zip(repeat(Balance::default()))
+                            .collect();
+                        mix(&mix_inputs)
                     })
-                    .zip(repeat(Balance::default()))
-                    .collect();
-                mix(&mix_inputs)
+                    .collect()
             }
-            Instrument::Mixer(list) => {
-                let next_frame: Vec<(Voice, Balance)> = list
-                    .iter()
-                    .map(|(id, bal)| {
-                        if let Some(frame) = instruments.next_from(id, cache) {
-                            (frame.first, *bal)
-                        } else {
-                            (Voice::default(), Balance::default())
-                        }
-                    })
-                    .collect();
-                mix(&next_frame)
-            }
+            Instrument::Mixer(list) => list
+                .iter()
+                .flat_map(|(id, bal)| {
+                    let next_frame: Vec<(Voice, Balance)> = instruments
+                        .next_from(id, cache)
+                        .into_iter()
+                        .map(|frame| (frame.first, *bal))
+                        .collect();
+                    mix(&next_frame)
+                })
+                .collect(),
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard(keyboard) => {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
                 let voices: Vec<Voice> = freqs.into_iter().map(Voice::mono).collect();
                 if voices.is_empty() {
-                    None
+                    Vec::new()
                 } else {
-                    Some(Frame::multi(voices))
+                    vec![Frame::multi(voices)]
                 }
             }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
-                    return None;
+                    return Vec::new();
                 }
                 let mut voices = Vec::new();
                 let frames_per_sub =
@@ -306,7 +308,7 @@ impl Instrument {
                         }
                     });
                 }
-                mix(&voices)
+                mix(&voices).into_iter().collect()
             }
             Instrument::Loop {
                 input,
@@ -327,9 +329,9 @@ impl Instrument {
                     }
                 }
                 let input_frame = instruments.next_from(&*input, cache);
-                if *recording && input_frame.is_some() {
+                if *recording && input_frame.first().is_some() {
                     frames[loop_i as usize] = LoopFrame {
-                        frame: input_frame.clone(),
+                        frame: input_frame.first().cloned(),
                         new: true,
                     };
                     for i in (0..(loop_i as usize)).rev() {
@@ -344,7 +346,7 @@ impl Instrument {
                     }
                     input_frame
                 } else {
-                    frames[loop_i as usize].frame.clone()
+                    frames[loop_i as usize].frame.clone().into_iter().collect()
                 }
             }
         }
@@ -356,7 +358,7 @@ impl Instrument {
     }
 }
 
-fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
+pub fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
     // let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
     //     let (l, r) = bal.stereo_volume();
     //     (lacc + l, racc + r)

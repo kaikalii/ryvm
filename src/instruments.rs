@@ -122,11 +122,30 @@ impl Instruments {
             self.add(input_id, instr);
         }
     }
+    pub fn get<I>(&self, id: I) -> Option<&Instrument>
+    where
+        I: Into<InstrId>,
+    {
+        self.map.get(&id.into())
+    }
     pub fn get_mut<I>(&mut self, id: I) -> Option<&mut Instrument>
     where
         I: Into<InstrId>,
     {
         self.map.get_mut(&id.into())
+    }
+    pub fn get_skip_loops<I>(&self, id: I) -> Option<&Instrument>
+    where
+        I: Into<InstrId>,
+    {
+        let mut id = id.into();
+        loop {
+            if let Some(Instrument::Loop { input, .. }) = self.get(&id) {
+                id = input.clone();
+            } else {
+                break self.get(&id);
+            }
+        }
     }
     pub fn get_mut_skip_loops<I>(&mut self, id: I) -> Option<&mut Instrument>
     where
@@ -176,9 +195,23 @@ impl Instruments {
             }
         }
     }
+    pub fn default_voices_from<I>(&self, id: I) -> u32
+    where
+        I: Into<InstrId>,
+    {
+        if let Some(instr) = self.get_skip_loops(id) {
+            if let Instrument::Keyboard(_) = instr {
+                6
+            } else {
+                1
+            }
+        } else {
+            1
+        }
+    }
     fn process_command(&mut self, app: RyvmApp) {
         self.stop_recording_all();
-        let name = app.name.unwrap_or_default();
+        let name = app.name.clone().unwrap_or_default();
         if let Some(command) = app.command {
             match command {
                 RyvmCommand::Quit => {}
@@ -186,31 +219,23 @@ impl Instruments {
                 RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
                 RyvmCommand::Number { num } => self.add(name, Instrument::Number(num)),
                 RyvmCommand::Sine { input, voices } => {
-                    let mut instr = Instrument::wave(input, WaveForm::Sine);
-                    if let Some(voices) = voices {
-                        instr = instr.voices(voices);
-                    }
+                    let instr = Instrument::wave(&input, WaveForm::Sine)
+                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
                     self.add(name, instr);
                 }
                 RyvmCommand::Square { input, voices } => {
-                    let mut instr = Instrument::wave(input, WaveForm::Square);
-                    if let Some(voices) = voices {
-                        instr = instr.voices(voices);
-                    }
+                    let instr = Instrument::wave(&input, WaveForm::Square)
+                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
                     self.add(name, instr);
                 }
                 RyvmCommand::Saw { input, voices } => {
-                    let mut instr = Instrument::wave(input, WaveForm::Saw);
-                    if let Some(voices) = voices {
-                        instr = instr.voices(voices);
-                    }
+                    let instr = Instrument::wave(&input, WaveForm::Saw)
+                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
                     self.add(name, instr);
                 }
                 RyvmCommand::Triangle { input, voices } => {
-                    let mut instr = Instrument::wave(input, WaveForm::Triangle);
-                    if let Some(voices) = voices {
-                        instr = instr.voices(voices);
-                    }
+                    let instr = Instrument::wave(&input, WaveForm::Triangle)
+                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
                     self.add(name, instr);
                 }
                 RyvmCommand::Mixer { inputs } => self.add(
@@ -227,19 +252,18 @@ impl Instruments {
                     self.last_drums = Some(name);
                 }
                 RyvmCommand::Drum {
-                    machine,
                     index,
                     path,
                     beat,
                     remove,
                 } => {
-                    let machine = if let Some(machine) = machine {
-                        self.last_drums = Some(machine.clone());
-                        machine
+                    let name = if let Some(name) = app.name {
+                        self.last_drums = Some(name.clone());
+                        name
                     } else {
                         self.last_drums.clone().unwrap_or_default()
                     };
-                    if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(machine) {
+                    if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(name) {
                         let index = index.unwrap_or_else(|| samplings.len());
                         samplings.resize(index + 1, Sampling::default());
                         if let Some(path) = path {

@@ -970,6 +970,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "outsource"
+version = "0.1.0"
+dependencies = [
+ "lockfree",
+]
+
+[[package]]
 name = "owned-alloc"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1363,6 +1370,7 @@ dependencies = [
  "itertools",
  "lockfree",
  "once_cell",
+ "outsource",
  "piston_window",
  "rodio",
  "serde",

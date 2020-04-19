@@ -2,9 +2,11 @@ use std::{
     collections::{HashMap, HashSet},
     iter::repeat,
     mem::swap,
+    path::PathBuf,
 };
 
 use indexmap::IndexMap;
+use outsource::{JobDescription, Outsourcer};
 use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
 
@@ -12,8 +14,8 @@ use serde_derive::{Deserialize, Serialize};
 use crate::Keyboard;
 use crate::{
     mix, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
-    RyvmCommand, SampleBank, SampleType, Sampling, SourceLock, Voice, WaveForm, SAMPLE_EPSILON,
-    SAMPLE_RATE,
+    RyvmCommand, Sample, SampleBank, SampleType, Sampling, SourceLock, Voice, WaveForm,
+    SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -23,6 +25,20 @@ fn default_tempo() -> SampleType {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_default_tempo(tempo: &SampleType) -> bool {
     (tempo - default_tempo()).abs() < SAMPLE_EPSILON
+}
+
+#[derive(Default)]
+struct LoadSamples {}
+
+impl JobDescription<PathBuf> for LoadSamples {
+    type Output = Result<Sample, String>;
+    fn work(&self, input: PathBuf) -> Self::Output {
+        let res = Sample::open(input).map_err(|e| e.to_string());
+        if let Err(e) = &res {
+            println!("{}", e);
+        }
+        res
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,7 +57,7 @@ pub struct Instruments {
     #[serde(skip)]
     last_drums: Option<InstrId>,
     #[serde(skip)]
-    pub(crate) sample_bank: SampleBank,
+    pub(crate) sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     #[serde(skip)]
     loops: HashMap<InstrId, HashSet<InstrId>>,
 }

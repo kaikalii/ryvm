@@ -11,6 +11,7 @@ itertools = '*'
 structopt = { version = '*', default-features = false }
 piston_window = { version = '*', optional = true }
 lockfree = '*'
+outsource = { path = "../outsource" }
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']

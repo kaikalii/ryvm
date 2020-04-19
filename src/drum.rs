@@ -75,17 +75,9 @@ impl Sample {
     }
 }
 
-pub const MAX_BEATS: u8 = 32;
-
-#[derive(Copy, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(into = "BeatPatternRep", from = "BeatPatternRep")]
-pub struct BeatPattern(pub u32);
-
-impl BeatPattern {
-    pub fn get(self, beat: u8) -> bool {
-        bit_at(self.0, beat)
-    }
-}
+pub struct BeatPattern(pub Vec<bool>);
 
 impl fmt::Debug for BeatPattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -105,44 +97,20 @@ impl From<BeatPattern> for BeatPatternRep {
 
 impl From<BeatPatternRep> for BeatPattern {
     fn from(bpr: BeatPatternRep) -> Self {
-        BeatPattern(bpr.0.parse().unwrap())
+        bpr.0.parse().unwrap()
     }
 }
 
 impl FromStr for BeatPattern {
     type Err = Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut v = s.as_bytes().to_vec();
-        for i in &mut v {
-            *i = (*i == b'-' || *i == 1) as u8;
-        }
-        while v.len() < MAX_BEATS as usize {
-            v = v.into_iter().flat_map(|i| vec![i, 0]).collect();
-        }
-        let u = v
-            .into_iter()
-            .take(MAX_BEATS as usize)
-            .enumerate()
-            .fold(0u32, |acc, (i, n)| {
-                acc + if n > 0 { 2u32.pow(i as u32) } else { 0 }
-            });
-        Ok(BeatPattern(u))
-    }
-}
-
-fn bit_at(input: u32, n: u8) -> bool {
-    if n < 32 {
-        input & (1 << n) != 0
-    } else {
-        false
+        Ok(BeatPattern(s.chars().map(|c| c == '-').collect()))
     }
 }
 
 impl fmt::Display for BeatPattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s: String = (0u8..MAX_BEATS)
-            .map(|i| if bit_at(self.0, i) { '-' } else { '_' })
-            .collect();
+        let s: String = self.0.iter().map(|b| if *b { '-' } else { '_' }).collect();
         write!(f, "{}", s)
     }
 }

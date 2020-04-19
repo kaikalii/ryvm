@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
-use crate::{CloneLock, Instruments, Sampling, U32Lock, MAX_BEATS};
+use crate::{CloneLock, Instruments, Sampling, U32Lock};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -289,16 +289,16 @@ impl Instrument {
                     return Vec::new();
                 }
                 let mut voices = Vec::new();
-                let frames_per_sub =
-                    instruments.frames_per_measure() as SampleType / MAX_BEATS as SampleType;
                 let ix = instruments.measure_i();
                 for sampling in samplings {
+                    let frames_per_sub = instruments.frames_per_measure() as SampleType
+                        / sampling.beat.0.len() as SampleType;
                     if let Some(res) = instruments.sample_bank.get(&sampling.path).finished() {
                         if let Ok(sample) = &*res {
                             let samples = &sample.samples();
-                            for b in 0..MAX_BEATS {
+                            for b in 0..sampling.beat.0.len() {
                                 let start = (frames_per_sub * b as f32) as u32;
-                                if sampling.beat.get(b) && ix >= start {
+                                if sampling.beat.0[b as usize] && ix >= start {
                                     let si = (ix - start) as usize;
                                     if si < samples.len() {
                                         voices.push((samples[si], Balance::default()));

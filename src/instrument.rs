@@ -1,7 +1,7 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     f32::consts::{FRAC_2_PI, PI},
-    iter::{once, repeat},
+    iter::repeat,
     sync::Arc,
 };
 
@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
-use crate::{CloneLock, Instruments, Sampling, U32Lock};
+use crate::{Channels, CloneLock, Frame, FrameCache, Instruments, Sampling, U32Lock, Voice};
 
 pub type SampleType = f32;
 pub type InstrId = String;
@@ -57,81 +57,6 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         self.update(Iterator::next)
     }
-}
-
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
-pub struct Voice {
-    pub left: SampleType,
-    pub right: SampleType,
-    pub velocity: SampleType,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Frame {
-    pub first: Voice,
-    pub extra: Vec<Voice>,
-}
-
-impl Voice {
-    pub fn stereo(left: SampleType, right: SampleType) -> Self {
-        Voice {
-            left,
-            right,
-            velocity: 1.0,
-        }
-    }
-    pub fn mono(both: SampleType) -> Self {
-        Voice::stereo(both, both)
-    }
-    pub fn velocity(self, velocity: SampleType) -> Self {
-        Voice { velocity, ..self }
-    }
-}
-
-impl Frame {
-    pub fn multi<I>(iter: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = Voice>,
-    {
-        let mut iter = iter.into_iter();
-        let mut frame = Frame {
-            first: Voice::default(),
-            extra: Vec::new(),
-        };
-        if let Some(first) = iter.next() {
-            frame.first = first;
-            frame.extra.extend(iter);
-            Some(frame)
-        } else {
-            None
-        }
-    }
-    pub fn iter(&self) -> impl Iterator<Item = Voice> + '_ {
-        once(self.first).chain(self.extra.iter().copied())
-    }
-}
-
-impl IntoIterator for Frame {
-    type Item = Voice;
-    type IntoIter = Box<dyn Iterator<Item = Voice>>;
-    fn into_iter(self) -> Self::IntoIter {
-        Box::new(once(self.first).chain(self.extra.into_iter()))
-    }
-}
-
-impl From<Voice> for Frame {
-    fn from(voice: Voice) -> Self {
-        Frame {
-            first: voice,
-            extra: Vec::new(),
-        }
-    }
-}
-
-pub(crate) struct FrameCache {
-    pub map: HashMap<InstrId, Vec<Frame>>,
-    pub visited: HashSet<InstrId>,
-    pub default_frames: Vec<Frame>,
 }
 
 fn default_voices() -> u32 {
@@ -237,15 +162,14 @@ impl Instrument {
         }
         self
     }
-    pub(crate) fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Vec<Frame> {
+    pub(crate) fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Channels {
         match self {
-            Instrument::Number(n) => vec![Voice::mono(*n).into()],
+            Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),
             Instrument::Wave {
                 input, form, waves, ..
             } => {
                 instruments
                     .next_from(&*input, cache)
-                    .iter()
                     .filter_map(|input_frame| {
                         let mix_inputs: Vec<(Voice, Balance)> = input_frame
                             .iter()
@@ -278,27 +202,26 @@ impl Instrument {
                             .collect();
                         mix(&mix_inputs)
                     })
-                    .collect()
             }
             Instrument::Mixer(list) => {
                 let mut voices = Vec::new();
                 for (id, bal) in list {
-                    for frame in instruments.next_from(id, cache) {
+                    for frame in instruments.next_from(id, cache).frames() {
                         voices.push((frame.first, *bal));
                     }
                 }
-                mix(&voices).into_iter().collect()
+                mix(&voices).into()
             }
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard(keyboard) => {
                 let freqs: Vec<SampleType> = keyboard
                     .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
                 let voices: Vec<Voice> = freqs.into_iter().map(Voice::mono).collect();
-                Frame::multi(voices).into_iter().collect()
+                Frame::multi(voices).into()
             }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
-                    return Vec::new();
+                    return Channels::new();
                 }
                 let mut voices = Vec::new();
                 let ix = instruments.measure_i();
@@ -320,7 +243,7 @@ impl Instrument {
                         }
                     }
                 }
-                mix(&voices).into_iter().collect()
+                mix(&voices).into()
             }
             Instrument::Loop {
                 input,
@@ -334,6 +257,7 @@ impl Instrument {
                 let ideal_fpl = instruments.frames_per_measure() * *measures as u32;
                 // The actual number of frames per loop
                 let actual_fpl = frames.len() as u32;
+                // Calculate the index of the loop's current sample adjusting for changes in tempo
                 let loop_i = ((instruments.i() % ideal_fpl) as u64 * actual_fpl as u64
                     / ideal_fpl as u64) as u32;
                 if loop_i == 0 {
@@ -341,12 +265,15 @@ impl Instrument {
                         frame.new = false;
                     }
                 }
-                let input_frame = instruments.next_from(&*input, cache);
-                if *recording && input_frame.first().is_some() {
+                // Get input frame
+                let input_channels = instruments.next_from(&*input, cache);
+                if *recording && input_channels.primary().is_some() {
+                    // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
-                        frame: input_frame.first().cloned(),
+                        frame: input_channels.primary().cloned(),
                         new: true,
                     };
+                    // Go backward and set all old frames to new and empty
                     for i in (0..(loop_i as usize)).rev() {
                         if frames[i].new {
                             break;
@@ -357,18 +284,15 @@ impl Instrument {
                             }
                         }
                     }
-                    Vec::new()
+                    Channels::new()
                 } else if *playing {
-                    frames[loop_i as usize].frame.clone().into_iter().collect()
+                    // Play the loop
+                    frames[loop_i as usize].frame.clone().into()
                 } else {
-                    Vec::new()
+                    Channels::new()
                 }
             }
-            Instrument::Filter {
-                input,
-                setting,
-                avg,
-            } => unimplemented!(),
+            Instrument::Filter { .. } => unimplemented!(),
         }
     }
     pub fn set(&mut self, num: SampleType) {

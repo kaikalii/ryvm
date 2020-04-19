@@ -13,9 +13,9 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
-    RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveForm, SAMPLE_EPSILON,
-    SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FrameCache, InstrId, Instrument, LoopFrame,
+    RyvmApp, RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveForm,
+    SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -192,7 +192,7 @@ impl Instruments {
             }
         }
     }
-    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a [Frame]
+    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
     where
         I: Into<InstrId>,
     {
@@ -202,27 +202,32 @@ impl Instruments {
             cache.map.get(&id).unwrap()
         } else if cache.visited.contains(&id) {
             // Avoid infinite loops
-            &cache.default_frames
+            &cache.default_channels
         } else {
             cache.visited.insert(id.clone());
             if let Some(instr) = self.map.get(&id) {
-                // Get the next set of frames
-                let mut frames = instr.next(cache, self);
+                // Get the next set of channels
+                let mut channels = instr.next(cache, self);
                 // Cache this initial version
-                cache.map.insert(id.clone(), frames.clone());
-                // Append loop frames
+                cache.map.insert(id.clone(), channels.clone());
+                // Append loop channels
                 if let Some(loop_ids) = self.loops.get(&id) {
                     for loop_id in loop_ids {
                         if let Some(instr) = self.map.get(loop_id) {
-                            frames.extend(instr.next(cache, self));
+                            channels.extend(
+                                instr
+                                    .next(cache, self)
+                                    .into_primary()
+                                    .map(|frame| (ChannelId::Loop(loop_id.clone()), frame)),
+                            );
                         }
                     }
                     // Cache the result
-                    *cache.map.get_mut(&id).unwrap() = frames;
+                    *cache.map.get_mut(&id).unwrap() = channels;
                 }
                 cache.map.get(&id).unwrap()
             } else {
-                &cache.default_frames
+                &cache.default_channels
             }
         }
     }
@@ -408,11 +413,7 @@ impl Iterator for Instruments {
             }
         }
         // Init cache
-        let mut cache = FrameCache {
-            map: HashMap::new(),
-            visited: HashSet::new(),
-            default_frames: Default::default(),
-        };
+        let mut cache = FrameCache::default();
         // Get next sample
         self.sample_queue
             .take()
@@ -422,12 +423,12 @@ impl Iterator for Instruments {
             })
             .or_else(|| {
                 if let Some(output_id) = &self.output {
-                    let frames = self.next_from(output_id, &mut cache);
-                    let next_frame: Vec<(Voice, Balance)> = frames
+                    let channels = self.next_from(output_id, &mut cache);
+                    let voices: Vec<(Voice, Balance)> = channels
                         .iter()
-                        .map(|frame| (frame.first, Balance::default()))
+                        .map(|(_, frame)| (frame.first, Balance::default()))
                         .collect();
-                    if let Some(frame) = mix(&next_frame) {
+                    if let Some(frame) = mix(&voices) {
                         self.sample_queue = Some(frame.first.right);
                         return Some(frame.first.left);
                     }

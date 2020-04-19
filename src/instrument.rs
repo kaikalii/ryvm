@@ -293,18 +293,20 @@ impl Instrument {
                     instruments.frames_per_measure() as SampleType / MAX_BEATS as SampleType;
                 let ix = instruments.measure_i();
                 for sampling in samplings {
-                    instruments.sample_bank.get(&sampling.path, |sample| {
-                        let samples = &sample.samples();
-                        for b in 0..MAX_BEATS {
-                            let start = (frames_per_sub * b as f32) as u32;
-                            if sampling.beat.get(b) && ix >= start {
-                                let si = (ix - start) as usize;
-                                if si < samples.len() {
-                                    voices.push((samples[si], Balance::default()));
+                    if let Some(res) = instruments.sample_bank.get(&sampling.path).finished() {
+                        if let Ok(sample) = &*res {
+                            let samples = &sample.samples();
+                            for b in 0..MAX_BEATS {
+                                let start = (frames_per_sub * b as f32) as u32;
+                                if sampling.beat.get(b) && ix >= start {
+                                    let si = (ix - start) as usize;
+                                    if si < samples.len() {
+                                        voices.push((samples[si], Balance::default()));
+                                    }
                                 }
                             }
                         }
-                    });
+                    }
                 }
                 mix(&voices).into_iter().collect()
             }

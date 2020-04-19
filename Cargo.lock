@@ -1368,7 +1368,6 @@ dependencies = [
  "crossbeam",
  "indexmap",
  "itertools",
- "lockfree",
  "once_cell",
  "outsource",
  "piston_window",

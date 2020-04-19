@@ -14,8 +14,8 @@ use serde_derive::{Deserialize, Serialize};
 use crate::Keyboard;
 use crate::{
     mix, Balance, CloneLock, Frame, FrameCache, InstrId, Instrument, LoopFrame, RyvmApp,
-    RyvmCommand, Sample, SampleBank, SampleType, Sampling, SourceLock, Voice, WaveForm,
-    SAMPLE_EPSILON, SAMPLE_RATE,
+    RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveForm, SAMPLE_EPSILON,
+    SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -28,7 +28,7 @@ fn is_default_tempo(tempo: &SampleType) -> bool {
 }
 
 #[derive(Default)]
-struct LoadSamples {}
+pub(crate) struct LoadSamples {}
 
 impl JobDescription<PathBuf> for LoadSamples {
     type Output = Result<Sample, String>;
@@ -72,7 +72,7 @@ impl Default for Instruments {
             tempo: 120.0,
             i: 0,
             last_drums: None,
-            sample_bank: SampleBank::new(),
+            sample_bank: Outsourcer::default(),
             loops: HashMap::new(),
         }
     }
@@ -231,7 +231,7 @@ impl Instruments {
             path: Some(path), ..
         }) = &app.command
         {
-            self.sample_bank.load(path.clone(), true);
+            self.sample_bank.restart_if(path.clone(), |r| r.is_err());
         }
         self.command_queue.push(app);
     }

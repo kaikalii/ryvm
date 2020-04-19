@@ -4,13 +4,9 @@ use std::{
     fmt, fs,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::Arc,
-    thread,
-    time::Duration,
 };
 
 use itertools::Itertools;
-use lockfree::{map::Map, set::Set};
 use rodio::{Decoder, Source};
 use serde_derive::{Deserialize, Serialize};
 
@@ -68,64 +64,6 @@ impl Sample {
     }
     pub fn samples(&self) -> &[Voice] {
         &self.samples
-    }
-}
-
-#[derive(Debug)]
-pub struct SampleBank {
-    inputs: Arc<Set<PathBuf>>,
-    samples: Arc<Map<PathBuf, Result<Sample, String>>>,
-}
-
-impl Default for SampleBank {
-    fn default() -> Self {
-        SampleBank::new()
-    }
-}
-
-impl SampleBank {
-    pub fn new() -> Self {
-        let samples = Arc::new(Map::new());
-        let samples_clone = Arc::clone(&samples);
-        let inputs = Arc::new(Set::new());
-        let inputs_clone = Arc::clone(&inputs);
-
-        thread::spawn(move || loop {
-            if let Some(path) = inputs_clone.iter().next().map(|g| PathBuf::clone(&g)) {
-                let res = Sample::open(&path).map_err(|e| e.to_string());
-                if let Err(e) = &res {
-                    println!("{}", e);
-                }
-                samples_clone.insert(path.clone(), res);
-                inputs_clone.remove(&path);
-            }
-            thread::sleep(Duration::from_millis(50));
-        });
-        SampleBank { inputs, samples }
-    }
-    pub fn load(&self, path: PathBuf, force: bool) {
-        if force || (self.inputs.get(&path).is_none() || self.samples.get(&path).is_none()) {
-            let _ = self.inputs.insert(path);
-        }
-    }
-    pub fn get<P, F, R>(&self, path: P, f: F) -> Option<R>
-    where
-        P: AsRef<Path>,
-        F: FnOnce(&Sample) -> R,
-    {
-        let res = self.samples.get(path.as_ref());
-        if res.is_none() {
-            self.load(path.as_ref().to_path_buf(), false);
-        }
-        if let Some(guard) = res {
-            if let Ok(samples) = guard.val() {
-                Some(f(samples))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
     }
 }
 

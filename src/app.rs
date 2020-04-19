@@ -75,6 +75,8 @@ pub enum RyvmCommand {
         path: Option<PathBuf>,
         #[structopt(long, short, allow_hyphen_values = true)]
         beat: Option<String>,
+        #[structopt(long, short = "x")]
+        repeat: Option<u8>,
         #[structopt(long, short, conflicts_with_all = &["path", "beat"])]
         remove: bool,
     },

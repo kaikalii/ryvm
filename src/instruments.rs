@@ -308,6 +308,7 @@ impl Instruments {
                     index,
                     path,
                     beat,
+                    repeat: rep,
                     remove,
                 } => {
                     let name = if let Some(name) = app.name {
@@ -323,7 +324,12 @@ impl Instruments {
                             samplings[index].path = path;
                         }
                         if let Some(be) = beat {
-                            samplings[index].beat = be.parse().unwrap();
+                            samplings[index].beat = repeat(be.chars())
+                                .take(rep.unwrap_or(1) as usize)
+                                .flatten()
+                                .collect::<String>()
+                                .parse()
+                                .unwrap();
                         }
                         if remove {
                             samplings[index] = Sampling::default();

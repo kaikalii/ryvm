@@ -1,11 +1,134 @@
 use std::{
     collections::{hash_map, HashMap, HashSet},
+    convert::Infallible,
+    fmt,
     iter::{once, FromIterator},
+    str::FromStr,
 };
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{InstrId, SampleType};
+use crate::SampleType;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum InstrIdType {
+    Base,
+    Sub(String),
+    Loop(u8),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct InstrId {
+    pub name: String,
+    pub ty: InstrIdType,
+}
+
+impl Default for InstrId {
+    fn default() -> Self {
+        InstrId {
+            name: String::new(),
+            ty: InstrIdType::Base,
+        }
+    }
+}
+
+impl InstrId {
+    pub fn new_base<S>(name: S) -> Self
+    where
+        S: Into<String>,
+    {
+        InstrId {
+            name: name.into(),
+            ty: InstrIdType::Base,
+        }
+    }
+    pub fn as_loop(&self, loop_num: u8) -> Self {
+        InstrId {
+            name: self.name.clone(),
+            ty: InstrIdType::Loop(loop_num),
+        }
+    }
+    pub fn sub<S>(&self, sub_name: S) -> Self
+    where
+        S: Into<String>,
+    {
+        InstrId {
+            name: self.name.clone(),
+            ty: InstrIdType::Sub(sub_name.into()),
+        }
+    }
+    pub fn as_ref(&self) -> InstrIdRef {
+        InstrIdRef {
+            name: self.name.as_ref(),
+            ty: &self.ty,
+        }
+    }
+}
+
+impl<S> From<S> for InstrId
+where
+    S: AsRef<str>,
+{
+    fn from(s: S) -> Self {
+        s.as_ref().parse().unwrap()
+    }
+}
+
+impl FromStr for InstrId {
+    type Err = Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut iter = s.split('-').filter(|s| !s.is_empty());
+        let name = iter.next().map(Into::into).unwrap_or_default();
+        Ok(InstrId {
+            name,
+            ty: if let Some(sub_name) = iter.next() {
+                InstrIdType::Sub(sub_name.into())
+            } else {
+                InstrIdType::Base
+            },
+        })
+    }
+}
+
+impl<'a> From<&'a InstrId> for InstrId {
+    fn from(id_ref: &'a InstrId) -> Self {
+        InstrId {
+            name: id_ref.name.to_owned(),
+            ty: id_ref.ty.clone(),
+        }
+    }
+}
+
+impl fmt::Display for InstrId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        <InstrIdRef as fmt::Display>::fmt(&self.as_ref(), f)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InstrIdRef<'a> {
+    name: &'a str,
+    ty: &'a InstrIdType,
+}
+
+impl<'a> fmt::Display for InstrIdRef<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.ty {
+            InstrIdType::Base => write!(f, "{}", self.name),
+            InstrIdType::Sub(sub_name) => write!(f, "{}-{}", self.name, sub_name),
+            InstrIdType::Loop(i) => write!(f, "{}-loop{}", self.name, i),
+        }
+    }
+}
+
+impl<'a> From<InstrIdRef<'a>> for InstrId {
+    fn from(id_ref: InstrIdRef<'a>) -> Self {
+        InstrId {
+            name: id_ref.name.into(),
+            ty: id_ref.ty.clone(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct Voice {

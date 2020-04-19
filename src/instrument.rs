@@ -10,11 +10,11 @@ use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
-use crate::{Channels, CloneLock, Frame, FrameCache, Instruments, Sampling, U32Lock, Voice};
+use crate::{
+    Channels, CloneLock, Frame, FrameCache, InstrId, Instruments, Sampling, U32Lock, Voice,
+};
 
 pub type SampleType = f32;
-pub type InstrId = String;
-pub type InstrIdRef<'a> = &'a str;
 
 /// The global sample rate
 pub const SAMPLE_RATE: u32 = 44100;

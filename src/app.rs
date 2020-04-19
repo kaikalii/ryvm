@@ -2,10 +2,12 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
+use crate::InstrId;
+
 #[derive(Debug, StructOpt)]
 pub struct RyvmApp {
     #[structopt(index = 1)]
-    pub name: Option<String>,
+    pub name: Option<InstrId>,
     #[structopt(index = 2)]
     pub inputs: Vec<String>,
     #[structopt(long, short)]
@@ -26,7 +28,7 @@ pub enum RyvmCommand {
     Quit,
     Output {
         #[structopt(index = 1)]
-        name: String,
+        name: InstrId,
     },
     Tempo {
         #[structopt(index = 1)]
@@ -36,30 +38,30 @@ pub enum RyvmCommand {
     Number { num: f32 },
     #[structopt(about = "A sine wave synthesizer")]
     Sine {
-        input: String,
+        input: InstrId,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A square wave synthesizer")]
     Square {
-        input: String,
+        input: InstrId,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A saw wave synthesizer")]
     Saw {
-        input: String,
+        input: InstrId,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A triangle wave synthesizer", alias = "tri")]
     Triangle {
-        input: String,
+        input: InstrId,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A mixer")]
-    Mixer { inputs: Vec<String> },
+    Mixer { inputs: Vec<InstrId> },
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Use you computer kyeboard as a music keyboard")]
     Keyboard {
@@ -82,16 +84,16 @@ pub enum RyvmCommand {
     },
     Loop {
         #[structopt(index = 1)]
-        input: String,
+        input: InstrId,
         #[structopt(index = 2)]
         measures: u8,
     },
     Start {
         #[structopt(index = 1, required = true)]
-        inputs: Vec<String>,
+        inputs: Vec<InstrId>,
     },
     Stop {
         #[structopt(index = 1, required = true)]
-        inputs: Vec<String>,
+        inputs: Vec<InstrId>,
     },
 }

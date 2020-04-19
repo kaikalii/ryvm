@@ -106,7 +106,7 @@ impl Instruments {
     {
         self.map.insert(id.into(), instr);
     }
-    pub fn add_wrapper<I, F>(&mut self, id: I, build_instr: F)
+    pub fn add_wrapper<I, F>(&mut self, _id: I, _build_instr: F)
     where
         I: Into<InstrId>,
         F: FnOnce(InstrId) -> Instrument,
@@ -124,15 +124,15 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop<I>(&mut self, loop_id: Option<String>, id: I, measures: u8)
+    pub fn add_loop<I>(&mut self, loop_id: Option<InstrId>, id: I, measures: u8)
     where
         I: Into<InstrId>,
     {
         // Create new loop id
         let id = id.into();
-        let mut i = 1;
+        let mut i = 0;
         let loop_id = loop_id.unwrap_or_else(|| loop {
-            let possible = format!("loop{}", i);
+            let possible = id.as_loop(i);
             if self.get(&possible).is_none() {
                 break possible;
             }
@@ -305,12 +305,18 @@ impl Instruments {
                 }
                 RyvmCommand::Mixer { inputs } => self.add(
                     name,
-                    Instrument::Mixer(inputs.into_iter().zip(repeat(Balance::default())).collect()),
+                    Instrument::Mixer(
+                        inputs
+                            .into_iter()
+                            .map(Into::into)
+                            .zip(repeat(Balance::default()))
+                            .collect(),
+                    ),
                 ),
                 #[cfg(feature = "keyboard")]
                 RyvmCommand::Keyboard { octave } => self.add(
                     name.clone(),
-                    Instrument::Keyboard(Keyboard::new(&name, octave.unwrap_or(4))),
+                    Instrument::Keyboard(Keyboard::new(&name.to_string(), octave.unwrap_or(4))),
                 ),
                 RyvmCommand::Drums => {
                     self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
@@ -378,7 +384,7 @@ impl Instruments {
                 }
                 Instrument::Mixer(inputs) => {
                     for input in app.inputs {
-                        let balance = inputs.entry(input).or_insert_with(Balance::default);
+                        let balance = inputs.entry(input.into()).or_insert_with(Balance::default);
                         if let Some(volume) = app.volume {
                             balance.volume = volume;
                         }
@@ -387,12 +393,12 @@ impl Instruments {
                         }
                     }
                     for input in app.remove {
-                        inputs.remove(&input);
+                        inputs.remove(&input.into());
                     }
                 }
                 Instrument::Wave { input, .. } => {
                     if let Some(new_input) = app.inputs.into_iter().next() {
-                        *input = new_input;
+                        *input = new_input.into();
                     }
                 }
                 #[cfg(feature = "keyboard")]

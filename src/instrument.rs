@@ -170,6 +170,12 @@ pub struct LoopFrame {
     pub(crate) new: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FilterSetting {
+    Id(InstrId),
+    Static(SampleType),
+}
+
 /// An instrument for producing sounds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -194,6 +200,12 @@ pub enum Instrument {
         recording: bool,
         playing: bool,
         frames: CloneLock<Vec<LoopFrame>>,
+    },
+    Filter {
+        input: InstrId,
+        setting: FilterSetting,
+        #[serde(skip)]
+        avg: Option<SampleType>,
     },
 }
 
@@ -352,6 +364,11 @@ impl Instrument {
                     Vec::new()
                 }
             }
+            Instrument::Filter {
+                input,
+                setting,
+                avg,
+            } => unimplemented!(),
         }
     }
     pub fn set(&mut self, num: SampleType) {

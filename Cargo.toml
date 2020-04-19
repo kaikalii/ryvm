@@ -10,7 +10,8 @@ indexmap = {  version = '*', features = ['serde-1'] }
 itertools = '*'
 structopt = { version = '*', default-features = false }
 piston_window = { version = '*', optional = true }
-outsource = { path = "../outsource" }
+outsource = { path = '../outsource' }
+find_folder = '*'
 
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']

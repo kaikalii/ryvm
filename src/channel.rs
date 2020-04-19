@@ -107,6 +107,9 @@ impl<T> Channels<T> {
     pub fn frames(&self) -> hash_map::Values<ChannelId, T> {
         self.0.values()
     }
+    pub fn entry(&mut self, id: ChannelId) -> hash_map::Entry<ChannelId, T> {
+        self.0.entry(id)
+    }
     pub fn map<F>(&self, mut f: F) -> Channels<T>
     where
         F: FnMut(&T) -> T,

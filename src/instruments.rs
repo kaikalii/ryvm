@@ -106,6 +106,13 @@ impl Instruments {
     {
         self.map.insert(id.into(), instr);
     }
+    pub fn add_wrapper<I, F>(&mut self, id: I, build_instr: F)
+    where
+        I: Into<InstrId>,
+        F: FnOnce(InstrId) -> Instrument,
+    {
+        unimplemented!()
+    }
     fn update_loops(&mut self) {
         self.loops.clear();
         for (id, instr) in &self.map {

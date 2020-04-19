@@ -130,7 +130,7 @@ pub enum Instrument {
         input: InstrId,
         setting: FilterSetting,
         #[serde(skip)]
-        avg: Option<SampleType>,
+        avgs: Arc<CloneLock<Channels<Voice>>>,
     },
 }
 
@@ -292,7 +292,24 @@ impl Instrument {
                     Channels::new()
                 }
             }
-            Instrument::Filter { .. } => unimplemented!(),
+            Instrument::Filter {
+                input,
+                setting: _s,
+                avgs,
+            } => {
+                let input_channels = instruments.next_from(&*input, cache);
+                let mut avgs = avgs.lock();
+                input_channels
+                    .iter()
+                    .map(|(id, frame)| {
+                        let avg_factor = 0.5;
+                        let avg = avgs.entry(id.clone()).or_insert(frame.first);
+                        avg.left = avg.left * (1.0 - avg_factor) + frame.first.left * avg_factor;
+                        avg.right = avg.right * (1.0 - avg_factor) + frame.first.right * avg_factor;
+                        (id.clone(), Frame::from(*avg))
+                    })
+                    .collect()
+            }
         }
     }
     pub fn set(&mut self, num: SampleType) {

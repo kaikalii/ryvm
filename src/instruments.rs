@@ -15,10 +15,10 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FilterSetting, FrameCache, InstrId, InstrIdType,
-    Instrument, KeyboardCommand, LoopFrame, MixerCommand, NumberCommand, RyvmApp, RyvmCommand,
-    Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, WaveForm, SAMPLE_EPSILON,
-    SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FilterSetting, FrameCache,
+    InstrId, InstrIdType, Instrument, KeyboardCommand, LoopFrame, MixerCommand, NumberCommand,
+    RyvmApp, RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, WaveForm,
+    SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -457,6 +457,16 @@ impl Instruments {
                 },
                 Instrument::Wave { input, .. } => match WaveCommand::from_iter_safe(args) {
                     Ok(com) => *input = com.input,
+                    Err(e) => println!("{}", e),
+                },
+                Instrument::Filter { setting, .. } => match FilterCommand::from_iter_safe(args) {
+                    Ok(com) => {
+                        if let Some(input) = com.input {
+                            *setting = FilterSetting::Id(input)
+                        } else if let Some(f) = com.setting {
+                            *setting = FilterSetting::Static(f)
+                        }
+                    }
                     Err(e) => println!("{}", e),
                 },
                 #[cfg(feature = "keyboard")]

@@ -120,6 +120,14 @@ pub struct MixerCommand {
     pub remove: bool,
 }
 
+#[derive(Debug, StructOpt)]
+pub struct FilterCommand {
+    #[structopt(long, short)]
+    pub input: Option<InstrId>,
+    #[structopt(long, short)]
+    pub setting: Option<f32>,
+}
+
 #[cfg(feature = "keyboard")]
 #[derive(Debug, StructOpt)]
 pub struct KeyboardCommand {

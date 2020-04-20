@@ -11,7 +11,8 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::{freq, Keyboard};
 use crate::{
-    Channels, CloneLock, Frame, FrameCache, InstrId, Instruments, Sampling, U32Lock, Voice,
+    Channels, CloneLock, Frame, FrameCache, InstrId, InstrIdRef, Instruments, Sampling, U32Lock,
+    Voice,
 };
 
 pub type SampleType = f32;
@@ -318,6 +319,14 @@ impl Instrument {
                     })
                     .collect()
             }
+        }
+    }
+    pub fn inputs(&self) -> Vec<InstrIdRef> {
+        match self {
+            Instrument::Wave { input, .. } => vec![input.as_ref()],
+            Instrument::Mixer(inputs) => inputs.keys().map(InstrId::as_ref).collect(),
+            Instrument::Filter { input, .. } => vec![input.as_ref()],
+            _ => Vec::new(),
         }
     }
     pub fn set(&mut self, num: SampleType) {

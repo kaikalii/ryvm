@@ -29,17 +29,16 @@ fn main() {
     loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
-            let args = once("ryvm".into()).chain(parse_args(&text));
-            match RyvmApp::from_iter_safe(args) {
-                Ok(app) => match app {
-                    RyvmApp {
-                        command: Some(RyvmCommand::Quit),
-                        ..
-                    } => break,
-                    app => instruments.update(|instrs| instrs.queue_command(app)),
-                },
-                Err(e) => println!("{}", e),
+            let args: Vec<String> = once("ryvm".into()).chain(parse_args(&text)).collect();
+            let app = RyvmApp::from_iter_safe(&args);
+            if let Ok(RyvmApp {
+                command: Some(RyvmCommand::Quit),
+                ..
+            }) = &app
+            {
+                break;
             }
+            instruments.update(|instrs| instrs.queue_command(args, app));
             // instruments.update(|instrs| println!("{:#?}", instrs));
         }
         // Sleep

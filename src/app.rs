@@ -8,8 +8,6 @@ use crate::InstrId;
 pub struct RyvmApp {
     #[structopt(index = 1)]
     pub name: Option<InstrId>,
-    #[structopt(long, short)]
-    pub octave: Option<u8>,
     #[structopt(subcommand)]
     pub command: Option<RyvmCommand>,
 }

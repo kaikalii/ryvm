@@ -427,56 +427,57 @@ impl Instruments {
             }
         }
     }
-    fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) {
+    fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> clap::Result<bool> {
         let args = &args[1..];
         if let Some(instr) = self.get_mut(name) {
             match instr {
-                Instrument::Number(num) => match NumberCommand::from_iter_safe(args) {
-                    Ok(com) => *num = com.val,
-                    Err(e) => println!("{}", e),
-                },
-                Instrument::Mixer(inputs) => match MixerCommand::from_iter_safe(args) {
-                    Ok(com) => {
-                        if com.remove {
-                            for input in com.inputs {
-                                inputs.remove(&input);
+                Instrument::Number(num) => {
+                    let com = NumberCommand::from_iter_safe(args)?;
+                    *num = com.val;
+                }
+                Instrument::Mixer(inputs) => {
+                    let com = MixerCommand::from_iter_safe(args)?;
+
+                    if com.remove {
+                        for input in com.inputs {
+                            inputs.remove(&input);
+                        }
+                    } else {
+                        for input in com.inputs {
+                            let balance = inputs.entry(input).or_insert_with(Balance::default);
+                            if let Some(volume) = com.volume {
+                                balance.volume = volume;
                             }
-                        } else {
-                            for input in com.inputs {
-                                let balance = inputs.entry(input).or_insert_with(Balance::default);
-                                if let Some(volume) = com.volume {
-                                    balance.volume = volume;
-                                }
-                                if let Some(pan) = com.pan {
-                                    balance.pan = pan;
-                                }
+                            if let Some(pan) = com.pan {
+                                balance.pan = pan;
                             }
                         }
                     }
-                    Err(e) => println!("{}", e),
-                },
-                Instrument::Wave { input, .. } => match WaveCommand::from_iter_safe(args) {
-                    Ok(com) => *input = com.input,
-                    Err(e) => println!("{}", e),
-                },
-                Instrument::Filter { setting, .. } => match FilterCommand::from_iter_safe(args) {
-                    Ok(com) => {
-                        if let Some(input) = com.input {
-                            *setting = FilterSetting::Id(input)
-                        } else if let Some(f) = com.setting {
-                            *setting = FilterSetting::Static(f)
-                        }
+                }
+                Instrument::Wave { input, .. } => {
+                    let com = WaveCommand::from_iter_safe(args)?;
+                    *input = com.input;
+                }
+                Instrument::Filter { setting, .. } => {
+                    let com = FilterCommand::from_iter_safe(args)?;
+
+                    if let Some(input) = com.input {
+                        *setting = FilterSetting::Id(input)
+                    } else if let Some(f) = com.setting {
+                        *setting = FilterSetting::Static(f)
                     }
-                    Err(e) => println!("{}", e),
-                },
+                }
                 #[cfg(feature = "keyboard")]
-                Instrument::Keyboard(keyboard) => match KeyboardCommand::from_iter_safe(args) {
-                    Ok(com) => keyboard.set_base_octave(com.octave),
-                    Err(e) => println!("{}", e),
-                },
+                Instrument::Keyboard(keyboard) => {
+                    let com = KeyboardCommand::from_iter_safe(args)?;
+                    keyboard.set_base_octave(com.octave);
+                }
                 Instrument::Loop { .. } => unreachable!(),
-                _ => {}
+                _ => return Ok(false),
             }
+            Ok(true)
+        } else {
+            Ok(false)
         }
     }
     fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmApp>) {
@@ -491,10 +492,26 @@ impl Instruments {
                 name: Some(name),
                 command: None,
                 ..
-            }) => self.process_instr_command(name, args),
+            }) => match self.process_instr_command(name.clone(), args) {
+                Ok(false) => println!("Unknown instrument \"{}\"", name),
+                Err(e) => println!("{}", e),
+                _ => {}
+            },
             Ok(_) => {}
+            Err(
+                e
+                @
+                clap::Error {
+                    kind: clap::ErrorKind::HelpDisplayed,
+                    ..
+                },
+            ) => println!("{}", e),
             Err(e) => match args.as_slice() {
-                [_, name, ..] => self.process_instr_command(name.parse().unwrap(), args),
+                [_, name, ..] => match self.process_instr_command(name.parse().unwrap(), args) {
+                    Ok(false) => println!("{}", e),
+                    Err(e) => println!("{}", e),
+                    _ => {}
+                },
                 _ => println!("{}", e),
             },
         }

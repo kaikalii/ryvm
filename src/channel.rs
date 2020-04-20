@@ -10,11 +10,17 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::SampleType;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InstrIdType {
     Base,
-    Sub(String),
+    Filter(u8),
     Loop(u8),
+}
+
+impl InstrIdType {
+    pub fn is_loop(self) -> bool {
+        matches!(self, InstrIdType::Loop(_))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -48,19 +54,16 @@ impl InstrId {
             ty: InstrIdType::Loop(loop_num),
         }
     }
-    pub fn sub<S>(&self, sub_name: S) -> Self
-    where
-        S: Into<String>,
-    {
+    pub fn filter(&self, filter_num: u8) -> Self {
         InstrId {
             name: self.name.clone(),
-            ty: InstrIdType::Sub(sub_name.into()),
+            ty: InstrIdType::Filter(filter_num),
         }
     }
     pub fn as_ref(&self) -> InstrIdRef {
         InstrIdRef {
             name: self.name.as_ref(),
-            ty: &self.ty,
+            ty: self.ty,
         }
     }
 }
@@ -81,10 +84,18 @@ impl FromStr for InstrId {
         let name = iter.next().map(Into::into).unwrap_or_default();
         Ok(InstrId {
             name,
-            ty: if let Some(sub_name) = iter.next() {
-                InstrIdType::Sub(sub_name.into())
-            } else {
-                InstrIdType::Base
+            ty: {
+                if let Some(sub) = iter.next() {
+                    const FILTER: &str = "filter";
+                    if sub.starts_with(FILTER) {
+                        let n = sub[FILTER.len()..].parse::<u8>().unwrap_or(0);
+                        InstrIdType::Filter(n)
+                    } else {
+                        InstrIdType::Base
+                    }
+                } else {
+                    InstrIdType::Base
+                }
             },
         })
     }
@@ -94,7 +105,7 @@ impl<'a> From<&'a InstrId> for InstrId {
     fn from(id_ref: &'a InstrId) -> Self {
         InstrId {
             name: id_ref.name.to_owned(),
-            ty: id_ref.ty.clone(),
+            ty: id_ref.ty,
         }
     }
 }
@@ -108,14 +119,14 @@ impl fmt::Display for InstrId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InstrIdRef<'a> {
     name: &'a str,
-    ty: &'a InstrIdType,
+    ty: InstrIdType,
 }
 
 impl<'a> fmt::Display for InstrIdRef<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.ty {
             InstrIdType::Base => write!(f, "{}", self.name),
-            InstrIdType::Sub(sub_name) => write!(f, "{}-{}", self.name, sub_name),
+            InstrIdType::Filter(i) => write!(f, "{}-filter{}", self.name, i),
             InstrIdType::Loop(i) => write!(f, "{}-loop{}", self.name, i),
         }
     }
@@ -125,7 +136,7 @@ impl<'a> From<InstrIdRef<'a>> for InstrId {
     fn from(id_ref: InstrIdRef<'a>) -> Self {
         InstrId {
             name: id_ref.name.into(),
-            ty: id_ref.ty.clone(),
+            ty: id_ref.ty,
         }
     }
 }

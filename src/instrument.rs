@@ -162,14 +162,19 @@ impl Instrument {
         }
         self
     }
-    pub(crate) fn next(&self, cache: &mut FrameCache, instruments: &Instruments) -> Channels {
+    pub(crate) fn next(
+        &self,
+        cache: &mut FrameCache,
+        instruments: &Instruments,
+        my_id: Option<InstrId>,
+    ) -> Channels {
         match self {
             Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),
             Instrument::Wave {
                 input, form, waves, ..
             } => {
                 instruments
-                    .next_from(&*input, cache)
+                    .next_from(&*input, cache, my_id)
                     .filter_map(|input_frame| {
                         let mix_inputs: Vec<(Voice, Balance)> = input_frame
                             .iter()
@@ -206,7 +211,7 @@ impl Instrument {
             Instrument::Mixer(list) => {
                 let mut voices = Vec::new();
                 for (id, bal) in list {
-                    for frame in instruments.next_from(id, cache).frames() {
+                    for frame in instruments.next_from(id, cache, my_id.clone()).frames() {
                         voices.push((frame.first, *bal));
                     }
                 }
@@ -266,7 +271,7 @@ impl Instrument {
                     }
                 }
                 // Get input frame
-                let input_channels = instruments.next_from(&*input, cache);
+                let input_channels = instruments.next_from(&*input, cache, my_id);
                 if *recording && input_channels.primary().is_some() {
                     // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
@@ -294,15 +299,18 @@ impl Instrument {
             }
             Instrument::Filter {
                 input,
-                setting: _s,
+                setting,
                 avgs,
             } => {
-                let input_channels = instruments.next_from(&*input, cache);
+                let input_channels = instruments.next_from(&*input, cache, my_id);
                 let mut avgs = avgs.lock();
+                let avg_factor = match setting {
+                    FilterSetting::Static(f) => f,
+                    FilterSetting::Id(_) => unimplemented!(),
+                };
                 input_channels
                     .iter()
                     .map(|(id, frame)| {
-                        let avg_factor = 0.5;
                         let avg = avgs.entry(id.clone()).or_insert(frame.first);
                         avg.left = avg.left * (1.0 - avg_factor) + frame.first.left * avg_factor;
                         avg.right = avg.right * (1.0 - avg_factor) + frame.first.right * avg_factor;

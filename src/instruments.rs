@@ -3,6 +3,7 @@ use std::{
     iter::repeat,
     mem::swap,
     path::PathBuf,
+    sync::Arc,
 };
 
 use indexmap::IndexMap;
@@ -13,9 +14,9 @@ use serde_derive::{Deserialize, Serialize};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FrameCache, InstrId, Instrument, LoopFrame,
-    RyvmApp, RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveForm,
-    SAMPLE_EPSILON, SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FilterSetting, FrameCache, InstrId, InstrIdType,
+    Instrument, LoopFrame, RyvmApp, RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice,
+    WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -43,15 +44,22 @@ impl JobDescription<PathBuf> for LoadSamples {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Instruments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     output: Option<InstrId>,
-    #[serde(rename = "instruments")]
+    #[serde(
+        rename = "instruments",
+        default,
+        skip_serializing_if = "IndexMap::is_empty"
+    )]
     map: IndexMap<InstrId, Instrument>,
+    #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
+    tempo: SampleType,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    groups: HashMap<String, InstrId>,
     #[serde(skip)]
     sample_queue: Option<SampleType>,
     #[serde(skip)]
     command_queue: Vec<RyvmApp>,
-    #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
-    tempo: SampleType,
     #[serde(skip)]
     i: u32,
     #[serde(skip)]
@@ -67,9 +75,10 @@ impl Default for Instruments {
         Instruments {
             output: None,
             map: IndexMap::new(),
+            tempo: 120.0,
+            groups: HashMap::new(),
             sample_queue: None,
             command_queue: Vec::new(),
-            tempo: 120.0,
             i: 0,
             last_drums: None,
             sample_bank: Outsourcer::default(),
@@ -106,12 +115,22 @@ impl Instruments {
     {
         self.map.insert(id.into(), instr);
     }
-    pub fn add_wrapper<I, F>(&mut self, _id: I, _build_instr: F)
+    pub fn add_wrapper<F>(&mut self, input: String, sub_type: InstrIdType, build_instr: F)
     where
-        I: Into<InstrId>,
         F: FnOnce(InstrId) -> Instrument,
     {
-        unimplemented!()
+        let mut id = InstrId::new_base(&input);
+        id.ty = sub_type;
+        let old_top = if let Some(top) = self.groups.get(&input) {
+            top.clone()
+        } else if self.get(&input).is_some() {
+            input.parse().unwrap()
+        } else {
+            return;
+        };
+        let instr = build_instr(old_top);
+        self.groups.insert(input, id.clone());
+        self.add(id, instr);
     }
     fn update_loops(&mut self) {
         self.loops.clear();
@@ -156,7 +175,7 @@ impl Instruments {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Insert the loop
-        println!("Added loop {:?}", loop_id);
+        println!("Added loop {}", loop_id);
         self.map.insert(loop_id, loop_instr);
         // Update loops
         self.update_loops();
@@ -199,11 +218,26 @@ impl Instruments {
             }
         }
     }
-    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
+    pub(crate) fn next_from<'a, I>(
+        &self,
+        id: I,
+        cache: &'a mut FrameCache,
+        caller: Option<InstrId>,
+    ) -> &'a Channels
     where
         I: Into<InstrId>,
     {
         let id = id.into();
+        // Get the correct instrument
+        let use_groups = caller
+            .as_ref()
+            .map(|caller| caller.name != id.name)
+            .unwrap_or(true);
+        let id = if use_groups {
+            self.groups.get(&id.name).unwrap_or(&id)
+        } else {
+            &id
+        };
         if cache.map.contains_key(&id) {
             // Get cached result
             cache.map.get(&id).unwrap()
@@ -212,9 +246,9 @@ impl Instruments {
             &cache.default_channels
         } else {
             cache.visited.insert(id.clone());
-            if let Some(instr) = self.map.get(&id) {
+            if let Some(instr) = self.get(id) {
                 // Get the next set of channels
-                let mut channels = instr.next(cache, self);
+                let mut channels = instr.next(cache, self, Some(id.clone()));
                 // Cache this initial version
                 cache.map.insert(id.clone(), channels.clone());
                 // Append loop channels
@@ -223,7 +257,7 @@ impl Instruments {
                         if let Some(instr) = self.map.get(loop_id) {
                             channels.extend(
                                 instr
-                                    .next(cache, self)
+                                    .next(cache, self, Some(id.clone()))
                                     .into_primary()
                                     .map(|frame| (ChannelId::Loop(loop_id.clone()), frame)),
                             );
@@ -369,6 +403,18 @@ impl Instruments {
                         }
                     }
                 }
+                RyvmCommand::Filter { input, setting } => {
+                    let mut i = 0;
+                    let test_id = InstrId::new_base(&input);
+                    while self.get(test_id.filter(i)).is_some() {
+                        i += 1;
+                    }
+                    self.add_wrapper(input, InstrIdType::Filter(i), |input| Instrument::Filter {
+                        input,
+                        setting: FilterSetting::Static(setting),
+                        avgs: Arc::new(CloneLock::new(Channels::new())),
+                    })
+                }
             }
         } else if let Some(instr) = self.get_mut_skip_loops(name) {
             match instr {
@@ -436,7 +482,7 @@ impl Iterator for Instruments {
             })
             .or_else(|| {
                 if let Some(output_id) = &self.output {
-                    let channels = self.next_from(output_id, &mut cache);
+                    let channels = self.next_from(output_id, &mut cache, None);
                     let voices: Vec<(Voice, Balance)> = channels
                         .iter()
                         .map(|(_, frame)| (frame.first, Balance::default()))

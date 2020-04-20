@@ -96,4 +96,10 @@ pub enum RyvmCommand {
         #[structopt(index = 1, required = true)]
         inputs: Vec<InstrId>,
     },
+    Filter {
+        #[structopt(index = 1)]
+        input: String,
+        #[structopt(index = 2)]
+        setting: f32,
+    },
 }

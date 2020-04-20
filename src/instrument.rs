@@ -305,7 +305,7 @@ impl Instrument {
                 let input_channels = instruments.next_from(&*input, cache, my_id);
                 let mut avgs = avgs.lock();
                 let avg_factor = match setting {
-                    FilterSetting::Static(f) => f,
+                    FilterSetting::Static(f) => f.powf(2.0),
                     FilterSetting::Id(_) => unimplemented!(),
                 };
                 input_channels

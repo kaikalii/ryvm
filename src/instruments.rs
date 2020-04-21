@@ -1,12 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
     iter::repeat,
-    mem::swap,
+    mem::{discriminant, swap},
     path::PathBuf,
     sync::Arc,
 };
 
 use indexmap::IndexMap;
+use itertools::Itertools;
 use outsource::{JobDescription, Outsourcer};
 use rodio::Source;
 use serde_derive::{Deserialize, Serialize};
@@ -428,6 +429,28 @@ impl Instruments {
                     },
                     avgs: Arc::new(CloneLock::new(Channels::new())),
                 })
+            }
+            RyvmCommand::Ls { unsorted } => {
+                let print = |ids: &mut dyn Iterator<Item = &InstrId>| {
+                    for id in ids {
+                        println!("    {}", id)
+                    }
+                };
+                if unsorted {
+                    print(&mut self.map.keys());
+                } else {
+                    print(
+                        &mut self
+                            .map
+                            .iter()
+                            .sorted_by(|(a_id, a_instr), (b_id, b_instr)| {
+                                format!("{:?}", discriminant(*a_instr)).as_bytes()[14]
+                                    .cmp(&format!("{:?}", discriminant(*b_instr)).as_bytes()[14])
+                                    .then_with(|| a_id.cmp(b_id))
+                            })
+                            .map(|(id, _)| id),
+                    );
+                }
             }
         }
     }

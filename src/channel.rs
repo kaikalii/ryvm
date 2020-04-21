@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::SampleType;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum InstrIdType {
     Base,
     Filter(u8),
@@ -23,7 +23,7 @@ impl InstrIdType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct InstrId {
     pub name: String,
     pub ty: InstrIdType,

@@ -96,6 +96,10 @@ pub enum RyvmCommand {
         #[structopt(long, short)]
         number: Option<f32>,
     },
+    Ls {
+        #[structopt(long, short)]
+        unsorted: bool,
+    },
 }
 
 #[derive(Debug, StructOpt)]

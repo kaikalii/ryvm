@@ -493,7 +493,7 @@ impl Instruments {
                 command: None,
                 ..
             }) => match self.process_instr_command(name.clone(), args) {
-                Ok(false) => println!("Unknown instrument \"{}\"", name),
+                Ok(false) => println!("Unknown command or instrument \"{}\"", name),
                 Err(e) => println!("{}", e),
                 _ => {}
             },

@@ -413,7 +413,7 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Filter { input, setting } => {
+            RyvmCommand::Filter { input, id, number } => {
                 let mut i = 0;
                 let test_id = InstrId::new_base(&input);
                 while self.get(test_id.filter(i)).is_some() {
@@ -421,7 +421,11 @@ impl Instruments {
                 }
                 self.add_wrapper(input, InstrIdType::Filter(i), |input| Instrument::Filter {
                     input,
-                    setting: FilterSetting::Static(setting),
+                    setting: if let Some(id) = id {
+                        FilterSetting::Id(id)
+                    } else {
+                        FilterSetting::Static(number.unwrap_or(1.0))
+                    },
                     avgs: Arc::new(CloneLock::new(Channels::new())),
                 })
             }
@@ -461,9 +465,9 @@ impl Instruments {
                 Instrument::Filter { setting, .. } => {
                     let com = FilterCommand::from_iter_safe(args)?;
 
-                    if let Some(input) = com.input {
+                    if let Some(input) = com.id {
                         *setting = FilterSetting::Id(input)
-                    } else if let Some(f) = com.setting {
+                    } else if let Some(f) = com.number {
                         *setting = FilterSetting::Static(f)
                     }
                 }

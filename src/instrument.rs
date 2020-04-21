@@ -303,12 +303,20 @@ impl Instrument {
                 setting,
                 avgs,
             } => {
-                let input_channels = instruments.next_from(&*input, cache, my_id);
-                let mut avgs = avgs.lock();
                 let avg_factor = match setting {
-                    FilterSetting::Static(f) => f.powf(2.0),
-                    FilterSetting::Id(_) => unimplemented!(),
-                };
+                    FilterSetting::Static(f) => *f,
+                    FilterSetting::Id(filter_input) => {
+                        let filter_input_channels =
+                            instruments.next_from(filter_input, cache, my_id.clone());
+                        filter_input_channels
+                            .primary()
+                            .map(|frame| frame.first.left)
+                            .unwrap_or(1.0)
+                    }
+                }
+                .powf(2.0);
+                let input_channels = instruments.next_from(input, cache, my_id);
+                let mut avgs = avgs.lock();
                 input_channels
                     .iter()
                     .map(|(id, frame)| {

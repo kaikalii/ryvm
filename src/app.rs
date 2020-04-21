@@ -8,6 +8,8 @@ use crate::InstrId;
 pub struct RyvmApp {
     #[structopt(index = 1)]
     pub name: Option<InstrId>,
+    #[structopt(long, short)]
+    pub octave: Option<u8>,
     #[structopt(subcommand)]
     pub command: Option<RyvmCommand>,
 }
@@ -89,8 +91,10 @@ pub enum RyvmCommand {
     Filter {
         #[structopt(index = 1)]
         input: String,
-        #[structopt(index = 2)]
-        setting: f32,
+        #[structopt(long, short)]
+        id: Option<InstrId>,
+        #[structopt(long, short)]
+        number: Option<f32>,
     },
 }
 
@@ -121,9 +125,9 @@ pub struct MixerCommand {
 #[derive(Debug, StructOpt)]
 pub struct FilterCommand {
     #[structopt(long, short)]
-    pub input: Option<InstrId>,
+    pub id: Option<InstrId>,
     #[structopt(long, short)]
-    pub setting: Option<f32>,
+    pub number: Option<f32>,
 }
 
 #[cfg(feature = "keyboard")]

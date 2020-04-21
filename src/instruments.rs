@@ -570,11 +570,11 @@ impl Iterator for Instruments {
                     let channels = self.next_from(output_id, &mut cache, None);
                     let voices: Vec<(Voice, Balance)> = channels
                         .iter()
-                        .map(|(_, frame)| (frame.first, Balance::default()))
+                        .map(|(_, frame)| (frame.voice(), Balance::default()))
                         .collect();
                     if let Some(frame) = mix(&voices) {
-                        self.sample_queue = Some(frame.first.right);
-                        return Some(frame.first.left);
+                        self.sample_queue = Some(frame.right());
+                        return Some(frame.left());
                     }
                 }
                 self.sample_queue = Some(0.0);

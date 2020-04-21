@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     f32::consts::{FRAC_2_PI, PI},
-    iter::repeat,
+    iter::{once, repeat},
     sync::Arc,
 };
 
@@ -9,10 +9,10 @@ use crossbeam::sync::ShardedLock;
 use serde_derive::{Deserialize, Serialize};
 
 #[cfg(feature = "keyboard")]
-use crate::{freq, Keyboard};
+use crate::Keyboard;
 use crate::{
-    Channels, CloneLock, Frame, FrameCache, InstrId, InstrIdRef, Instruments, Sampling, U32Lock,
-    Voice,
+    Channels, CloneLock, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments, Sampling,
+    U32Lock, Voice,
 };
 
 pub type SampleType = f32;
@@ -114,6 +114,8 @@ pub enum Instrument {
         voices: u32,
         #[serde(skip)]
         waves: Vec<U32Lock>,
+        #[serde(skip)]
+        enveloper: CloneLock<Enveloper>,
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
@@ -154,6 +156,7 @@ impl Instrument {
             form,
             voices: default_voices(),
             waves: vec![U32Lock::new(0)],
+            enveloper: CloneLock::new(Enveloper::default()),
         }
     }
     pub fn voices(mut self, v: u32) -> Self {
@@ -172,21 +175,24 @@ impl Instrument {
         match self {
             Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),
             Instrument::Wave {
-                input, form, waves, ..
+                input,
+                form,
+                waves,
+                enveloper,
+                ..
             } => {
-                instruments
+                let mut enveloper = enveloper.lock();
+                let res = instruments
                     .next_from(&*input, cache, my_id)
                     .filter_map(|input_frame| {
-                        let mix_inputs: Vec<(Voice, Balance)> = input_frame
-                            .iter()
-                            .zip(waves.iter())
-                            .map(|(voice, i)| {
-                                let ix = i.load();
-                                if voice.left == 0.0 {
+                        macro_rules! build_wave {
+                            ($freq:expr, $amp:expr, $i:expr) => {{
+                                let ix = $i.load();
+                                if $freq == 0.0 {
                                     return Voice::mono(0.0);
                                 }
                                 // spc = samples per cycle
-                                let spc = SAMPLE_RATE as SampleType / voice.left;
+                                let spc = SAMPLE_RATE as SampleType / $freq;
                                 let t = ix as SampleType / spc;
                                 let s = match form {
                                     WaveForm::Sine => (t * 2.0 * PI).sin(),
@@ -200,31 +206,44 @@ impl Instrument {
                                     WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
                                     WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
                                 } * WaveForm::MIN_ENERGY
-                                    / form.energy();
-                                i.store((ix + 1) % spc as u32);
+                                    / form.energy()
+                                    * $amp;
+                                $i.store((ix + 1) % spc as u32);
                                 Voice::mono(s)
-                            })
-                            .zip(repeat(Balance::default()))
-                            .collect();
+                            }};
+                        }
+                        let mix_inputs: Vec<(Voice, Balance)> = match input_frame {
+                            Frame::Voice(voice) => once((voice.left, 1.0))
+                                .zip(waves.iter())
+                                .map(|((freq, amp), i)| build_wave!(freq, amp, i))
+                                .zip(repeat(Balance::default()))
+                                .collect(),
+                            Frame::Controls(controls) => {
+                                enveloper.register(controls.iter().copied());
+                                enveloper
+                                    .states()
+                                    .zip(waves.iter())
+                                    .map(|((freq, amp), i)| build_wave!(freq, amp, i))
+                                    .zip(repeat(Balance::default()))
+                                    .collect()
+                            }
+                        };
                         mix(&mix_inputs)
-                    })
+                    });
+                enveloper.progress();
+                res
             }
             Instrument::Mixer(list) => {
                 let mut voices = Vec::new();
                 for (id, bal) in list {
                     for frame in instruments.next_from(id, cache, my_id.clone()).frames() {
-                        voices.push((frame.first, *bal));
+                        voices.push((frame.voice(), *bal));
                     }
                 }
                 mix(&voices).into()
             }
             #[cfg(feature = "keyboard")]
-            Instrument::Keyboard(keyboard) => {
-                let freqs: Vec<SampleType> = keyboard
-                    .pressed(|set| set.iter().map(|&(letter, oct)| freq(letter, oct)).collect());
-                let voices: Vec<Voice> = freqs.into_iter().map(Voice::mono).collect();
-                Frame::multi(voices).into()
-            }
+            Instrument::Keyboard(keyboard) => Frame::controls(keyboard.controls().drain()).into(),
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
                     return Channels::new();
@@ -310,7 +329,7 @@ impl Instrument {
                             instruments.next_from(filter_input, cache, my_id.clone());
                         filter_input_channels
                             .primary()
-                            .map(|frame| frame.first.left)
+                            .map(|frame| frame.left())
                             .unwrap_or(1.0)
                     }
                 }
@@ -320,9 +339,9 @@ impl Instrument {
                 input_channels
                     .iter()
                     .map(|(id, frame)| {
-                        let avg = avgs.entry(id.clone()).or_insert(frame.first);
-                        avg.left = avg.left * (1.0 - avg_factor) + frame.first.left * avg_factor;
-                        avg.right = avg.right * (1.0 - avg_factor) + frame.first.right * avg_factor;
+                        let avg = avgs.entry(id.clone()).or_insert_with(|| frame.voice());
+                        avg.left = avg.left * (1.0 - avg_factor) + frame.left() * avg_factor;
+                        avg.right = avg.right * (1.0 - avg_factor) + frame.right() * avg_factor;
                         (id.clone(), Frame::from(*avg))
                     })
                     .collect()
@@ -354,18 +373,12 @@ pub fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
     }
     let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
         let (l, r) = bal.stereo_volume();
-        (
-            lacc + voice.left * l * voice.velocity,
-            racc + voice.right * r * voice.velocity,
-        )
+        (lacc + voice.left * l, racc + voice.right * r)
     });
     let (left_product, right_product) =
         list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
             let (l, r) = bal.stereo_volume();
-            (
-                lacc * voice.left * l * voice.velocity,
-                racc * voice.right * r * voice.velocity,
-            )
+            (lacc * voice.left * l, racc * voice.right * r)
         });
     Some(
         Voice::stereo(

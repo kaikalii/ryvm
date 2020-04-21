@@ -8,7 +8,7 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::SampleType;
+use crate::{Letter, SampleType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum InstrIdType {
@@ -145,68 +145,68 @@ impl<'a> From<InstrIdRef<'a>> for InstrId {
 pub struct Voice {
     pub left: SampleType,
     pub right: SampleType,
-    pub velocity: SampleType,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Frame {
-    pub first: Voice,
-    pub extra: Vec<Voice>,
 }
 
 impl Voice {
     pub fn stereo(left: SampleType, right: SampleType) -> Self {
-        Voice {
-            left,
-            right,
-            velocity: 1.0,
-        }
+        Voice { left, right }
     }
     pub fn mono(both: SampleType) -> Self {
         Voice::stereo(both, both)
     }
-    pub fn velocity(self, velocity: SampleType) -> Self {
-        Voice { velocity, ..self }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Control {
+    StartNote(Letter, u8, u8),
+    EndNote(Letter, u8),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Frame {
+    Voice(Voice),
+    Controls(Vec<Control>),
+}
+
+impl Default for Frame {
+    fn default() -> Self {
+        Frame::Voice(Voice::default())
     }
 }
 
 impl Frame {
-    pub fn multi<I>(iter: I) -> Option<Self>
-    where
-        I: IntoIterator<Item = Voice>,
-    {
-        let mut iter = iter.into_iter();
-        let mut frame = Frame {
-            first: Voice::default(),
-            extra: Vec::new(),
-        };
-        if let Some(first) = iter.next() {
-            frame.first = first;
-            frame.extra.extend(iter);
-            Some(frame)
+    pub fn left(&self) -> SampleType {
+        if let Frame::Voice(voice) = self {
+            voice.left
         } else {
-            None
+            0.0
         }
     }
-    pub fn iter(&self) -> impl Iterator<Item = Voice> + '_ {
-        once(self.first).chain(self.extra.iter().copied())
+    pub fn right(&self) -> SampleType {
+        if let Frame::Voice(voice) = self {
+            voice.right
+        } else {
+            0.0
+        }
     }
-}
-
-impl IntoIterator for Frame {
-    type Item = Voice;
-    type IntoIter = Box<dyn Iterator<Item = Voice>>;
-    fn into_iter(self) -> Self::IntoIter {
-        Box::new(once(self.first).chain(self.extra.into_iter()))
+    pub fn voice(&self) -> Voice {
+        if let Frame::Voice(voice) = self {
+            *voice
+        } else {
+            Default::default()
+        }
+    }
+    pub fn controls<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Control>,
+    {
+        Frame::Controls(iter.into_iter().collect())
     }
 }
 
 impl From<Voice> for Frame {
     fn from(voice: Voice) -> Self {
-        Frame {
-            first: voice,
-            extra: Vec::new(),
-        }
+        Frame::Voice(voice)
     }
 }
 

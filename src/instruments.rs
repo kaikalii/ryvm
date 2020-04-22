@@ -560,16 +560,24 @@ impl Instruments {
     }
     fn print_tree(&self, root: InstrId, depth: usize) {
         let exists = self.get(&root).is_some();
-        println!(
+        print!(
             "{}{}{}",
             (0..(2 * depth)).map(|_| ' ').collect::<String>(),
             root,
             if exists { "" } else { "?" }
         );
-        if let Some(instr) = self.get(root) {
+        if let Some(instr) = self.get(&root) {
+            if let Some(loops) = self.loops.get(&root) {
+                for loop_id in loops {
+                    print!(" ({})", loop_id);
+                }
+            }
+            println!();
             for input in instr.inputs() {
                 self.print_tree(input.into(), depth + 1);
             }
+        } else {
+            println!();
         }
     }
 }
@@ -598,8 +606,8 @@ impl Iterator for Instruments {
                 if let Some(output_id) = &self.output {
                     let channels = self.next_from(output_id, &mut cache);
                     let voices: Vec<(Voice, Balance)> = channels
-                        .iter()
-                        .map(|(_, frame)| (frame.voice(), Balance::default()))
+                        .frames()
+                        .map(|frame| (frame.voice(), Balance::default()))
                         .collect();
                     if let Some(frame) = mix(&voices) {
                         self.sample_queue = Some(frame.right());

@@ -80,23 +80,39 @@ where
 impl FromStr for InstrId {
     type Err = Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut iter = s.split('-').filter(|s| !s.is_empty());
-        let name = iter.next().map(Into::into).unwrap_or_default();
-        Ok(InstrId {
-            name,
-            ty: {
-                if let Some(sub) = iter.next() {
-                    const FILTER: &str = "filter";
-                    if sub.starts_with(FILTER) {
-                        let n = sub[FILTER.len()..].parse::<u8>().unwrap_or(0);
-                        InstrIdType::Filter(n)
+        let mut name = String::new();
+        let mut secondary = String::new();
+        let mut is_loop = false;
+        let mut is_filter = false;
+        for c in s.chars() {
+            match c {
+                '#' => is_filter = true,
+                '@' => is_loop = true,
+                c => {
+                    if is_filter || is_loop {
+                        secondary.push(c);
                     } else {
-                        InstrIdType::Base
+                        name.push(c);
                     }
-                } else {
-                    InstrIdType::Base
                 }
-            },
+            }
+        }
+        Ok(if let Ok(i) = secondary.parse::<u8>() {
+            if is_filter {
+                InstrId {
+                    name,
+                    ty: InstrIdType::Filter(i),
+                }
+            } else if is_loop {
+                InstrId {
+                    name,
+                    ty: InstrIdType::Loop(i),
+                }
+            } else {
+                InstrId::new_base(name)
+            }
+        } else {
+            InstrId::new_base(name)
         })
     }
 }
@@ -126,8 +142,8 @@ impl<'a> fmt::Display for InstrIdRef<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.ty {
             InstrIdType::Base => write!(f, "{}", self.name),
-            InstrIdType::Filter(i) => write!(f, "{}-filter{}", self.name, i),
-            InstrIdType::Loop(i) => write!(f, "{}-loop{}", self.name, i),
+            InstrIdType::Filter(i) => write!(f, "{}#{}", self.name, i),
+            InstrIdType::Loop(i) => write!(f, "{}@{}", self.name, i),
         }
     }
 }
@@ -211,6 +227,12 @@ impl Frame {
         I: IntoIterator<Item = Control>,
     {
         Frame::Controls(iter.into_iter().collect())
+    }
+    pub fn is_some(&self) -> bool {
+        match self {
+            Frame::Voice(_) => true,
+            Frame::Controls(controls) => !controls.is_empty(),
+        }
     }
 }
 

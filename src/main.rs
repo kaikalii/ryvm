@@ -35,7 +35,7 @@ fn main() {
     let stdin = stdin_recv();
 
     // Main loop
-    loop {
+    'main_loop: loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
             for args in text.split(',').map(|text| {
@@ -45,7 +45,7 @@ fn main() {
             }) {
                 let app = RyvmCommand::from_iter_safe(&args);
                 if let Ok(RyvmCommand::Quit) = &app {
-                    break;
+                    break 'main_loop;
                 }
                 instruments.update(|instrs| instrs.queue_command(args, app));
             }

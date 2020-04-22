@@ -1,3 +1,9 @@
+[package]
+authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
+edition = '2018'
+name = 'ryvm'
+version = '0.1.0'
+
 [dependencies]
 rodio = '*'
 crossbeam = '*'
@@ -6,18 +12,12 @@ unicode_reader = '*'
 serde = '*'
 serde_derive = '*'
 serde_yaml = '*'
-indexmap = {  version = '*', features = ['serde-1'] }
+indexmap = { version = '*', features = ['serde-1'] }
 itertools = '*'
 structopt = { version = '*', default-features = false }
 piston_window = { version = '*', optional = true }
 outsource = { path = '../outsource' }
 find_folder = '*'
-
-[package]
-authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
-edition = '2018'
-name = 'ryvm'
-version = '0.1.0'
 
 [features]
 default = ['keyboard']

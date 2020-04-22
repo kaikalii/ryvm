@@ -306,7 +306,12 @@ impl Instrument {
                 }
                 // Get input frame
                 let input_channels = instruments.next_from(&*input, cache);
-                if *recording && input_channels.primary().is_some() {
+                if *recording
+                    && input_channels
+                        .primary()
+                        .map(Frame::is_some)
+                        .unwrap_or(false)
+                {
                     // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
                         frame: input_channels.primary().cloned(),

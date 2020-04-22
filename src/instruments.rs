@@ -175,7 +175,7 @@ impl Instruments {
     {
         // Create new loop id
         let input = input.into();
-        let mut i = 0;
+        let mut i = 1;
         let loop_id = loop {
             let possible = input.as_loop(i);
             if self.get(&possible).is_none() {
@@ -287,7 +287,7 @@ impl Instruments {
     #[cfg(feature = "keyboard")]
     pub fn new_keyboard(&mut self, id: Option<InstrId>, octave: Option<u8>) -> InstrId {
         let id = id.unwrap_or_else(|| {
-            let mut i = 0;
+            let mut i = 1;
             loop {
                 let possible = InstrId::from(format!("kb{}", i));
                 if self.get(&possible).is_none() {
@@ -475,7 +475,7 @@ impl Instruments {
                 }
             }
             RyvmCommand::Filter { input, value } => {
-                let mut i = 0;
+                let mut i = 1;
                 while self.get(input.as_filter(i)).is_some() {
                     i += 1;
                 }

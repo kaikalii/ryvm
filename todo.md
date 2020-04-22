@@ -1,7 +1,6 @@
 # TODO
 
-- Start loops and filters at 1
-- Put frequency resolving higher up
+- Make looping automatically target input devices
 - ADSR settings
 - Fix tempo changes with loops on control outputs
 - Scripts

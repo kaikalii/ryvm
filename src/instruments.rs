@@ -17,8 +17,8 @@ use structopt::{clap, StructOpt};
 use crate::Keyboard;
 use crate::{
     mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FrameCache, InstrId, Instrument,
-    KeyboardCommand, LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType,
-    Sampling, SourceLock, Voice, WaveCommand, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
+    LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType, Sampling, SourceLock,
+    Voice, WaveCommand, ADSR, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -285,7 +285,7 @@ impl Instruments {
         1
     }
     #[cfg(feature = "keyboard")]
-    pub fn new_keyboard(&mut self, id: Option<InstrId>, octave: Option<u8>) -> InstrId {
+    pub fn new_keyboard(&mut self, id: Option<InstrId>) -> InstrId {
         let id = id.unwrap_or_else(|| {
             let mut i = 1;
             loop {
@@ -297,12 +297,7 @@ impl Instruments {
             }
         });
         self.keyboard(|_| {});
-        self.add(
-            &id,
-            Instrument::Keyboard {
-                octave: octave.unwrap_or(3),
-            },
-        );
+        self.add(&id, Instrument::Keyboard);
         self.current_keyboard = Some(id.clone());
         id
     }
@@ -368,44 +363,30 @@ impl Instruments {
             RyvmCommand::Output { name } => self.set_output(name),
             RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
             RyvmCommand::Number { name, num } => self.add(name, Instrument::Number(num)),
-            RyvmCommand::Sine {
+            RyvmCommand::Wave {
+                waveform,
                 name,
                 input,
-                voices,
+                octave,
+                attack,
+                decay,
+                sustain,
+                release,
             } => {
-                let input = self.new_keyboard(input, None);
-                let instr = Instrument::wave(&input, WaveForm::Sine)
-                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                self.add(name, instr);
-            }
-            RyvmCommand::Square {
-                name,
-                input,
-                voices,
-            } => {
-                let input = self.new_keyboard(input, None);
-                let instr = Instrument::wave(&input, WaveForm::Square)
-                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                self.add(name, instr);
-            }
-            RyvmCommand::Saw {
-                name,
-                input,
-                voices,
-            } => {
-                let input = self.new_keyboard(input, None);
-                let instr = Instrument::wave(&input, WaveForm::Saw)
-                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                self.add(name, instr);
-            }
-            RyvmCommand::Triangle {
-                name,
-                input,
-                voices,
-            } => {
-                let input = self.new_keyboard(input, None);
-                let instr = Instrument::wave(&input, WaveForm::Triangle)
-                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
+                let input = self.new_keyboard(input);
+                let default_adsr = ADSR::default();
+                let instr = Instrument::wave(
+                    &input,
+                    waveform,
+                    octave,
+                    ADSR {
+                        attack: attack.unwrap_or(default_adsr.attack),
+                        decay: decay.unwrap_or(default_adsr.decay),
+                        sustain: sustain.unwrap_or(default_adsr.sustain),
+                        release: release.unwrap_or(default_adsr.release),
+                    },
+                )
+                .voices(self.default_voices_from(input));
                 self.add(name, instr);
             }
             RyvmCommand::Mixer { name, inputs } => self.add(
@@ -419,8 +400,8 @@ impl Instruments {
                 ),
             ),
             #[cfg(feature = "keyboard")]
-            RyvmCommand::Keyboard { name, octave } => {
-                self.new_keyboard(Some(name), octave);
+            RyvmCommand::Keyboard { name } => {
+                self.new_keyboard(Some(name));
             }
             RyvmCommand::Drums { name } => {
                 self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
@@ -551,20 +532,36 @@ impl Instruments {
                         }
                     }
                 }
-                Instrument::Wave { input, .. } => {
+                Instrument::Wave {
+                    input,
+                    enveloper,
+                    octave,
+                    ..
+                } => {
                     let com = WaveCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
-                    *input = com.input;
+                    if let Some(id) = com.input {
+                        *input = id;
+                    }
+                    if let Some(o) = com.octave {
+                        *octave = Some(o);
+                    }
+                    let mut enveloper = enveloper.lock();
+                    if let Some(attack) = com.attack {
+                        enveloper.adsr.attack = attack;
+                    }
+                    if let Some(decay) = com.decay {
+                        enveloper.adsr.decay = decay;
+                    }
+                    if let Some(sustain) = com.sustain {
+                        enveloper.adsr.sustain = sustain;
+                    }
+                    if let Some(release) = com.release {
+                        enveloper.adsr.release = release;
+                    }
                 }
                 Instrument::Filter { value, .. } => {
                     let com = FilterCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *value = com.value;
-                }
-                #[cfg(feature = "keyboard")]
-                Instrument::Keyboard { octave } => {
-                    let com = KeyboardCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
-                    if let Some(o) = com.octave {
-                        *octave = o;
-                    }
                 }
                 _ => return Err(format!("No commands available for \"{}\"", name)),
             }

@@ -1,7 +1,9 @@
 use std::{
     collections::HashMap,
     f32::consts::{FRAC_2_PI, PI},
+    fmt,
     iter::{once, repeat},
+    str::FromStr,
     sync::Arc,
 };
 
@@ -10,7 +12,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     Channels, CloneLock, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments,
-    Sampling, U32Lock, Voice,
+    Sampling, U32Lock, Voice, ADSR,
 };
 
 pub type SampleType = f32;
@@ -88,6 +90,24 @@ impl WaveForm {
     }
 }
 
+impl fmt::Display for WaveForm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", format!("{:?}", self))
+    }
+}
+
+impl FromStr for WaveForm {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "square" | "sq" => WaveForm::Square,
+            "saw" => WaveForm::Saw,
+            "triangle" | "tri" => WaveForm::Triangle,
+            _ => WaveForm::Sine,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoopFrame {
     pub(crate) frame: Option<Frame>,
@@ -106,14 +126,14 @@ pub enum Instrument {
         voices: u32,
         #[serde(skip)]
         waves: Vec<U32Lock>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        octave: Option<u8>,
         #[serde(skip)]
         enveloper: CloneLock<Enveloper>,
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
-    Keyboard {
-        octave: u8,
-    },
+    Keyboard,
     DrumMachine(Vec<Sampling>),
     Loop {
         input: InstrId,
@@ -141,7 +161,7 @@ impl Instrument {
             _ => {}
         }
     }
-    pub fn wave<I>(id: I, form: WaveForm) -> Self
+    pub fn wave<I>(id: I, form: WaveForm, octave: Option<u8>, adsr: ADSR) -> Self
     where
         I: Into<InstrId>,
     {
@@ -149,8 +169,9 @@ impl Instrument {
             input: id.into(),
             form,
             voices: default_voices(),
+            octave,
             waves: vec![U32Lock::new(0)],
-            enveloper: CloneLock::new(Enveloper::default()),
+            enveloper: CloneLock::new(Enveloper::new(adsr)),
         }
     }
     pub fn voices(mut self, v: u32) -> Self {
@@ -174,6 +195,7 @@ impl Instrument {
             Instrument::Wave {
                 input,
                 form,
+                octave,
                 waves,
                 enveloper,
                 ..
@@ -218,7 +240,7 @@ impl Instrument {
                             Frame::Controls(controls) => {
                                 enveloper.register(controls.iter().copied());
                                 enveloper
-                                    .states()
+                                    .states(octave.unwrap_or(3))
                                     .zip(waves.iter())
                                     .map(|((freq, amp), i)| build_wave!(freq, amp, i))
                                     .zip(repeat(Balance::default()))
@@ -240,19 +262,16 @@ impl Instrument {
                 mix(&voices).into()
             }
             #[cfg(feature = "keyboard")]
-            Instrument::Keyboard { octave } => {
+            Instrument::Keyboard => {
                 if instruments
                     .current_keyboard
                     .as_ref()
                     .map(|kb_id| kb_id == &my_id)
                     .unwrap_or(false)
                 {
-                    Frame::controls(instruments.keyboard(|kb| {
-                        kb.controls()
-                            .drain()
-                            .map(|con| con.add_octave(*octave))
-                            .collect::<Vec<_>>()
-                    }))
+                    Frame::controls(
+                        instruments.keyboard(|kb| kb.controls().drain().collect::<Vec<_>>()),
+                    )
                     .into()
                 } else {
                     Default::default()

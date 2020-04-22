@@ -73,7 +73,7 @@ impl Enveloper {
             }
         }
     }
-    pub fn states(&self) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
+    pub fn states(&self, base_octave: u8) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
         self.states
             .iter()
             .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
@@ -105,7 +105,7 @@ impl Enveloper {
                     }
                 };
                 if amplitude > 0.0 {
-                    Some((letter.freq(*octave), amplitude))
+                    Some((letter.freq(*octave + base_octave), amplitude))
                 } else {
                     None
                 }

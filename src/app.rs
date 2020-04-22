@@ -3,7 +3,7 @@ use std::{convert::Infallible, fmt, path::PathBuf, str::FromStr};
 use serde_derive::{Deserialize, Serialize};
 use structopt::StructOpt;
 
-use crate::{InstrId, SampleType};
+use crate::{InstrId, SampleType, WaveForm};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DynInput {
@@ -35,75 +35,59 @@ pub enum RyvmCommand {
     Quit,
     #[structopt(about = "Set the output instrument")]
     Output {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The id of the new output instrument")]
         name: InstrId,
     },
     #[structopt(about = "Set the project tempo")]
     Tempo {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The new value for the tempo")]
         tempo: f32,
     },
     #[structopt(about = "Create a number source", alias = "num")]
     Number {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The name of the number")]
         name: InstrId,
-        #[structopt(index = 2)]
+        #[structopt(index = 2, help = "The value of the number")]
         num: f32,
     },
-    #[structopt(about = "Create a sine wave synthesizer")]
-    Sine {
-        #[structopt(index = 1)]
+    #[structopt(about = "Create a wave synthesizer")]
+    Wave {
+        #[structopt(index = 1, help = "The waveform to use")]
+        waveform: WaveForm,
+        #[structopt(index = 2, help = "The name of the synthesizer")]
         name: InstrId,
-        #[structopt(index = 2)]
+        #[structopt(
+            index = 3,
+            help = "The id of the instrument supplying the frequency for the wave"
+        )]
         input: Option<InstrId>,
-        #[structopt(long, short)]
-        voices: Option<u32>,
-    },
-    #[structopt(about = "Create a square wave synthesizer")]
-    Square {
-        #[structopt(index = 1)]
-        name: InstrId,
-        #[structopt(index = 2)]
-        input: Option<InstrId>,
-        #[structopt(long, short)]
-        voices: Option<u32>,
-    },
-    #[structopt(about = "Create a saw wave synthesizer")]
-    Saw {
-        #[structopt(index = 1)]
-        name: InstrId,
-        #[structopt(index = 2)]
-        input: Option<InstrId>,
-        #[structopt(long, short)]
-        voices: Option<u32>,
-    },
-    #[structopt(about = "Create a triangle wave synthesizer", alias = "tri")]
-    Triangle {
-        #[structopt(index = 1)]
-        name: InstrId,
-        #[structopt(index = 2)]
-        input: Option<InstrId>,
-        #[structopt(long, short)]
-        voices: Option<u32>,
+        #[structopt(long, short, help = "The synth's octave")]
+        octave: Option<u8>,
+        #[structopt(long, short, help = "The synth's attack")]
+        attack: Option<SampleType>,
+        #[structopt(long, short, help = "The synth's decay")]
+        decay: Option<SampleType>,
+        #[structopt(long, short, help = "The synth's sustain")]
+        sustain: Option<SampleType>,
+        #[structopt(long, short, help = "The synth's release")]
+        release: Option<SampleType>,
     },
     #[structopt(about = "Create a mixer")]
     Mixer {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The name of the mixer")]
         name: InstrId,
-        #[structopt(index = 2)]
+        #[structopt(index = 2, help = "The mixer's inputs")]
         inputs: Vec<InstrId>,
     },
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Use you computer kyeboard as a music keyboard")]
     Keyboard {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The name of the keyboard interface")]
         name: InstrId,
-        #[structopt(long, short)]
-        octave: Option<u8>,
     },
     #[structopt(about = "Create a drum machine")]
     Drums {
-        #[structopt(index = 1)]
+        #[structopt(index = 1, help = "The name of the drum machine")]
         name: InstrId,
     },
     #[structopt(about = "Modify a drum machine")]
@@ -182,37 +166,43 @@ pub enum RyvmCommand {
 
 #[derive(Debug, StructOpt)]
 pub struct NumberCommand {
-    #[structopt(index = 1)]
+    #[structopt(index = 1, help = "Set the value of the number")]
     pub val: f32,
 }
 
 #[derive(Debug, StructOpt)]
 pub struct WaveCommand {
-    #[structopt(index = 1)]
-    pub input: InstrId,
+    #[structopt(
+        index = 1,
+        help = "The id of the instrument supplying the frequency for the wave"
+    )]
+    pub input: Option<InstrId>,
+    #[structopt(long, short, help = "Set the synth's octave")]
+    pub octave: Option<u8>,
+    #[structopt(long, short, help = "Set the synth's attack")]
+    pub attack: Option<SampleType>,
+    #[structopt(long, short, help = "Set the synth's decay")]
+    pub decay: Option<SampleType>,
+    #[structopt(long, short, help = "Set the synth's sustain")]
+    pub sustain: Option<SampleType>,
+    #[structopt(long, short, help = "Set the synth's release")]
+    pub release: Option<SampleType>,
 }
 
 #[derive(Debug, StructOpt)]
 pub struct MixerCommand {
-    #[structopt(index = 1)]
+    #[structopt(index = 1, help = "Add to the mixer's inputs")]
     pub inputs: Vec<InstrId>,
-    #[structopt(long, short)]
+    #[structopt(long, short, help = "Set the volume of the specified inputs")]
     pub volume: Option<f32>,
-    #[structopt(long, short)]
+    #[structopt(long, short, help = "Set the pan of the specified inputs")]
     pub pan: Option<f32>,
-    #[structopt(long, short)]
+    #[structopt(long, short, help = "Remove the specified inputs instead")]
     pub remove: bool,
 }
 
 #[derive(Debug, StructOpt)]
 pub struct FilterCommand {
-    #[structopt(index = 1)]
+    #[structopt(index = 1, help = "Defines filter shape")]
     pub value: DynInput,
-}
-
-#[cfg(feature = "keyboard")]
-#[derive(Debug, StructOpt)]
-pub struct KeyboardCommand {
-    #[structopt(long, short)]
-    pub octave: Option<u8>,
 }

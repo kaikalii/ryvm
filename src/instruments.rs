@@ -71,6 +71,9 @@ pub struct Instruments {
     pub(crate) sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     #[serde(skip)]
     loops: HashMap<InstrId, HashSet<InstrId>>,
+    #[cfg(feature = "keyboard")]
+    #[serde(skip)]
+    keyboard: CloneLock<Option<Keyboard>>,
 }
 
 impl Default for Instruments {
@@ -86,6 +89,8 @@ impl Default for Instruments {
             last_drums: None,
             sample_bank: Outsourcer::default(),
             loops: HashMap::new(),
+            #[cfg(feature = "keyboard")]
+            keyboard: CloneLock::new(None),
         }
     }
 }
@@ -289,7 +294,7 @@ impl Instruments {
         #[cfg(feature = "keyboard")]
         {
             if let Some(instr) = self.get_skip_loops(id) {
-                if let Instrument::Keyboard(_) = instr {
+                if let Instrument::Keyboard = instr {
                     6
                 } else {
                     1
@@ -300,6 +305,15 @@ impl Instruments {
         }
         #[cfg(not(feature = "keyboard"))]
         1
+    }
+    #[cfg(feature = "keyboard")]
+    pub fn keyboard<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&Keyboard) -> R,
+    {
+        let mut keyboard = self.keyboard.lock();
+        let keyboard = keyboard.get_or_insert_with(|| Keyboard::new("Ryvm Keyboard", 4));
+        f(keyboard)
     }
     fn process_ryvm_command(&mut self, name: Option<InstrId>, command: RyvmCommand) {
         match command {
@@ -356,10 +370,12 @@ impl Instruments {
             #[cfg(feature = "keyboard")]
             RyvmCommand::Keyboard { octave } => {
                 let name = name.unwrap_or_else(|| "kb".into());
-                self.add(
-                    name.clone(),
-                    Instrument::Keyboard(Keyboard::new(&name.to_string(), octave.unwrap_or(4))),
-                )
+                self.add(name.clone(), Instrument::Keyboard);
+                self.keyboard(|kb| {
+                    if let Some(o) = octave {
+                        kb.set_base_octave(o);
+                    }
+                });
             }
             RyvmCommand::Drums => {
                 if let Some(name) = name {
@@ -495,9 +511,9 @@ impl Instruments {
                     }
                 }
                 #[cfg(feature = "keyboard")]
-                Instrument::Keyboard(keyboard) => {
+                Instrument::Keyboard => {
                     let com = KeyboardCommand::from_iter_safe(args)?;
-                    keyboard.set_base_octave(com.octave);
+                    self.keyboard(|kb| kb.set_base_octave(com.octave));
                 }
                 Instrument::Loop { .. } => unreachable!(),
                 _ => return Ok(false),

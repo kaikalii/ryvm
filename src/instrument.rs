@@ -8,8 +8,6 @@ use std::{
 use crossbeam::sync::ShardedLock;
 use serde_derive::{Deserialize, Serialize};
 
-#[cfg(feature = "keyboard")]
-use crate::Keyboard;
 use crate::{
     Channels, CloneLock, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments, Sampling,
     U32Lock, Voice,
@@ -119,7 +117,7 @@ pub enum Instrument {
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
-    Keyboard(Keyboard),
+    Keyboard,
     DrumMachine(Vec<Sampling>),
     Loop {
         input: InstrId,
@@ -243,7 +241,10 @@ impl Instrument {
                 mix(&voices).into()
             }
             #[cfg(feature = "keyboard")]
-            Instrument::Keyboard(keyboard) => Frame::controls(keyboard.controls().drain()).into(),
+            Instrument::Keyboard => Frame::controls(
+                instruments.keyboard(|kb| kb.controls().drain().collect::<Vec<_>>()),
+            )
+            .into(),
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
                     return Channels::new();

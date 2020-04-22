@@ -404,22 +404,11 @@ pub fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
         let (l, r) = bal.stereo_volume();
         (lacc + voice.left * l, racc + voice.right * r)
     });
-    let (left_product, right_product) =
-        list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
-            let (l, r) = bal.stereo_volume();
-            (lacc * voice.left * l, racc * voice.right * r)
-        });
-    Some(
-        Voice::stereo(
-            left_sum - left_product.abs() * left_sum.signum(),
-            right_sum - right_product.abs() * right_sum.signum(),
-        )
-        .into(),
-    )
+    Some(Voice::stereo(left_sum, right_sum).into())
 }
 
 fn default_volume() -> SampleType {
-    1.0
+    0.5
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)]

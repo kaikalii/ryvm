@@ -15,8 +15,8 @@ pub struct ADSR {
 impl Default for ADSR {
     fn default() -> Self {
         ADSR {
-            attack: 0.1,
-            decay: 0.1,
+            attack: 0.05,
+            decay: 0.05,
             sustain: 0.7,
             release: 0.1,
         }
@@ -32,7 +32,7 @@ enum NoteState {
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
     pub adsr: ADSR,
-    states: HashMap<(Letter, u8), (u32, NoteState)>,
+    states: HashMap<(Letter, u8), Vec<(u32, NoteState)>>,
     i: u32,
 }
 
@@ -51,13 +51,24 @@ impl Enveloper {
         for control in iter {
             match control {
                 Control::StartNote(l, o, v) => {
-                    self.states
-                        .entry((l, o))
-                        .or_insert((self.i, NoteState::Pressed { velocity: v }));
+                    let states = self.states.entry((l, o)).or_insert_with(Vec::new);
+                    if !states
+                        .iter()
+                        .any(|(_, state)| matches!(state, NoteState::Pressed{..}))
+                    {
+                        let new_state = (self.i, NoteState::Pressed { velocity: v });
+                        states.push(new_state);
+                    }
                 }
                 Control::EndNote(l, o) => {
-                    self.states.remove(&(l, o));
-                    self.states.insert((l, o), (self.i, NoteState::Released));
+                    let states = self.states.entry((l, o)).or_insert_with(Vec::new);
+                    if let Some(i) = states
+                        .iter()
+                        .position(|(_, state)| matches!(state, NoteState::Pressed{..}))
+                    {
+                        states.remove(i);
+                        states.push((self.i, NoteState::Released));
+                    }
                 }
             }
         }
@@ -65,6 +76,7 @@ impl Enveloper {
     pub fn states(&self) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
         self.states
             .iter()
+            .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
             .filter_map(move |((letter, octave), (start, state))| {
                 let t = (self.i - *start) as SampleType / SAMPLE_RATE as SampleType;
                 let amplitude = match state {
@@ -101,13 +113,16 @@ impl Enveloper {
     pub fn progress(&mut self) {
         let i = self.i;
         let release = self.adsr.release;
-        self.states.retain(|_, (start, state)| match state {
-            NoteState::Pressed { .. } => true,
-            NoteState::Released => {
-                let t = (i - *start) as SampleType / SAMPLE_RATE as SampleType;
-                t < release
-            }
-        });
+        for states in self.states.values_mut() {
+            states.retain(|(start, state)| match state {
+                NoteState::Pressed { .. } => true,
+                NoteState::Released => {
+                    let t = (i - *start) as SampleType / SAMPLE_RATE as SampleType;
+                    t < release
+                }
+            });
+        }
+        self.states.retain(|_, states| !states.is_empty());
         self.i += 1;
     }
 }

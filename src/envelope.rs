@@ -88,7 +88,8 @@ impl Enveloper {
                             let t_after_attack = t - self.adsr.attack;
                             if t_after_attack < self.adsr.decay {
                                 (self.adsr.sustain
-                                    + (1.0 - self.adsr.sustain) * t_after_attack / self.adsr.decay)
+                                    + (1.0 - self.adsr.sustain)
+                                        * (1.0 - t_after_attack / self.adsr.decay))
                                     * velocity
                             } else {
                                 self.adsr.sustain * velocity
@@ -97,7 +98,7 @@ impl Enveloper {
                     }
                     NoteState::Released => {
                         if t < self.adsr.release {
-                            1.0 - t / self.adsr.release
+                            self.adsr.sustain * (1.0 - t / self.adsr.release)
                         } else {
                             0.0
                         }

@@ -11,8 +11,8 @@ use crossbeam::sync::ShardedLock;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    Channels, CloneLock, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments,
-    Sampling, Voice, ADSR,
+    Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef,
+    Instruments, Sampling, Voice, ADSR,
 };
 
 pub type SampleType = f32;
@@ -332,9 +332,12 @@ impl Instrument {
                 let ideal_fpl = instruments.frames_per_measure() * *measures as u32;
                 // The actual number of frames per loop
                 let actual_fpl = frames.len() as u32;
+
+                let adjust_i = |i: u32| (i as u64 * actual_fpl as u64 / ideal_fpl as u64) as u32;
+                // The index of the loop's current sample with adjusting for tempo changes
+                let raw_loop_i = instruments.i() % ideal_fpl;
                 // Calculate the index of the loop's current sample adjusting for changes in tempo
-                let loop_i = ((instruments.i() % ideal_fpl) as u64 * actual_fpl as u64
-                    / ideal_fpl as u64) as u32;
+                let loop_i = adjust_i(raw_loop_i);
                 if loop_i == 0 {
                     for frame in frames.iter_mut() {
                         frame.new = false;
@@ -368,7 +371,21 @@ impl Instrument {
                     Channels::new_empty()
                 } else if *playing {
                     // Play the loop
-                    frames[loop_i as usize].frame.clone().into()
+                    let controls: Vec<Control> = (loop_i..adjust_i(raw_loop_i + 1))
+                        .flat_map(|i| {
+                            if let Frame::Controls(controls) = &frames[i as usize].frame {
+                                controls.clone()
+                            } else {
+                                Vec::new()
+                            }
+                        })
+                        .collect();
+                    if controls.is_empty() {
+                        frames[loop_i as usize].frame.clone()
+                    } else {
+                        Frame::Controls(controls)
+                    }
+                    .into()
                 } else {
                     Channels::new_empty()
                 }

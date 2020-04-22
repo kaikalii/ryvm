@@ -257,15 +257,6 @@ impl Instruments {
             }
         }
     }
-    pub fn queue_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
-        if let Ok(RyvmCommand::Drum {
-            path: Some(path), ..
-        }) = &app
-        {
-            self.sample_bank.restart_if(path.clone(), |r| r.is_err());
-        }
-        self.command_queue.push((args, app));
-    }
     pub fn stop_recording_all(&mut self) {
         for instr in self.map.values_mut() {
             if let Instrument::Loop { recording, .. } = instr {
@@ -323,6 +314,53 @@ impl Instruments {
         let mut keyboard = self.keyboard.lock();
         let keyboard = keyboard.get_or_insert_with(|| Keyboard::new("Ryvm Keyboard"));
         f(keyboard)
+    }
+    pub fn queue_command(
+        &mut self,
+        delay: bool,
+        args: Vec<String>,
+        app: clap::Result<RyvmCommand>,
+    ) {
+        if let Ok(RyvmCommand::Drum {
+            path: Some(path), ..
+        }) = &app
+        {
+            self.sample_bank.restart_if(path.clone(), |r| r.is_err());
+        }
+        if delay {
+            self.command_queue.push((args, app));
+        } else {
+            self.process_command(args, app);
+        }
+    }
+    fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
+        self.stop_recording_all();
+        match app {
+            Ok(command) => self.process_ryvm_command(command),
+            Err(
+                e
+                @
+                clap::Error {
+                    kind: clap::ErrorKind::HelpDisplayed,
+                    ..
+                },
+            ) => println!("{}", e),
+            Err(e) => {
+                let offender = if let Some([offender, ..]) = e.info.as_ref().map(Vec::as_slice) {
+                    offender
+                } else {
+                    ""
+                };
+                match args.as_slice() {
+                    [_, name, ..] if name == offender => {
+                        if let Err(e) = self.process_instr_command(name.parse().unwrap(), args) {
+                            println!("{}", e);
+                        }
+                    }
+                    _ => println!("{}", e),
+                }
+            }
+        }
     }
     fn process_ryvm_command(&mut self, command: RyvmCommand) {
         match command {
@@ -486,16 +524,16 @@ impl Instruments {
             }
         }
     }
-    fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> clap::Result<bool> {
+    fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> Result<(), String> {
         let args = &args[1..];
-        if let Some(instr) = self.get_mut(name) {
+        if let Some(instr) = self.get_mut(&name) {
             match instr {
                 Instrument::Number(num) => {
-                    let com = NumberCommand::from_iter_safe(args)?;
+                    let com = NumberCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *num = com.val;
                 }
                 Instrument::Mixer(inputs) => {
-                    let com = MixerCommand::from_iter_safe(args)?;
+                    let com = MixerCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
 
                     if com.remove {
                         for input in com.inputs {
@@ -514,48 +552,25 @@ impl Instruments {
                     }
                 }
                 Instrument::Wave { input, .. } => {
-                    let com = WaveCommand::from_iter_safe(args)?;
+                    let com = WaveCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *input = com.input;
                 }
                 Instrument::Filter { value, .. } => {
-                    let com = FilterCommand::from_iter_safe(args)?;
+                    let com = FilterCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *value = com.value;
                 }
                 #[cfg(feature = "keyboard")]
                 Instrument::Keyboard { octave } => {
-                    let com = KeyboardCommand::from_iter_safe(args)?;
+                    let com = KeyboardCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     if let Some(o) = com.octave {
                         *octave = o;
                     }
                 }
-                Instrument::Loop { .. } => unreachable!(),
-                _ => return Ok(false),
+                _ => return Err(format!("No commands available for \"{}\"", name)),
             }
-            Ok(true)
+            Ok(())
         } else {
-            Ok(false)
-        }
-    }
-    fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
-        self.stop_recording_all();
-        match app {
-            Ok(command) => self.process_ryvm_command(command),
-            Err(
-                e
-                @
-                clap::Error {
-                    kind: clap::ErrorKind::HelpDisplayed,
-                    ..
-                },
-            ) => println!("{}", e),
-            Err(e) => match args.as_slice() {
-                [_, name, ..] => match self.process_instr_command(name.parse().unwrap(), args) {
-                    Ok(false) => println!("{}", e),
-                    Err(e) => println!("{}", e),
-                    _ => {}
-                },
-                _ => println!("{}", e),
-            },
+            Err(format!("No instrument or command \"{}\"", name))
         }
     }
     fn print_tree(&self, root: InstrId, depth: usize) {

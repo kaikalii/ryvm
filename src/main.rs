@@ -38,16 +38,15 @@ fn main() {
     'main_loop: loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
-            for args in text.split(',').map(|text| {
-                once("ryvm".into())
-                    .chain(parse_args(&text))
-                    .collect::<Vec<_>>()
+            for (delay, args) in text.split(',').map(|text| {
+                let (delay, parsed) = parse_args(text.trim());
+                (delay, once("ryvm".into()).chain(parsed).collect::<Vec<_>>())
             }) {
                 let app = RyvmCommand::from_iter_safe(&args);
                 if let Ok(RyvmCommand::Quit) = &app {
                     break 'main_loop;
                 }
-                instruments.update(|instrs| instrs.queue_command(args, app));
+                instruments.update(|instrs| instrs.queue_command(delay, args, app));
             }
             // instruments.update(|instrs| println!("{:#?}", instrs));
         }

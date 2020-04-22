@@ -9,10 +9,11 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-pub fn parse_args(s: &str) -> Vec<String> {
+pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     let mut args = Vec::new();
     let mut in_quotes = false;
     let mut arg = String::new();
+    let mut delay = false;
     macro_rules! insert_arg {
         () => {{
             let mut next_arg = String::new();
@@ -30,6 +31,7 @@ pub fn parse_args(s: &str) -> Vec<String> {
                     in_quotes = true;
                 }
             }
+            '`' => delay = true,
             c if c.is_whitespace() => {
                 if in_quotes {
                     arg.push(c)
@@ -43,7 +45,7 @@ pub fn parse_args(s: &str) -> Vec<String> {
     if !arg.is_empty() {
         insert_arg!();
     }
-    args
+    (delay, args)
 }
 
 pub enum Delayed<T> {

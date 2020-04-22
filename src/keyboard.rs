@@ -29,7 +29,7 @@ impl Keyboard {
         let controls_clone = Arc::clone(&controls);
         let handle = thread::spawn(move || {
             let mut window: PistonWindow =
-                WindowSettings::new(name_string, [400; 2]).build().unwrap();
+                WindowSettings::new(name_string, [400; 2]).automatic_close(false).build().unwrap();
             while let Some(event) = window.next() {
                 // Clear
                 window.draw_2d(&event, |_, graphics, _| clear([0.0; 4], graphics));

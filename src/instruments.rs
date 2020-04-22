@@ -378,7 +378,11 @@ impl Instruments {
                 sustain,
                 release,
             } => {
-                let input = self.new_keyboard(input);
+                let input = if let Some(input) = input {
+                    input
+                } else {
+                    self.new_keyboard(input)
+                };
                 let default_adsr = ADSR::default();
                 let instr = Instrument::wave(
                     &input,

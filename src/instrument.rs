@@ -97,13 +97,14 @@ impl fmt::Display for WaveForm {
 }
 
 impl FromStr for WaveForm {
-    type Err = std::convert::Infallible;
+    type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(match s.to_lowercase().as_str() {
             "square" | "sq" => WaveForm::Square,
             "saw" => WaveForm::Saw,
             "triangle" | "tri" => WaveForm::Triangle,
-            _ => WaveForm::Sine,
+            "sine" | "sin" => WaveForm::Sine,
+            _ => return Err(format!("Unknown waveform {:?}", s)),
         })
     }
 }
@@ -385,7 +386,13 @@ impl Instrument {
         match self {
             Instrument::Wave { input, .. } => vec![input.as_ref()],
             Instrument::Mixer(inputs) => inputs.keys().map(InstrId::as_ref).collect(),
-            Instrument::Filter { input, .. } => vec![input.as_ref()],
+            Instrument::Filter { input, value, .. } => once(input.as_ref())
+                .chain(if let DynInput::Id(id) = value {
+                    Some(id.as_ref())
+                } else {
+                    None
+                })
+                .collect(),
             _ => Vec::new(),
         }
     }

@@ -164,6 +164,9 @@ impl Instrument {
         }
         self
     }
+    pub fn is_input_device(&self) -> bool {
+        matches!(self, Instrument::Keyboard)
+    }
     pub(crate) fn next(
         &self,
         cache: &mut FrameCache,

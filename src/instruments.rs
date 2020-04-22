@@ -140,6 +140,25 @@ impl Instruments {
         self.groups.insert(input, id.clone());
         self.add(id, instr);
     }
+    pub fn input_devices_of<I>(&self, id: I) -> Vec<InstrId>
+    where
+        I: Into<InstrId>,
+    {
+        let id = id.into();
+        if let Some(instr) = self.get(&id) {
+            if instr.is_input_device() {
+                vec![id]
+            } else {
+                instr
+                    .inputs()
+                    .into_iter()
+                    .flat_map(|id| self.input_devices_of(id))
+                    .collect()
+            }
+        } else {
+            Vec::new()
+        }
+    }
     fn update_loops(&mut self) {
         self.loops.clear();
         for (id, instr) in &self.map {

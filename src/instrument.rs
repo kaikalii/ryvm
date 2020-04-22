@@ -9,8 +9,8 @@ use crossbeam::sync::ShardedLock;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    Channels, CloneLock, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments, Sampling,
-    U32Lock, Voice,
+    Channels, CloneLock, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments,
+    Sampling, U32Lock, Voice,
 };
 
 pub type SampleType = f32;
@@ -94,12 +94,6 @@ pub struct LoopFrame {
     pub(crate) new: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FilterSetting {
-    Id(InstrId),
-    Static(SampleType),
-}
-
 /// An instrument for producing sounds
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -131,7 +125,7 @@ pub enum Instrument {
     },
     Filter {
         input: InstrId,
-        setting: FilterSetting,
+        value: DynInput,
         #[serde(skip)]
         avgs: Arc<CloneLock<Channels<Voice>>>,
     },
@@ -337,14 +331,10 @@ impl Instrument {
                     Channels::new()
                 }
             }
-            Instrument::Filter {
-                input,
-                setting,
-                avgs,
-            } => {
-                let avg_factor = match setting {
-                    FilterSetting::Static(f) => *f,
-                    FilterSetting::Id(filter_input) => {
+            Instrument::Filter { input, value, avgs } => {
+                let avg_factor = match value {
+                    DynInput::Num(f) => *f,
+                    DynInput::Id(filter_input) => {
                         let filter_input_channels = instruments.next_from(filter_input, cache);
                         filter_input_channels
                             .primary()
@@ -402,10 +392,6 @@ impl Instrument {
 }
 
 pub fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
-    // let (left_vol_sum, right_vol_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (_, bal)| {
-    //     let (l, r) = bal.stereo_volume();
-    //     (lacc + l, racc + r)
-    // });
     if list.is_empty() {
         return None;
     }

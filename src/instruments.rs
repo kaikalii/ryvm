@@ -16,10 +16,9 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FilterSetting, FrameCache,
-    InstrId, Instrument, KeyboardCommand, LoopFrame, MixerCommand, NumberCommand, RyvmApp,
-    RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, WaveForm,
-    SAMPLE_EPSILON, SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FrameCache, InstrId, Instrument,
+    KeyboardCommand, LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType,
+    Sampling, SourceLock, Voice, WaveCommand, WaveForm, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -60,7 +59,7 @@ pub struct Instruments {
     #[serde(skip)]
     sample_queue: Option<SampleType>,
     #[serde(skip)]
-    command_queue: Vec<(Vec<String>, clap::Result<RyvmApp>)>,
+    command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
     #[serde(skip)]
     i: u32,
     #[serde(skip)]
@@ -170,24 +169,24 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop<I>(&mut self, loop_id: Option<InstrId>, id: I, measures: u8)
+    pub fn add_loop<I>(&mut self, input: I, measures: u8)
     where
         I: Into<InstrId>,
     {
         // Create new loop id
-        let id = id.into();
+        let input = input.into();
         let mut i = 0;
-        let loop_id = loop_id.unwrap_or_else(|| loop {
-            let possible = id.as_loop(i);
+        let loop_id = loop {
+            let possible = input.as_loop(i);
             if self.get(&possible).is_none() {
                 break possible;
             }
             i += 1;
-        });
+        };
         // Create the loop instrument
         let frame_count = self.frames_per_measure() as usize * measures as usize;
         let loop_instr = Instrument::Loop {
-            input: id,
+            input,
             measures,
             recording: true,
             playing: true,
@@ -258,12 +257,9 @@ impl Instruments {
             }
         }
     }
-    pub fn queue_command(&mut self, args: Vec<String>, app: clap::Result<RyvmApp>) {
-        if let Ok(RyvmApp {
-            command: Some(RyvmCommand::Drum {
-                path: Some(path), ..
-            }),
-            ..
+    pub fn queue_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
+        if let Ok(RyvmCommand::Drum {
+            path: Some(path), ..
         }) = &app
         {
             self.sample_bank.restart_if(path.clone(), |r| r.is_err());
@@ -328,80 +324,79 @@ impl Instruments {
         let keyboard = keyboard.get_or_insert_with(|| Keyboard::new("Ryvm Keyboard"));
         f(keyboard)
     }
-    fn process_ryvm_command(&mut self, name: Option<InstrId>, command: RyvmCommand) {
+    fn process_ryvm_command(&mut self, command: RyvmCommand) {
         match command {
             RyvmCommand::Quit => {}
             RyvmCommand::Output { name } => self.set_output(name),
             RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
-            RyvmCommand::Number { num } => {
-                if let Some(name) = name {
-                    self.add(name, Instrument::Number(num))
-                }
-            }
-            RyvmCommand::Sine { input, voices } => {
+            RyvmCommand::Number { name, num } => self.add(name, Instrument::Number(num)),
+            RyvmCommand::Sine {
+                name,
+                input,
+                voices,
+            } => {
                 let input = self.new_keyboard(input, None);
-                if let Some(name) = name {
-                    let instr = Instrument::wave(&input, WaveForm::Sine)
-                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                    self.add(name, instr);
-                }
+                let instr = Instrument::wave(&input, WaveForm::Sine)
+                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
+                self.add(name, instr);
             }
-            RyvmCommand::Square { input, voices } => {
+            RyvmCommand::Square {
+                name,
+                input,
+                voices,
+            } => {
                 let input = self.new_keyboard(input, None);
-                if let Some(name) = name {
-                    let instr = Instrument::wave(&input, WaveForm::Square)
-                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                    self.add(name, instr);
-                }
+                let instr = Instrument::wave(&input, WaveForm::Square)
+                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
+                self.add(name, instr);
             }
-            RyvmCommand::Saw { input, voices } => {
+            RyvmCommand::Saw {
+                name,
+                input,
+                voices,
+            } => {
                 let input = self.new_keyboard(input, None);
-                if let Some(name) = name {
-                    let instr = Instrument::wave(&input, WaveForm::Saw)
-                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                    self.add(name, instr);
-                }
+                let instr = Instrument::wave(&input, WaveForm::Saw)
+                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
+                self.add(name, instr);
             }
-            RyvmCommand::Triangle { input, voices } => {
+            RyvmCommand::Triangle {
+                name,
+                input,
+                voices,
+            } => {
                 let input = self.new_keyboard(input, None);
-                if let Some(name) = name {
-                    let instr = Instrument::wave(&input, WaveForm::Triangle)
-                        .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
-                    self.add(name, instr);
-                }
+                let instr = Instrument::wave(&input, WaveForm::Triangle)
+                    .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
+                self.add(name, instr);
             }
-            RyvmCommand::Mixer { inputs } => {
-                if let Some(name) = name {
-                    self.add(
-                        name,
-                        Instrument::Mixer(
-                            inputs
-                                .into_iter()
-                                .map(Into::into)
-                                .zip(repeat(Balance::default()))
-                                .collect(),
-                        ),
-                    )
-                }
-            }
+            RyvmCommand::Mixer { name, inputs } => self.add(
+                name,
+                Instrument::Mixer(
+                    inputs
+                        .into_iter()
+                        .map(Into::into)
+                        .zip(repeat(Balance::default()))
+                        .collect(),
+                ),
+            ),
             #[cfg(feature = "keyboard")]
-            RyvmCommand::Keyboard { octave } => {
-                self.new_keyboard(name, octave);
+            RyvmCommand::Keyboard { name, octave } => {
+                self.new_keyboard(Some(name), octave);
             }
-            RyvmCommand::Drums => {
-                if let Some(name) = name {
-                    self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
-                    self.last_drums = Some(name);
-                }
+            RyvmCommand::Drums { name } => {
+                self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
+                self.last_drums = Some(name);
             }
             RyvmCommand::Drum {
+                machine_id,
                 index,
                 path,
                 beat,
                 repeat: rep,
                 remove,
             } => {
-                let name = if let Some(name) = name {
+                let name = if let Some(name) = machine_id {
                     self.last_drums = Some(name.clone());
                     name
                 } else {
@@ -426,7 +421,7 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Loop { input, measures } => self.add_loop(name, input, measures),
+            RyvmCommand::Loop { input, measures } => self.add_loop(input, measures),
             RyvmCommand::Start { inputs } => {
                 for input in inputs {
                     if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&input) {
@@ -441,7 +436,7 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Filter { input, id, number } => {
+            RyvmCommand::Filter { input, value } => {
                 let mut i = 0;
                 while self.get(input.as_filter(i)).is_some() {
                     i += 1;
@@ -449,11 +444,7 @@ impl Instruments {
                 self.add_wrapper(input.clone(), input.as_filter(i), |input| {
                     Instrument::Filter {
                         input,
-                        setting: if let Some(id) = id {
-                            FilterSetting::Id(id)
-                        } else {
-                            FilterSetting::Static(number.unwrap_or(1.0))
-                        },
+                        value,
                         avgs: Arc::new(CloneLock::new(Channels::new())),
                     }
                 })
@@ -526,14 +517,9 @@ impl Instruments {
                     let com = WaveCommand::from_iter_safe(args)?;
                     *input = com.input;
                 }
-                Instrument::Filter { setting, .. } => {
+                Instrument::Filter { value, .. } => {
                     let com = FilterCommand::from_iter_safe(args)?;
-
-                    if let Some(input) = com.id {
-                        *setting = FilterSetting::Id(input)
-                    } else if let Some(f) = com.number {
-                        *setting = FilterSetting::Static(f)
-                    }
+                    *value = com.value;
                 }
                 #[cfg(feature = "keyboard")]
                 Instrument::Keyboard { octave } => {
@@ -550,24 +536,10 @@ impl Instruments {
             Ok(false)
         }
     }
-    fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmApp>) {
+    fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
         self.stop_recording_all();
         match app {
-            Ok(RyvmApp {
-                name,
-                command: Some(command),
-                ..
-            }) => self.process_ryvm_command(name, command),
-            Ok(RyvmApp {
-                name: Some(name),
-                command: None,
-                ..
-            }) => match self.process_instr_command(name.clone(), args) {
-                Ok(false) => println!("Unknown command or instrument \"{}\"", name),
-                Err(e) => println!("{}", e),
-                _ => {}
-            },
-            Ok(_) => {}
+            Ok(command) => self.process_ryvm_command(command),
             Err(
                 e
                 @
@@ -590,7 +562,7 @@ impl Instruments {
         let exists = self.get(&root).is_some();
         println!(
             "{}{}{}",
-            (0..2).map(|_| ' ').collect::<String>(),
+            (0..(2 * depth)).map(|_| ' ').collect::<String>(),
             root,
             if exists { "" } else { "?" }
         );

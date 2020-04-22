@@ -27,7 +27,9 @@ pub enum RyvmCommand {
         tempo: f32,
     },
     #[structopt(about = "A number", alias = "num")]
-    Number { num: f32 },
+    Number {
+        num: f32,
+    },
     #[structopt(about = "A sine wave synthesizer")]
     Sine {
         #[structopt(index = 1)]
@@ -57,7 +59,9 @@ pub enum RyvmCommand {
         voices: Option<u32>,
     },
     #[structopt(about = "A mixer")]
-    Mixer { inputs: Vec<InstrId> },
+    Mixer {
+        inputs: Vec<InstrId>,
+    },
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Use you computer kyeboard as a music keyboard")]
     Keyboard {
@@ -94,7 +98,7 @@ pub enum RyvmCommand {
     },
     Filter {
         #[structopt(index = 1)]
-        input: String,
+        input: InstrId,
         #[structopt(long, short)]
         id: Option<InstrId>,
         #[structopt(long, short)]
@@ -108,6 +112,7 @@ pub enum RyvmCommand {
         #[structopt(index = 1)]
         id: InstrId,
     },
+    Tree,
 }
 
 #[derive(Debug, StructOpt)]

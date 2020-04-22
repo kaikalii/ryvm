@@ -54,7 +54,7 @@ impl InstrId {
             ty: InstrIdType::Loop(loop_num),
         }
     }
-    pub fn filter(&self, filter_num: u8) -> Self {
+    pub fn as_filter(&self, filter_num: u8) -> Self {
         InstrId {
             name: self.name.clone(),
             ty: InstrIdType::Filter(filter_num),

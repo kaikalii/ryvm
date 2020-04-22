@@ -17,8 +17,8 @@ use structopt::{clap, StructOpt};
 use crate::Keyboard;
 use crate::{
     mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FilterSetting, FrameCache,
-    InstrId, InstrIdType, Instrument, KeyboardCommand, LoopFrame, MixerCommand, NumberCommand,
-    RyvmApp, RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, WaveForm,
+    InstrId, Instrument, KeyboardCommand, LoopFrame, MixerCommand, NumberCommand, RyvmApp,
+    RyvmCommand, Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, WaveForm,
     SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
@@ -57,8 +57,6 @@ pub struct Instruments {
     map: IndexMap<InstrId, Instrument>,
     #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
     tempo: SampleType,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    groups: HashMap<String, InstrId>,
     #[serde(skip)]
     sample_queue: Option<SampleType>,
     #[serde(skip)]
@@ -85,7 +83,6 @@ impl Default for Instruments {
             output: None,
             map: IndexMap::new(),
             tempo: 120.0,
-            groups: HashMap::new(),
             sample_queue: None,
             command_queue: Vec::new(),
             i: 0,
@@ -128,22 +125,20 @@ impl Instruments {
     {
         self.map.insert(id.into(), instr);
     }
-    pub fn add_wrapper<F>(&mut self, input: String, sub_type: InstrIdType, build_instr: F)
+    pub fn add_wrapper<F>(&mut self, input: InstrId, id: InstrId, build_instr: F)
     where
         F: FnOnce(InstrId) -> Instrument,
     {
-        let mut id = InstrId::new_base(&input);
-        id.ty = sub_type;
-        let old_top = if let Some(top) = self.groups.get(&input) {
-            top.clone()
-        } else if self.get(&input).is_some() {
-            input.parse().unwrap()
-        } else {
-            return;
-        };
-        let instr = build_instr(old_top);
-        self.groups.insert(input, id.clone());
-        self.add(id, instr);
+        for instr in self.map.values_mut() {
+            instr.replace_input(input.clone(), id.clone());
+        }
+        if let Some(output) = &mut self.output {
+            if output == &input {
+                *output = id.clone();
+            }
+        }
+        let new_instr = build_instr(input);
+        self.add(id, new_instr);
     }
     pub fn input_devices_of<I>(&self, id: I) -> Vec<InstrId>
     where
@@ -224,39 +219,11 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
-    pub fn get_skip_loops<I>(&self, id: I) -> Option<&Instrument>
-    where
-        I: Into<InstrId>,
-    {
-        let mut id = id.into();
-        loop {
-            if let Some(Instrument::Loop { input, .. }) = self.get(&id) {
-                id = input.clone();
-            } else {
-                break self.get(&id);
-            }
-        }
-    }
-    pub(crate) fn next_from<'a, I>(
-        &self,
-        id: I,
-        cache: &'a mut FrameCache,
-        caller: Option<InstrId>,
-    ) -> &'a Channels
+    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
     where
         I: Into<InstrId>,
     {
         let id = id.into();
-        // Get the correct instrument
-        let use_groups = caller
-            .as_ref()
-            .map(|caller| caller.name != id.name)
-            .unwrap_or(true);
-        let id = if use_groups {
-            self.groups.get(&id.name).unwrap_or(&id)
-        } else {
-            &id
-        };
         if cache.map.contains_key(&id) {
             // Get cached result
             cache.map.get(&id).unwrap()
@@ -265,7 +232,7 @@ impl Instruments {
             &cache.default_channels
         } else {
             cache.visited.insert(id.clone());
-            if let Some(instr) = self.get(id) {
+            if let Some(instr) = self.get(&id) {
                 // Get the next set of channels
                 let mut channels = instr.next(cache, self, id.clone());
                 // Cache this initial version
@@ -317,7 +284,7 @@ impl Instruments {
     {
         #[cfg(feature = "keyboard")]
         {
-            if let Some(instr) = self.get_skip_loops(id) {
+            if let Some(instr) = self.get(id) {
                 if let Instrument::Keyboard { .. } = instr {
                     6
                 } else {
@@ -476,18 +443,19 @@ impl Instruments {
             }
             RyvmCommand::Filter { input, id, number } => {
                 let mut i = 0;
-                let test_id = InstrId::new_base(&input);
-                while self.get(test_id.filter(i)).is_some() {
+                while self.get(input.as_filter(i)).is_some() {
                     i += 1;
                 }
-                self.add_wrapper(input, InstrIdType::Filter(i), |input| Instrument::Filter {
-                    input,
-                    setting: if let Some(id) = id {
-                        FilterSetting::Id(id)
-                    } else {
-                        FilterSetting::Static(number.unwrap_or(1.0))
-                    },
-                    avgs: Arc::new(CloneLock::new(Channels::new())),
+                self.add_wrapper(input.clone(), input.as_filter(i), |input| {
+                    Instrument::Filter {
+                        input,
+                        setting: if let Some(id) = id {
+                            FilterSetting::Id(id)
+                        } else {
+                            FilterSetting::Static(number.unwrap_or(1.0))
+                        },
+                        avgs: Arc::new(CloneLock::new(Channels::new())),
+                    }
                 })
             }
             RyvmCommand::Ls { unsorted } => {
@@ -518,6 +486,11 @@ impl Instruments {
                         self.current_keyboard = Some(input);
                         break;
                     }
+                }
+            }
+            RyvmCommand::Tree => {
+                if let Some(output) = &self.output {
+                    self.print_tree(output.clone(), 0);
                 }
             }
         }
@@ -613,6 +586,20 @@ impl Instruments {
             },
         }
     }
+    fn print_tree(&self, root: InstrId, depth: usize) {
+        let exists = self.get(&root).is_some();
+        println!(
+            "{}{}{}",
+            (0..2).map(|_| ' ').collect::<String>(),
+            root,
+            if exists { "" } else { "?" }
+        );
+        if let Some(instr) = self.get(root) {
+            for input in instr.inputs() {
+                self.print_tree(input.into(), depth + 1);
+            }
+        }
+    }
 }
 
 impl Iterator for Instruments {
@@ -637,7 +624,7 @@ impl Iterator for Instruments {
             })
             .or_else(|| {
                 if let Some(output_id) = &self.output {
-                    let channels = self.next_from(output_id, &mut cache, None);
+                    let channels = self.next_from(output_id, &mut cache);
                     let voices: Vec<(Voice, Balance)> = channels
                         .iter()
                         .map(|(_, frame)| (frame.voice(), Balance::default()))

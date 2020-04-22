@@ -186,7 +186,7 @@ impl Instrument {
             } => {
                 let mut enveloper = enveloper.lock();
                 let res = instruments
-                    .next_from(&*input, cache, Some(my_id))
+                    .next_from(&*input, cache)
                     .filter_map(|input_frame| {
                         macro_rules! build_wave {
                             ($freq:expr, $amp:expr, $i:expr) => {{
@@ -239,10 +239,7 @@ impl Instrument {
             Instrument::Mixer(list) => {
                 let mut voices = Vec::new();
                 for (id, bal) in list {
-                    for frame in instruments
-                        .next_from(id, cache, Some(my_id.clone()))
-                        .frames()
-                    {
+                    for frame in instruments.next_from(id, cache).frames() {
                         voices.push((frame.voice(), *bal));
                     }
                 }
@@ -314,7 +311,7 @@ impl Instrument {
                     }
                 }
                 // Get input frame
-                let input_channels = instruments.next_from(&*input, cache, Some(my_id));
+                let input_channels = instruments.next_from(&*input, cache);
                 if *recording && input_channels.primary().is_some() {
                     // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
@@ -348,8 +345,7 @@ impl Instrument {
                 let avg_factor = match setting {
                     FilterSetting::Static(f) => *f,
                     FilterSetting::Id(filter_input) => {
-                        let filter_input_channels =
-                            instruments.next_from(filter_input, cache, Some(my_id.clone()));
+                        let filter_input_channels = instruments.next_from(filter_input, cache);
                         filter_input_channels
                             .primary()
                             .map(|frame| frame.left())
@@ -357,7 +353,7 @@ impl Instrument {
                     }
                 }
                 .powf(2.0);
-                let input_channels = instruments.next_from(input, cache, Some(my_id));
+                let input_channels = instruments.next_from(input, cache);
                 let mut avgs = avgs.lock();
                 input_channels
                     .iter()
@@ -377,6 +373,25 @@ impl Instrument {
             Instrument::Mixer(inputs) => inputs.keys().map(InstrId::as_ref).collect(),
             Instrument::Filter { input, .. } => vec![input.as_ref()],
             _ => Vec::new(),
+        }
+    }
+    pub fn replace_input(&mut self, old: InstrId, new: InstrId) {
+        let replace = |id: &mut InstrId| {
+            if id == &old {
+                *id = new.clone();
+            }
+        };
+        match self {
+            Instrument::Wave { input, .. } => replace(input),
+            Instrument::Mixer(inputs) => {
+                let mixed: Vec<_> = inputs.drain().collect();
+                for (mut id, bal) in mixed {
+                    replace(&mut id);
+                    inputs.insert(id, bal);
+                }
+            }
+            Instrument::Filter { input, .. } => replace(input),
+            _ => {}
         }
     }
     pub fn set(&mut self, num: SampleType) {

@@ -173,8 +173,17 @@ impl Instruments {
     where
         I: Into<InstrId>,
     {
+        // Create a loop for every input device of this instrument
+        for input in self.input_devices_of(input) {
+            self._add_loop(input, measures);
+        }
+        // Stop recording on all other loops
+        self.stop_recording_all();
+        // Update loops
+        self.update_loops();
+    }
+    fn _add_loop(&mut self, input: InstrId, measures: u8) {
         // Create new loop id
-        let input = input.into();
         let mut i = 1;
         let loop_id = loop {
             let possible = input.as_loop(i);
@@ -198,13 +207,9 @@ impl Instruments {
                 frame_count
             ]),
         };
-        // Stop recording on all other loops
-        self.stop_recording_all();
         // Insert the loop
         println!("Added loop {}", loop_id);
         self.map.insert(loop_id, loop_instr);
-        // Update loops
-        self.update_loops();
     }
     pub fn get<I>(&self, id: I) -> Option<&Instrument>
     where

@@ -74,6 +74,9 @@ pub struct Instruments {
     #[cfg(feature = "keyboard")]
     #[serde(skip)]
     keyboard: CloneLock<Option<Keyboard>>,
+    #[cfg(feature = "keyboard")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) current_keyboard: Option<InstrId>,
 }
 
 impl Default for Instruments {
@@ -91,6 +94,8 @@ impl Default for Instruments {
             loops: HashMap::new(),
             #[cfg(feature = "keyboard")]
             keyboard: CloneLock::new(None),
+            #[cfg(feature = "keyboard")]
+            current_keyboard: None,
         }
     }
 }
@@ -262,7 +267,7 @@ impl Instruments {
             cache.visited.insert(id.clone());
             if let Some(instr) = self.get(id) {
                 // Get the next set of channels
-                let mut channels = instr.next(cache, self, Some(id.clone()));
+                let mut channels = instr.next(cache, self, id.clone());
                 // Cache this initial version
                 cache.map.insert(id.clone(), channels.clone());
                 // Append loop channels
@@ -271,7 +276,7 @@ impl Instruments {
                         if let Some(instr) = self.map.get(loop_id) {
                             channels.extend(
                                 instr
-                                    .next(cache, self, Some(id.clone()))
+                                    .next(cache, self, id.clone())
                                     .into_primary()
                                     .map(|frame| (ChannelId::Loop(loop_id.clone()), frame)),
                             );
@@ -313,7 +318,7 @@ impl Instruments {
         #[cfg(feature = "keyboard")]
         {
             if let Some(instr) = self.get_skip_loops(id) {
-                if let Instrument::Keyboard = instr {
+                if let Instrument::Keyboard { .. } = instr {
                     6
                 } else {
                     1
@@ -326,12 +331,34 @@ impl Instruments {
         1
     }
     #[cfg(feature = "keyboard")]
+    pub fn new_keyboard(&mut self, id: Option<InstrId>, octave: Option<u8>) -> InstrId {
+        let id = id.unwrap_or_else(|| {
+            let mut i = 0;
+            loop {
+                let possible = InstrId::from(format!("kb{}", i));
+                if self.get(&possible).is_none() {
+                    break possible;
+                }
+                i += 1;
+            }
+        });
+        self.keyboard(|_| {});
+        self.add(
+            &id,
+            Instrument::Keyboard {
+                octave: octave.unwrap_or(3),
+            },
+        );
+        self.current_keyboard = Some(id.clone());
+        id
+    }
+    #[cfg(feature = "keyboard")]
     pub fn keyboard<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&Keyboard) -> R,
     {
         let mut keyboard = self.keyboard.lock();
-        let keyboard = keyboard.get_or_insert_with(|| Keyboard::new("Ryvm Keyboard", 4));
+        let keyboard = keyboard.get_or_insert_with(|| Keyboard::new("Ryvm Keyboard"));
         f(keyboard)
     }
     fn process_ryvm_command(&mut self, name: Option<InstrId>, command: RyvmCommand) {
@@ -345,6 +372,7 @@ impl Instruments {
                 }
             }
             RyvmCommand::Sine { input, voices } => {
+                let input = self.new_keyboard(input, None);
                 if let Some(name) = name {
                     let instr = Instrument::wave(&input, WaveForm::Sine)
                         .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
@@ -352,6 +380,7 @@ impl Instruments {
                 }
             }
             RyvmCommand::Square { input, voices } => {
+                let input = self.new_keyboard(input, None);
                 if let Some(name) = name {
                     let instr = Instrument::wave(&input, WaveForm::Square)
                         .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
@@ -359,6 +388,7 @@ impl Instruments {
                 }
             }
             RyvmCommand::Saw { input, voices } => {
+                let input = self.new_keyboard(input, None);
                 if let Some(name) = name {
                     let instr = Instrument::wave(&input, WaveForm::Saw)
                         .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
@@ -366,6 +396,7 @@ impl Instruments {
                 }
             }
             RyvmCommand::Triangle { input, voices } => {
+                let input = self.new_keyboard(input, None);
                 if let Some(name) = name {
                     let instr = Instrument::wave(&input, WaveForm::Triangle)
                         .voices(voices.unwrap_or_else(|| self.default_voices_from(input)));
@@ -388,13 +419,7 @@ impl Instruments {
             }
             #[cfg(feature = "keyboard")]
             RyvmCommand::Keyboard { octave } => {
-                let name = name.unwrap_or_else(|| "kb".into());
-                self.add(name.clone(), Instrument::Keyboard);
-                self.keyboard(|kb| {
-                    if let Some(o) = octave {
-                        kb.set_base_octave(o);
-                    }
-                });
+                self.new_keyboard(name, octave);
             }
             RyvmCommand::Drums => {
                 if let Some(name) = name {
@@ -487,6 +512,14 @@ impl Instruments {
                     );
                 }
             }
+            RyvmCommand::Focus { id } => {
+                for input in self.input_devices_of(id) {
+                    if let Some(Instrument::Keyboard { .. }) = self.get(&input) {
+                        self.current_keyboard = Some(input);
+                        break;
+                    }
+                }
+            }
         }
     }
     fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> clap::Result<bool> {
@@ -530,9 +563,11 @@ impl Instruments {
                     }
                 }
                 #[cfg(feature = "keyboard")]
-                Instrument::Keyboard => {
+                Instrument::Keyboard { octave } => {
                     let com = KeyboardCommand::from_iter_safe(args)?;
-                    self.keyboard(|kb| kb.set_base_octave(com.octave));
+                    if let Some(o) = com.octave {
+                        *octave = o;
+                    }
                 }
                 Instrument::Loop { .. } => unreachable!(),
                 _ => return Ok(false),

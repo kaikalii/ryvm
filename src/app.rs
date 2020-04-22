@@ -30,25 +30,29 @@ pub enum RyvmCommand {
     Number { num: f32 },
     #[structopt(about = "A sine wave synthesizer")]
     Sine {
-        input: InstrId,
+        #[structopt(index = 1)]
+        input: Option<InstrId>,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A square wave synthesizer")]
     Square {
-        input: InstrId,
+        #[structopt(index = 1)]
+        input: Option<InstrId>,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A saw wave synthesizer")]
     Saw {
-        input: InstrId,
+        #[structopt(index = 1)]
+        input: Option<InstrId>,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
     #[structopt(about = "A triangle wave synthesizer", alias = "tri")]
     Triangle {
-        input: InstrId,
+        #[structopt(index = 1)]
+        input: Option<InstrId>,
         #[structopt(long, short)]
         voices: Option<u32>,
     },
@@ -100,6 +104,10 @@ pub enum RyvmCommand {
         #[structopt(long, short)]
         unsorted: bool,
     },
+    Focus {
+        #[structopt(index = 1)]
+        id: InstrId,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -137,6 +145,6 @@ pub struct FilterCommand {
 #[cfg(feature = "keyboard")]
 #[derive(Debug, StructOpt)]
 pub struct KeyboardCommand {
-    #[structopt(index = 1)]
-    pub octave: u8,
+    #[structopt(long, short)]
+    pub octave: Option<u8>,
 }

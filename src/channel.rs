@@ -162,6 +162,16 @@ pub enum Control {
     EndNote(Letter, u8),
 }
 
+impl Control {
+    pub fn add_octave(mut self, octave: u8) -> Self {
+        match &mut self {
+            Control::StartNote(_, o, _) => *o += octave,
+            Control::EndNote(_, o) => *o += octave,
+        }
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Frame {
     Voice(Voice),

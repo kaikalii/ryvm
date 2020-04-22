@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc, Mutex, MutexGuard,
     },
     thread::{self, JoinHandle},
@@ -9,51 +9,24 @@ use std::{
 
 use once_cell::sync::Lazy;
 use piston_window::*;
-use serde_derive::{Deserialize, Serialize};
 
 use crate::{Control, Letter};
 
-/// Struct used as a definitation for serializing a keyboard
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KeyboardDef {
-    pub name: String,
-    pub base_octave: u8,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(into = "KeyboardDef", from = "KeyboardDef")]
+#[derive(Clone, Debug)]
 pub struct Keyboard {
     name: String,
-    base_octave: Arc<AtomicU8>,
     controls: Arc<Mutex<HashSet<Control>>>,
     handle: Option<Arc<JoinHandle<()>>>,
     done: Arc<AtomicBool>,
 }
 
-impl From<Keyboard> for KeyboardDef {
-    fn from(keyboard: Keyboard) -> Self {
-        KeyboardDef {
-            name: keyboard.name.clone(),
-            base_octave: keyboard.base_octave.load(Ordering::Relaxed),
-        }
-    }
-}
-
-impl From<KeyboardDef> for Keyboard {
-    fn from(def: KeyboardDef) -> Self {
-        Keyboard::new(&def.name, def.base_octave)
-    }
-}
-
 impl Keyboard {
-    pub fn new(name: &str, base_octave: u8) -> Keyboard {
+    pub fn new(name: &str) -> Keyboard {
         let done = Arc::new(AtomicBool::new(false));
         let done_clone = Arc::clone(&done);
         let name_string = name.to_string();
         let controls = Arc::new(Mutex::new(HashSet::new()));
         let controls_clone = Arc::clone(&controls);
-        let base_octave = Arc::new(AtomicU8::new(base_octave));
-        let base_octave_clone = Arc::clone(&base_octave);
         let handle = thread::spawn(move || {
             let mut window: PistonWindow =
                 WindowSettings::new(name_string, [400; 2]).build().unwrap();
@@ -73,17 +46,16 @@ impl Keyboard {
                     if let Some(&(l, o)) = KEYBINDS.get(&key) {
                         match state {
                             ButtonState::Press => {
-                                controls_clone.lock().unwrap().insert(Control::StartNote(
-                                    l,
-                                    o + base_octave_clone.load(Ordering::Relaxed),
-                                    255,
-                                ));
+                                controls_clone
+                                    .lock()
+                                    .unwrap()
+                                    .insert(Control::StartNote(l, o, 255));
                             }
                             ButtonState::Release => {
-                                controls_clone.lock().unwrap().insert(Control::EndNote(
-                                    l,
-                                    o + base_octave_clone.load(Ordering::Relaxed),
-                                ));
+                                controls_clone
+                                    .lock()
+                                    .unwrap()
+                                    .insert(Control::EndNote(l, o));
                             }
                         }
                     }
@@ -98,14 +70,10 @@ impl Keyboard {
         });
         Keyboard {
             name: name.into(),
-            base_octave,
             controls,
             handle: Some(Arc::new(handle)),
             done,
         }
-    }
-    pub fn set_base_octave(&self, base_octave: u8) {
-        self.base_octave.store(base_octave, Ordering::Relaxed);
     }
     pub fn controls(&self) -> MutexGuard<HashSet<Control>> {
         self.controls.lock().unwrap()

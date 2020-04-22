@@ -117,7 +117,9 @@ pub enum Instrument {
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
-    Keyboard,
+    Keyboard {
+        octave: u8,
+    },
     DrumMachine(Vec<Sampling>),
     Loop {
         input: InstrId,
@@ -165,13 +167,13 @@ impl Instrument {
         self
     }
     pub fn is_input_device(&self) -> bool {
-        matches!(self, Instrument::Keyboard)
+        matches!(self, Instrument::Keyboard{..})
     }
     pub(crate) fn next(
         &self,
         cache: &mut FrameCache,
         instruments: &Instruments,
-        my_id: Option<InstrId>,
+        my_id: InstrId,
     ) -> Channels {
         match self {
             Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),
@@ -184,7 +186,7 @@ impl Instrument {
             } => {
                 let mut enveloper = enveloper.lock();
                 let res = instruments
-                    .next_from(&*input, cache, my_id)
+                    .next_from(&*input, cache, Some(my_id))
                     .filter_map(|input_frame| {
                         macro_rules! build_wave {
                             ($freq:expr, $amp:expr, $i:expr) => {{
@@ -237,17 +239,34 @@ impl Instrument {
             Instrument::Mixer(list) => {
                 let mut voices = Vec::new();
                 for (id, bal) in list {
-                    for frame in instruments.next_from(id, cache, my_id.clone()).frames() {
+                    for frame in instruments
+                        .next_from(id, cache, Some(my_id.clone()))
+                        .frames()
+                    {
                         voices.push((frame.voice(), *bal));
                     }
                 }
                 mix(&voices).into()
             }
             #[cfg(feature = "keyboard")]
-            Instrument::Keyboard => Frame::controls(
-                instruments.keyboard(|kb| kb.controls().drain().collect::<Vec<_>>()),
-            )
-            .into(),
+            Instrument::Keyboard { octave } => {
+                if instruments
+                    .current_keyboard
+                    .as_ref()
+                    .map(|kb_id| kb_id == &my_id)
+                    .unwrap_or(false)
+                {
+                    Frame::controls(instruments.keyboard(|kb| {
+                        kb.controls()
+                            .drain()
+                            .map(|con| con.add_octave(*octave))
+                            .collect::<Vec<_>>()
+                    }))
+                    .into()
+                } else {
+                    Default::default()
+                }
+            }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
                     return Channels::new();
@@ -295,7 +314,7 @@ impl Instrument {
                     }
                 }
                 // Get input frame
-                let input_channels = instruments.next_from(&*input, cache, my_id);
+                let input_channels = instruments.next_from(&*input, cache, Some(my_id));
                 if *recording && input_channels.primary().is_some() {
                     // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
@@ -330,7 +349,7 @@ impl Instrument {
                     FilterSetting::Static(f) => *f,
                     FilterSetting::Id(filter_input) => {
                         let filter_input_channels =
-                            instruments.next_from(filter_input, cache, my_id.clone());
+                            instruments.next_from(filter_input, cache, Some(my_id.clone()));
                         filter_input_channels
                             .primary()
                             .map(|frame| frame.left())
@@ -338,7 +357,7 @@ impl Instrument {
                     }
                 }
                 .powf(2.0);
-                let input_channels = instruments.next_from(input, cache, my_id);
+                let input_channels = instruments.next_from(input, cache, Some(my_id));
                 let mut avgs = avgs.lock();
                 input_channels
                     .iter()

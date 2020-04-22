@@ -16,9 +16,9 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FrameCache, InstrId, Instrument,
-    LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType, Sampling, SourceLock,
-    Voice, WaveCommand, ADSR, SAMPLE_EPSILON, SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache, InstrId,
+    Instrument, LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType, Sampling,
+    SourceLock, Voice, WaveCommand, ADSR, SAMPLE_EPSILON, SAMPLE_RATE,
 };
 
 fn default_tempo() -> SampleType {
@@ -173,12 +173,12 @@ impl Instruments {
     where
         I: Into<InstrId>,
     {
+        // Stop recording on all other loops
+        self.stop_recording_all();
         // Create a loop for every input device of this instrument
         for input in self.input_devices_of(input) {
             self._add_loop(input, measures);
         }
-        // Stop recording on all other loops
-        self.stop_recording_all();
         // Update loops
         self.update_loops();
     }
@@ -201,7 +201,7 @@ impl Instruments {
             playing: true,
             frames: CloneLock::new(vec![
                 LoopFrame {
-                    frame: None,
+                    frame: Frame::None,
                     new: true,
                 };
                 frame_count
@@ -245,12 +245,11 @@ impl Instruments {
                 if let Some(loop_ids) = self.loops.get(&id) {
                     for loop_id in loop_ids {
                         if let Some(instr) = self.map.get(loop_id) {
-                            channels.extend(
-                                instr
-                                    .next(cache, self, id.clone())
-                                    .into_primary()
-                                    .map(|frame| (ChannelId::Loop(loop_id.clone()), frame)),
-                            );
+                            let loop_channel = instr
+                                .next(cache, self, loop_id.clone())
+                                .into_primary()
+                                .map(|frame| (ChannelId::Loop(loop_id.clone()), frame));
+                            channels.extend(loop_channel);
                         }
                     }
                     // Cache the result
@@ -263,8 +262,11 @@ impl Instruments {
         }
     }
     pub fn stop_recording_all(&mut self) {
-        for instr in self.map.values_mut() {
+        for (id, instr) in self.map.iter_mut() {
             if let Instrument::Loop { recording, .. } = instr {
+                if *recording {
+                    println!("Stopped recording {}", id);
+                }
                 *recording = false;
             }
         }
@@ -334,7 +336,6 @@ impl Instruments {
         }
     }
     fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
-        self.stop_recording_all();
         match app {
             Ok(command) => self.process_ryvm_command(command),
             Err(
@@ -543,7 +544,7 @@ impl Instruments {
                 }
                 Instrument::Wave {
                     input,
-                    enveloper,
+                    adsr,
                     octave,
                     ..
                 } => {
@@ -554,18 +555,17 @@ impl Instruments {
                     if let Some(o) = com.octave {
                         *octave = Some(o);
                     }
-                    let mut enveloper = enveloper.lock();
                     if let Some(attack) = com.attack {
-                        enveloper.adsr.attack = attack;
+                        adsr.attack = attack;
                     }
                     if let Some(decay) = com.decay {
-                        enveloper.adsr.decay = decay;
+                        adsr.decay = decay;
                     }
                     if let Some(sustain) = com.sustain {
-                        enveloper.adsr.sustain = sustain;
+                        adsr.sustain = sustain;
                     }
                     if let Some(release) = com.release {
-                        enveloper.adsr.release = release;
+                        adsr.release = release;
                     }
                 }
                 Instrument::Filter { value, .. } => {
@@ -630,10 +630,9 @@ impl Iterator for Instruments {
                         .frames()
                         .map(|frame| (frame.voice(), Balance::default()))
                         .collect();
-                    if let Some(frame) = mix(&voices) {
-                        self.sample_queue = Some(frame.right());
-                        return Some(frame.left());
-                    }
+                    let frame = mix(&voices);
+                    self.sample_queue = Some(frame.right());
+                    return Some(frame.left());
                 }
                 self.sample_queue = Some(0.0);
                 Some(0.0)

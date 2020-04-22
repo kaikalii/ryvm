@@ -12,7 +12,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     Channels, CloneLock, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef, Instruments,
-    Sampling, U32Lock, Voice, ADSR,
+    Sampling, Voice, ADSR,
 };
 
 pub type SampleType = f32;
@@ -111,7 +111,7 @@ impl FromStr for WaveForm {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoopFrame {
-    pub(crate) frame: Option<Frame>,
+    pub(crate) frame: Frame,
     pub(crate) new: bool,
 }
 
@@ -126,11 +126,13 @@ pub enum Instrument {
         #[serde(default = "default_voices", skip_serializing_if = "is_default_voices")]
         voices: u32,
         #[serde(skip)]
-        waves: Vec<U32Lock>,
+        waves: CloneLock<Channels<Vec<u32>>>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         octave: Option<u8>,
+        #[serde(default)]
+        adsr: ADSR,
         #[serde(skip)]
-        enveloper: CloneLock<Enveloper>,
+        envelopers: CloneLock<Channels<Enveloper>>,
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
@@ -153,15 +155,6 @@ pub enum Instrument {
 }
 
 impl Instrument {
-    #[allow(clippy::single_match)]
-    pub fn init(&mut self) {
-        match self {
-            Instrument::Wave { voices, waves, .. } => {
-                waves.resize(*voices as usize, U32Lock::new(0));
-            }
-            _ => {}
-        }
-    }
     pub fn wave<I>(id: I, form: WaveForm, octave: Option<u8>, adsr: ADSR) -> Self
     where
         I: Into<InstrId>,
@@ -171,14 +164,14 @@ impl Instrument {
             form,
             voices: default_voices(),
             octave,
-            waves: vec![U32Lock::new(0)],
-            enveloper: CloneLock::new(Enveloper::new(adsr)),
+            adsr,
+            waves: CloneLock::new(Channels::new()),
+            envelopers: CloneLock::new(Channels::new()),
         }
     }
     pub fn voices(mut self, v: u32) -> Self {
-        if let Instrument::Wave { voices, waves, .. } = &mut self {
+        if let Instrument::Wave { voices, .. } = &mut self {
             *voices = v;
-            waves.resize(v as usize, U32Lock::new(0));
         }
         self
     }
@@ -196,24 +189,25 @@ impl Instrument {
             Instrument::Wave {
                 input,
                 form,
+                voices,
                 octave,
+                adsr,
                 waves,
-                enveloper,
+                envelopers,
                 ..
             } => {
-                let mut enveloper = enveloper.lock();
+                let mut envelopers = envelopers.lock();
                 let res = instruments
                     .next_from(&*input, cache)
-                    .filter_map(|input_frame| {
+                    .id_map(|ch_id, input_frame| {
                         macro_rules! build_wave {
                             ($freq:expr, $amp:expr, $i:expr) => {{
-                                let ix = $i.load();
                                 if $freq == 0.0 {
                                     return Voice::mono(0.0);
                                 }
                                 // spc = samples per cycle
                                 let spc = SAMPLE_RATE as SampleType / $freq;
-                                let t = ix as SampleType / spc;
+                                let t = $i as SampleType / spc;
                                 let s = match form {
                                     WaveForm::Sine => (t * 2.0 * PI).sin(),
                                     WaveForm::Square => {
@@ -228,29 +222,51 @@ impl Instrument {
                                 } * WaveForm::MIN_ENERGY
                                     / form.energy()
                                     * $amp;
-                                $i.store((ix + 1) % spc as u32);
+                                $i = (($i + 1) % spc as u32);
                                 Voice::mono(s)
                             }};
                         }
+                        let mut waves = waves.lock();
+                        let waves = waves
+                            .entry(ch_id.clone())
+                            .or_insert_with(|| vec![0; *voices as usize]);
+                        waves.resize(*voices as usize, 0);
                         let mix_inputs: Vec<(Voice, Balance)> = match input_frame {
                             Frame::Voice(voice) => once((voice.left, 1.0))
-                                .zip(waves.iter())
-                                .map(|((freq, amp), i)| build_wave!(freq, amp, i))
+                                .zip(waves)
+                                .map(|((freq, amp), i)| build_wave!(freq, amp, *i))
                                 .zip(repeat(Balance::default()))
                                 .collect(),
                             Frame::Controls(controls) => {
+                                let enveloper = envelopers
+                                    .entry(ch_id.clone())
+                                    .or_insert_with(Enveloper::default);
                                 enveloper.register(controls.iter().copied());
                                 enveloper
-                                    .states(octave.unwrap_or(3))
-                                    .zip(waves.iter())
-                                    .map(|((freq, amp), i)| build_wave!(freq, amp, i))
+                                    .states(octave.unwrap_or(3), *adsr)
+                                    .zip(waves)
+                                    .map(|((freq, amp), i)| build_wave!(freq, amp, *i))
                                     .zip(repeat(Balance::default()))
                                     .collect()
+                            }
+                            Frame::None => {
+                                if let Some(enveloper) = envelopers.get_mut(ch_id) {
+                                    enveloper
+                                        .states(octave.unwrap_or(3), *adsr)
+                                        .zip(waves)
+                                        .map(|((freq, amp), i)| build_wave!(freq, amp, *i))
+                                        .zip(repeat(Balance::default()))
+                                        .collect()
+                                } else {
+                                    Vec::new()
+                                }
                             }
                         };
                         mix(&mix_inputs)
                     });
-                enveloper.progress();
+                for enveloper in envelopers.values_mut() {
+                    enveloper.progress(adsr.release);
+                }
                 res
             }
             Instrument::Mixer(list) => {
@@ -280,7 +296,7 @@ impl Instrument {
             }
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
-                    return Channels::new();
+                    return Channels::new_empty();
                 }
                 let mut voices = Vec::new();
                 let ix = instruments.measure_i();
@@ -326,15 +342,16 @@ impl Instrument {
                 }
                 // Get input frame
                 let input_channels = instruments.next_from(&*input, cache);
-                if *recording
-                    && input_channels
+                let frame_is_some = || {
+                    input_channels
                         .primary()
                         .map(Frame::is_some)
                         .unwrap_or(false)
-                {
+                };
+                if *recording && frame_is_some() {
                     // Record if recording and there is input
                     frames[loop_i as usize] = LoopFrame {
-                        frame: input_channels.primary().cloned(),
+                        frame: input_channels.primary().cloned().unwrap_or_default(),
                         new: true,
                     };
                     // Go backward and set all old frames to new and empty
@@ -343,17 +360,17 @@ impl Instrument {
                             break;
                         } else {
                             frames[i] = LoopFrame {
-                                frame: None,
+                                frame: Frame::None,
                                 new: true,
                             }
                         }
                     }
-                    Channels::new()
+                    Channels::new_empty()
                 } else if *playing {
                     // Play the loop
                     frames[loop_i as usize].frame.clone().into()
                 } else {
-                    Channels::new()
+                    Channels::new_empty()
                 }
             }
             Instrument::Filter { input, value, avgs } => {
@@ -422,15 +439,15 @@ impl Instrument {
     }
 }
 
-pub fn mix(list: &[(Voice, Balance)]) -> Option<Frame> {
+pub fn mix(list: &[(Voice, Balance)]) -> Frame {
     if list.is_empty() {
-        return None;
+        return Frame::None;
     }
     let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
         let (l, r) = bal.stereo_volume();
         (lacc + voice.left * l, racc + voice.right * r)
     });
-    Some(Voice::stereo(left_sum, right_sum).into())
+    Voice::stereo(left_sum, right_sum).into()
 }
 
 fn default_volume() -> SampleType {

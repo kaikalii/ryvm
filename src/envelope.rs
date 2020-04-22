@@ -31,19 +31,11 @@ enum NoteState {
 
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
-    pub adsr: ADSR,
     states: HashMap<(Letter, u8), Vec<(u32, NoteState)>>,
     i: u32,
 }
 
 impl Enveloper {
-    pub fn new(adsr: ADSR) -> Self {
-        Enveloper {
-            adsr,
-            states: HashMap::new(),
-            i: 0,
-        }
-    }
     pub fn register<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = Control>,
@@ -73,7 +65,11 @@ impl Enveloper {
             }
         }
     }
-    pub fn states(&self, base_octave: u8) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
+    pub fn states(
+        &self,
+        base_octave: u8,
+        adsr: ADSR,
+    ) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
         self.states
             .iter()
             .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
@@ -82,23 +78,22 @@ impl Enveloper {
                 let amplitude = match state {
                     NoteState::Pressed { velocity } => {
                         let velocity = *velocity as SampleType / std::u8::MAX as SampleType;
-                        if t < self.adsr.attack {
-                            t / self.adsr.attack * velocity
+                        if t < adsr.attack {
+                            t / adsr.attack * velocity
                         } else {
-                            let t_after_attack = t - self.adsr.attack;
-                            if t_after_attack < self.adsr.decay {
-                                (self.adsr.sustain
-                                    + (1.0 - self.adsr.sustain)
-                                        * (1.0 - t_after_attack / self.adsr.decay))
+                            let t_after_attack = t - adsr.attack;
+                            if t_after_attack < adsr.decay {
+                                (adsr.sustain
+                                    + (1.0 - adsr.sustain) * (1.0 - t_after_attack / adsr.decay))
                                     * velocity
                             } else {
-                                self.adsr.sustain * velocity
+                                adsr.sustain * velocity
                             }
                         }
                     }
                     NoteState::Released => {
-                        if t < self.adsr.release {
-                            self.adsr.sustain * (1.0 - t / self.adsr.release)
+                        if t < adsr.release {
+                            adsr.sustain * (1.0 - t / adsr.release)
                         } else {
                             0.0
                         }
@@ -111,9 +106,8 @@ impl Enveloper {
                 }
             })
     }
-    pub fn progress(&mut self) {
+    pub fn progress(&mut self, release: SampleType) {
         let i = self.i;
-        let release = self.adsr.release;
         for states in self.states.values_mut() {
             states.retain(|(start, state)| match state {
                 NoteState::Pressed { .. } => true,

@@ -192,11 +192,12 @@ impl Control {
 pub enum Frame {
     Voice(Voice),
     Controls(Vec<Control>),
+    None,
 }
 
 impl Default for Frame {
     fn default() -> Self {
-        Frame::Voice(Voice::default())
+        Frame::None
     }
 }
 
@@ -232,6 +233,7 @@ impl Frame {
         match self {
             Frame::Voice(_) => true,
             Frame::Controls(controls) => !controls.is_empty(),
+            Frame::None => false,
         }
     }
 }
@@ -257,6 +259,15 @@ impl<T> Default for Channels<T> {
     }
 }
 
+impl Channels {
+    pub fn new_empty() -> Self {
+        Channels(once((ChannelId::Primary, Frame::None)).collect())
+    }
+    pub fn frames(&self) -> hash_map::Values<ChannelId, Frame> {
+        self.values()
+    }
+}
+
 impl<T> Channels<T> {
     pub fn new() -> Self {
         Channels::default()
@@ -270,11 +281,20 @@ impl<T> Channels<T> {
     pub fn iter(&self) -> hash_map::Iter<ChannelId, T> {
         self.0.iter()
     }
-    pub fn frames(&self) -> hash_map::Values<ChannelId, T> {
+    pub fn values(&self) -> hash_map::Values<ChannelId, T> {
         self.0.values()
+    }
+    pub fn values_mut(&mut self) -> hash_map::ValuesMut<ChannelId, T> {
+        self.0.values_mut()
     }
     pub fn entry(&mut self, id: ChannelId) -> hash_map::Entry<ChannelId, T> {
         self.0.entry(id)
+    }
+    pub fn get(&self, id: &ChannelId) -> Option<&T> {
+        self.0.get(id)
+    }
+    pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut T> {
+        self.0.get_mut(id)
     }
     pub fn map<F>(&self, mut f: F) -> Channels<T>
     where
@@ -292,6 +312,24 @@ impl<T> Channels<T> {
         self.0
             .iter()
             .filter_map(|(id, frame)| f(frame).map(|frame| (id.clone(), frame)))
+            .collect()
+    }
+    pub fn id_map<F>(&self, mut f: F) -> Channels<T>
+    where
+        F: FnMut(&ChannelId, &T) -> T,
+    {
+        self.0
+            .iter()
+            .map(|(id, frame)| (id.clone(), f(id, frame)))
+            .collect()
+    }
+    pub fn id_filter_map<F>(&self, mut f: F) -> Channels<T>
+    where
+        F: FnMut(&ChannelId, &T) -> Option<T>,
+    {
+        self.0
+            .iter()
+            .filter_map(|(id, frame)| f(id, frame).map(|frame| (id.clone(), frame)))
             .collect()
     }
 }

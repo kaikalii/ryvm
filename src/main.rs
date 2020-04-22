@@ -38,6 +38,10 @@ fn main() {
     'main_loop: loop {
         // Read commands
         if let Ok(text) = stdin.try_recv() {
+            if text.trim().is_empty() {
+                instruments.update(|instrs| instrs.stop_recording_all());
+                continue;
+            }
             for (delay, args) in text.split(',').map(|text| {
                 let (delay, parsed) = parse_args(text.trim());
                 (delay, once("ryvm".into()).chain(parsed).collect::<Vec<_>>())

@@ -7,11 +7,9 @@ version = '0.1.0'
 [dependencies]
 rodio = '*'
 once_cell = '*'
-unicode_reader = '*'
 serde = '*'
 serde_derive = '*'
 serde_yaml = '*'
-indexmap = { version = '*', features = ['serde-1'] }
 itertools = '*'
 structopt = { version = '*', default-features = false }
 piston_window = { version = '*', optional = true }

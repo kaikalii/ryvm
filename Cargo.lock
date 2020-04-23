@@ -622,16 +622,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "indexmap"
-version = "1.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "076f042c5b7b98f31d205f1249267e12a6518c1481e9dae9764af19b707d2292"
-dependencies = [
- "autocfg",
- "serde",
-]
-
-[[package]]
 name = "inflate"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1348,7 +1338,6 @@ name = "ryvm"
 version = "0.1.0"
 dependencies = [
  "find_folder",
- "indexmap",
  "itertools",
  "once_cell",
  "outsource",
@@ -1358,7 +1347,6 @@ dependencies = [
  "serde_derive",
  "serde_yaml",
  "structopt",
- "unicode_reader",
 ]
 
 [[package]]
@@ -1618,16 +1606,6 @@ name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
-
-[[package]]
-name = "unicode_reader"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f886d405a2be65db804cb1088f969dbd99528a9eec9bcf941584b17de4cd3034"
-dependencies = [
- "smallvec",
- "unicode-segmentation",
-]
 
 [[package]]
 name = "vecmath"

@@ -6,7 +6,6 @@ use std::{
     sync::Arc,
 };
 
-use indexmap::IndexMap;
 use itertools::Itertools;
 use outsource::{JobDescription, Outsourcer};
 use rodio::Source;
@@ -49,9 +48,9 @@ pub struct Instruments {
     #[serde(
         rename = "instruments",
         default,
-        skip_serializing_if = "IndexMap::is_empty"
+        skip_serializing_if = "HashMap::is_empty"
     )]
-    map: IndexMap<InstrId, Instrument>,
+    map: HashMap<InstrId, Instrument>,
     #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
     tempo: SampleType,
     #[serde(skip)]
@@ -80,7 +79,7 @@ impl Default for Instruments {
     fn default() -> Self {
         Instruments {
             output: None,
-            map: IndexMap::new(),
+            map: HashMap::new(),
             tempo: 120.0,
             sample_queue: None,
             command_queue: Vec::new(),

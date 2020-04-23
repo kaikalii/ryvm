@@ -145,6 +145,10 @@ pub enum Instrument {
         #[serde(skip)]
         avgs: Arc<CloneLock<Channels<Voice>>>,
     },
+    Script {
+        args: Vec<String>,
+        commands: Vec<(bool, Vec<String>)>,
+    },
 }
 
 impl Instrument {
@@ -407,6 +411,7 @@ impl Instrument {
                     })
                     .collect()
             }
+            Instrument::Script { .. } => unimplemented!(),
         }
     }
     pub fn inputs(&self) -> Vec<InstrIdRef> {

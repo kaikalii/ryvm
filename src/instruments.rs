@@ -44,6 +44,13 @@ impl JobDescription<PathBuf> for LoadSamples {
     }
 }
 
+#[derive(Debug)]
+pub(crate) struct NewScript {
+    pub name: InstrId,
+    pub args: Vec<String>,
+    pub commands: Vec<(bool, Vec<String>)>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Instruments {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -74,6 +81,8 @@ pub struct Instruments {
     #[cfg(feature = "keyboard")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) current_keyboard: Option<InstrId>,
+    #[serde(skip)]
+    new_script_stack: Vec<NewScript>,
 }
 
 impl Default for Instruments {
@@ -92,6 +101,7 @@ impl Default for Instruments {
             keyboard: CloneLock::new(None),
             #[cfg(feature = "keyboard")]
             current_keyboard: None,
+            new_script_stack: Vec::new(),
         }
     }
 }
@@ -323,16 +333,20 @@ impl Instruments {
         args: Vec<String>,
         app: clap::Result<RyvmCommand>,
     ) {
-        if let Ok(RyvmCommand::Drum {
-            path: Some(path), ..
-        }) = &app
-        {
-            self.sample_bank.restart_if(path.clone(), |r| r.is_err());
-        }
-        if delay {
-            self.command_queue.push((args, app));
+        if let Some(script) = self.new_script_stack.last_mut() {
+            script.commands.push((delay, args));
         } else {
-            self.process_command(args, app);
+            if let Ok(RyvmCommand::Drum {
+                path: Some(path), ..
+            }) = &app
+            {
+                self.sample_bank.restart_if(path.clone(), |r| r.is_err());
+            }
+            if delay {
+                self.command_queue.push((args, app));
+            } else {
+                self.process_command(args, app);
+            }
         }
     }
     fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
@@ -511,6 +525,22 @@ impl Instruments {
             RyvmCommand::Tree => {
                 if let Some(output) = &self.output {
                     self.print_tree(output.clone(), 0);
+                }
+            }
+            RyvmCommand::Script { name, args } => self.new_script_stack.push(NewScript {
+                name,
+                args,
+                commands: Vec::new(),
+            }),
+            RyvmCommand::End => {
+                if let Some(new_script) = self.new_script_stack.pop() {
+                    self.add(
+                        new_script.name,
+                        Instrument::Script {
+                            args: new_script.args,
+                            commands: new_script.commands,
+                        },
+                    )
                 }
             }
         }

@@ -158,10 +158,20 @@ pub enum RyvmCommand {
     #[structopt(
         about = "Choose which keyboard instrument to be controlled by the actual keyboard"
     )]
+    #[structopt(about = "Set the active keyboard")]
     Focus {
         #[structopt(index = 1, help = "The id of the keyboard instrument")]
         id: InstrId,
     },
+    #[structopt(about = "Start a new script")]
+    Script {
+        #[structopt(index = 1, help = "The name of the script")]
+        name: InstrId,
+        #[structopt(index = 2, help = "The arguments of the script")]
+        args: Vec<String>,
+    },
+    #[structopt(about = "End a script")]
+    End,
 }
 
 #[derive(Debug, StructOpt)]

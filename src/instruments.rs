@@ -331,21 +331,22 @@ impl Instruments {
         &mut self,
         delay: bool,
         args: Vec<String>,
-        app: clap::Result<RyvmCommand>,
+        command: clap::Result<RyvmCommand>,
     ) {
-        if let Some(script) = self.new_script_stack.last_mut() {
+        let end_script = matches!(command, Ok(RyvmCommand::End));
+        if let (Some(script), false) = (self.new_script_stack.last_mut(), end_script) {
             script.commands.push((delay, args));
         } else {
             if let Ok(RyvmCommand::Drum {
                 path: Some(path), ..
-            }) = &app
+            }) = &command
             {
                 self.sample_bank.restart_if(path.clone(), |r| r.is_err());
             }
             if delay {
-                self.command_queue.push((args, app));
+                self.command_queue.push((args, command));
             } else {
-                self.process_command(args, app);
+                self.process_command(args, command);
             }
         }
     }
@@ -604,23 +605,23 @@ impl Instruments {
                 }
                 Instrument::Script {
                     args: script_args,
-                    commands,
+                    commands: unresolved_commands,
                 } => {
                     let script_clap_args: Vec<clap::Arg> = script_args
                         .iter()
                         .enumerate()
                         .map(|(i, arg_name)| {
                             clap::Arg::with_name(arg_name)
-                                .index(i as u64)
+                                .index(i as u64 + 1)
                                 .required(true)
                         })
                         .collect();
                     let script_app = clap::App::new(&name.to_string()).args(&script_clap_args);
-                    match script_app.get_matches_from_safe(&args[2..]) {
+                    match script_app.get_matches_from_safe(&*args) {
                         Ok(matches) => {
-                            let mut commands_to_run = Vec::new();
-                            for (delay, args) in commands {
-                                let args: Vec<String> = args
+                            let mut resolved_commands = Vec::new();
+                            for (delay, unresolved_command) in unresolved_commands {
+                                let resolved_command: Vec<String> = unresolved_command
                                     .iter()
                                     .map(|arg| {
                                         if let Some(script_arg) =
@@ -632,10 +633,10 @@ impl Instruments {
                                         }
                                     })
                                     .collect();
-                                let parsed = RyvmCommand::from_iter_safe(&args);
-                                commands_to_run.push((*delay, args, parsed))
+                                let parsed = RyvmCommand::from_iter_safe(&resolved_command);
+                                resolved_commands.push((*delay, resolved_command, parsed))
                             }
-                            for (delay, args, parsed) in commands_to_run {
+                            for (delay, args, parsed) in resolved_commands {
                                 self.queue_command(delay, args, parsed);
                             }
                         }

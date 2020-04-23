@@ -411,7 +411,7 @@ impl Instrument {
                     })
                     .collect()
             }
-            Instrument::Script { .. } => unimplemented!(),
+            Instrument::Script { .. } => Channels::new(),
         }
     }
     pub fn inputs(&self) -> Vec<InstrIdRef> {

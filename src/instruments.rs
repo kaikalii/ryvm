@@ -602,6 +602,46 @@ impl Instruments {
                     let com = FilterCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *value = com.value;
                 }
+                Instrument::Script {
+                    args: script_args,
+                    commands,
+                } => {
+                    let script_clap_args: Vec<clap::Arg> = script_args
+                        .iter()
+                        .enumerate()
+                        .map(|(i, arg_name)| {
+                            clap::Arg::with_name(arg_name)
+                                .index(i as u64)
+                                .required(true)
+                        })
+                        .collect();
+                    let script_app = clap::App::new(&name.to_string()).args(&script_clap_args);
+                    match script_app.get_matches_from_safe(&args[2..]) {
+                        Ok(matches) => {
+                            let mut commands_to_run = Vec::new();
+                            for (delay, args) in commands {
+                                let args: Vec<String> = args
+                                    .iter()
+                                    .map(|arg| {
+                                        if let Some(script_arg) =
+                                            script_args.iter().find(|sa| sa == &arg)
+                                        {
+                                            matches.value_of(script_arg).unwrap().into()
+                                        } else {
+                                            arg.clone()
+                                        }
+                                    })
+                                    .collect();
+                                let parsed = RyvmCommand::from_iter_safe(&args);
+                                commands_to_run.push((*delay, args, parsed))
+                            }
+                            for (delay, args, parsed) in commands_to_run {
+                                self.queue_command(delay, args, parsed);
+                            }
+                        }
+                        Err(e) => println!("{}", e),
+                    }
+                }
                 _ => return Err(format!("No commands available for \"{}\"", name)),
             }
             Ok(())

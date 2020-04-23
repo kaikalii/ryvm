@@ -7,7 +7,6 @@ use std::{
     sync::Arc,
 };
 
-use crossbeam::sync::ShardedLock;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
@@ -24,7 +23,7 @@ pub const SAMPLE_RATE: u32 = 44100;
 pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
 
 #[derive(Debug)]
-pub struct SourceLock<T>(Arc<ShardedLock<T>>);
+pub struct SourceLock<T>(Arc<CloneLock<T>>);
 
 impl<T> Clone for SourceLock<T> {
     fn clone(&self) -> Self {
@@ -34,19 +33,13 @@ impl<T> Clone for SourceLock<T> {
 
 impl<T> SourceLock<T> {
     pub fn new(inner: T) -> Self {
-        SourceLock(Arc::new(ShardedLock::new(inner)))
-    }
-    pub fn get<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&T) -> R,
-    {
-        f(&*self.0.read().unwrap())
+        SourceLock(Arc::new(CloneLock::new(inner)))
     }
     pub fn update<F, R>(&self, f: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
-        f(&mut *self.0.write().unwrap())
+        f(&mut *self.0.lock())
     }
 }
 

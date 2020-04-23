@@ -6,7 +6,6 @@ version = '0.1.0'
 
 [dependencies]
 rodio = '*'
-crossbeam = '*'
 once_cell = '*'
 unicode_reader = '*'
 serde = '*'
@@ -22,9 +21,3 @@ find_folder = '*'
 [features]
 default = ['keyboard']
 keyboard = ['piston_window']
-
-[profile.dev.package.ryvm]
-opt-level = 1
-
-[profile.dev.package.'*']
-opt-level = 0

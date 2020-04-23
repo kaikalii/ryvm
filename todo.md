@@ -1,4 +1,4 @@
 # TODO
 
-- Loop input snapping
 - Scripts
+- Audio input

@@ -11,18 +11,6 @@ pub struct Note {
     pub dur: SampleType,
 }
 
-impl Note {
-    pub fn new(freq: SampleType, dur: SampleType) -> Note {
-        Note { freq, dur }
-    }
-    pub fn letter(letter: Letter, octave: u8, dur: SampleType) -> Note {
-        Note {
-            freq: letter.freq(octave),
-            dur,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Letter {
     C,

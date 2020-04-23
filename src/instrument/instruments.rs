@@ -16,22 +16,13 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache, InstrId,
-    Instrument, LoopFrame, MixerCommand, NumberCommand, RyvmCommand, Sample, SampleType, Sampling,
-    SourceLock, Voice, WaveCommand, ADSR, SAMPLE_EPSILON, SAMPLE_RATE,
+    default_tempo, is_default_tempo, mix, Balance, ChannelId, Channels, CloneLock, FilterCommand,
+    Frame, FrameCache, InstrId, Instrument, LoopFrame, MixerCommand, NumberCommand, RyvmCommand,
+    Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, SAMPLE_RATE,
 };
 
-fn default_tempo() -> SampleType {
-    120.0
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_tempo(tempo: &SampleType) -> bool {
-    (tempo - default_tempo()).abs() < SAMPLE_EPSILON
-}
-
 #[derive(Default)]
-pub(crate) struct LoadSamples {}
+pub struct LoadSamples {}
 
 impl JobDescription<PathBuf> for LoadSamples {
     type Output = Result<Sample, String>;
@@ -45,7 +36,7 @@ impl JobDescription<PathBuf> for LoadSamples {
 }
 
 #[derive(Debug)]
-pub(crate) struct NewScript {
+pub struct NewScript {
     pub name: InstrId,
     pub args: Vec<String>,
     pub commands: Vec<(bool, Vec<String>)>,
@@ -72,7 +63,7 @@ pub struct Instruments {
     #[serde(skip)]
     last_drums: Option<InstrId>,
     #[serde(skip)]
-    pub(crate) sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
+    pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     #[serde(skip)]
     loops: HashMap<InstrId, HashSet<InstrId>>,
     #[cfg(feature = "keyboard")]
@@ -80,7 +71,7 @@ pub struct Instruments {
     keyboard: CloneLock<Option<Keyboard>>,
     #[cfg(feature = "keyboard")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) current_keyboard: Option<InstrId>,
+    pub current_keyboard: Option<InstrId>,
     #[serde(skip)]
     new_script_stack: Vec<NewScript>,
 }
@@ -233,7 +224,7 @@ impl Instruments {
     {
         self.map.get_mut(&id.into())
     }
-    pub(crate) fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
+    pub fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
     where
         I: Into<InstrId>,
     {

@@ -8,19 +8,13 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{Letter, SampleType};
+use crate::{Balance, Letter, SampleType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum InstrIdType {
     Base,
     Filter(u8),
     Loop(u8),
-}
-
-impl InstrIdType {
-    pub fn is_loop(self) -> bool {
-        matches!(self, InstrIdType::Loop(_))
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -178,16 +172,6 @@ pub enum Control {
     EndNote(Letter, u8),
 }
 
-impl Control {
-    pub fn add_octave(mut self, octave: u8) -> Self {
-        match &mut self {
-            Control::StartNote(_, o, _) => *o += octave,
-            Control::EndNote(_, o) => *o += octave,
-        }
-        self
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Frame {
     Voice(Voice),
@@ -244,6 +228,17 @@ impl From<Voice> for Frame {
     }
 }
 
+pub fn mix(list: &[(Voice, Balance)]) -> Frame {
+    if list.is_empty() {
+        return Frame::None;
+    }
+    let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
+        let (l, r) = bal.stereo_volume();
+        (lacc + voice.left * l, racc + voice.right * r)
+    });
+    Voice::stereo(left_sum, right_sum).into()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ChannelId {
     Primary,
@@ -290,29 +285,8 @@ impl<T> Channels<T> {
     pub fn entry(&mut self, id: ChannelId) -> hash_map::Entry<ChannelId, T> {
         self.0.entry(id)
     }
-    pub fn get(&self, id: &ChannelId) -> Option<&T> {
-        self.0.get(id)
-    }
     pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut T> {
         self.0.get_mut(id)
-    }
-    pub fn map<F>(&self, mut f: F) -> Channels<T>
-    where
-        F: FnMut(&T) -> T,
-    {
-        self.0
-            .iter()
-            .map(|(id, frame)| (id.clone(), f(frame)))
-            .collect()
-    }
-    pub fn filter_map<F>(&self, mut f: F) -> Channels<T>
-    where
-        F: FnMut(&T) -> Option<T>,
-    {
-        self.0
-            .iter()
-            .filter_map(|(id, frame)| f(frame).map(|frame| (id.clone(), frame)))
-            .collect()
     }
     pub fn id_map<F>(&self, mut f: F) -> Channels<T>
     where
@@ -321,15 +295,6 @@ impl<T> Channels<T> {
         self.0
             .iter()
             .map(|(id, frame)| (id.clone(), f(id, frame)))
-            .collect()
-    }
-    pub fn id_filter_map<F>(&self, mut f: F) -> Channels<T>
-    where
-        F: FnMut(&ChannelId, &T) -> Option<T>,
-    {
-        self.0
-            .iter()
-            .filter_map(|(id, frame)| f(id, frame).map(|frame| (id.clone(), frame)))
             .collect()
     }
 }
@@ -374,7 +339,7 @@ impl<T> IntoIterator for Channels<T> {
 
 /// Cache for each frame
 #[derive(Default)]
-pub(crate) struct FrameCache {
+pub struct FrameCache {
     pub map: HashMap<InstrId, Channels<Frame>>,
     pub visited: HashSet<InstrId>,
     pub default_channels: Channels<Frame>,

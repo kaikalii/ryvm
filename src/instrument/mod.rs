@@ -1,112 +1,20 @@
+mod instruments;
+mod parts;
+pub use {instruments::*, parts::*};
+
 use std::{
     collections::HashMap,
-    f32::consts::{FRAC_2_PI, PI},
-    fmt,
+    f32::consts::PI,
     iter::{once, repeat},
-    str::FromStr,
     sync::Arc,
 };
 
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, InstrIdRef,
-    Instruments, Sampling, Voice, ADSR,
+    default_voices, is_default_voices, mix, Channels, CloneLock, Control, DynInput, Enveloper,
+    Frame, FrameCache, InstrId, InstrIdRef, SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
 };
-
-pub type SampleType = f32;
-
-/// The global sample rate
-pub const SAMPLE_RATE: u32 = 44100;
-
-/// An error bound for the sample type
-pub const SAMPLE_EPSILON: SampleType = std::f32::EPSILON;
-
-#[derive(Debug)]
-pub struct SourceLock<T>(Arc<CloneLock<T>>);
-
-impl<T> Clone for SourceLock<T> {
-    fn clone(&self) -> Self {
-        SourceLock(Arc::clone(&self.0))
-    }
-}
-
-impl<T> SourceLock<T> {
-    pub fn new(inner: T) -> Self {
-        SourceLock(Arc::new(CloneLock::new(inner)))
-    }
-    pub fn update<F, R>(&self, f: F) -> R
-    where
-        F: FnOnce(&mut T) -> R,
-    {
-        f(&mut *self.0.lock())
-    }
-}
-
-impl<T> Iterator for SourceLock<T>
-where
-    T: Iterator,
-{
-    type Item = T::Item;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.update(Iterator::next)
-    }
-}
-
-fn default_voices() -> u32 {
-    1
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_voices(v: &u32) -> bool {
-    v == &default_voices()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum WaveForm {
-    Sine,
-    Square,
-    Saw,
-    Triangle,
-}
-
-impl WaveForm {
-    const MIN_ENERGY: SampleType = 0.5;
-    pub fn energy(self) -> SampleType {
-        match self {
-            WaveForm::Sine => FRAC_2_PI,
-            WaveForm::Square => 1.0,
-            WaveForm::Saw => 0.5,
-            WaveForm::Triangle => 0.5,
-        }
-    }
-}
-
-impl fmt::Display for WaveForm {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", format!("{:?}", self))
-    }
-}
-
-impl FromStr for WaveForm {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s.to_lowercase().as_str() {
-            "square" | "sq" => WaveForm::Square,
-            "saw" => WaveForm::Saw,
-            "triangle" | "tri" => WaveForm::Triangle,
-            "sine" | "sin" => WaveForm::Sine,
-            _ => return Err(format!("Unknown waveform {:?}", s)),
-        })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoopFrame {
-    pub(crate) frame: Frame,
-    pub(crate) new: bool,
-}
 
 /// An instrument for producing sounds
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -175,7 +83,7 @@ impl Instrument {
     pub fn is_input_device(&self) -> bool {
         matches!(self, Instrument::Keyboard{..})
     }
-    pub(crate) fn next(
+    pub fn next(
         &self,
         cache: &mut FrameCache,
         instruments: &Instruments,
@@ -446,72 +354,5 @@ impl Instrument {
             Instrument::Filter { input, .. } => replace(input),
             _ => {}
         }
-    }
-    pub fn set(&mut self, num: SampleType) {
-        if let Instrument::Number(n) = self {
-            *n = num;
-        }
-    }
-}
-
-pub fn mix(list: &[(Voice, Balance)]) -> Frame {
-    if list.is_empty() {
-        return Frame::None;
-    }
-    let (left_sum, right_sum) = list.iter().fold((0.0, 0.0), |(lacc, racc), (voice, bal)| {
-        let (l, r) = bal.stereo_volume();
-        (lacc + voice.left * l, racc + voice.right * r)
-    });
-    Voice::stereo(left_sum, right_sum).into()
-}
-
-fn default_volume() -> SampleType {
-    0.5
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_volume(v: &SampleType) -> bool {
-    (v - default_volume()).abs() < SAMPLE_EPSILON
-}
-
-fn default_pan() -> SampleType {
-    0.0
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_pan(v: &SampleType) -> bool {
-    (v - default_pan()).abs() < SAMPLE_EPSILON
-}
-
-/// A balance wrapper for an `Instrument`
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Balance {
-    #[serde(default = "default_volume", skip_serializing_if = "is_default_volume")]
-    pub volume: SampleType,
-    #[serde(default = "default_pan", skip_serializing_if = "is_default_pan")]
-    pub pan: SampleType,
-}
-
-impl Default for Balance {
-    fn default() -> Self {
-        Balance {
-            volume: default_volume(),
-            pan: default_pan(),
-        }
-    }
-}
-
-impl Balance {
-    pub fn stereo_volume(self) -> (SampleType, SampleType) {
-        (
-            self.volume * (1.0 - self.pan.max(0.0)),
-            self.volume * (1.0 + self.pan.min(0.0)),
-        )
-    }
-    pub fn volume(self, volume: SampleType) -> Self {
-        Balance { volume, ..self }
-    }
-    pub fn pan(self, pan: SampleType) -> Self {
-        Balance { pan, ..self }
     }
 }

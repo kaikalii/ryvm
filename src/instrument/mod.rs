@@ -81,13 +81,17 @@ impl Instrument {
         self
     }
     pub fn is_input_device(&self) -> bool {
-        matches!(self, Instrument::Keyboard{..})
+        match self {
+            #[cfg(feature = "keyboard")]
+            Instrument::Keyboard { .. } => true,
+            _ => false,
+        }
     }
     pub fn next(
         &self,
         cache: &mut FrameCache,
         instruments: &Instruments,
-        my_id: InstrId,
+        #[cfg_attr(not(feature = "keyboard"), allow(unused_variables))] my_id: InstrId,
     ) -> Channels {
         match self {
             Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),

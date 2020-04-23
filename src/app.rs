@@ -56,11 +56,18 @@ pub enum RyvmCommand {
         waveform: WaveForm,
         #[structopt(index = 2, help = "The name of the synthesizer")]
         name: InstrId,
+        #[cfg(feature = "keyboard")]
         #[structopt(
             index = 3,
             help = "The id of the instrument supplying the frequency for the wave"
         )]
         input: Option<InstrId>,
+        #[cfg(not(feature = "keyboard"))]
+        #[structopt(
+            index = 3,
+            help = "The id of the instrument supplying the frequency for the wave"
+        )]
+        input: InstrId,
         #[structopt(long, short, help = "The synth's octave")]
         octave: Option<u8>,
         #[structopt(long, short, help = "The synth's attack")]
@@ -158,6 +165,7 @@ pub enum RyvmCommand {
     #[structopt(
         about = "Choose which keyboard instrument to be controlled by the actual keyboard"
     )]
+    #[cfg(feature = "keyboard")]
     #[structopt(about = "Set the active keyboard")]
     Focus {
         #[structopt(index = 1, help = "The id of the keyboard instrument")]

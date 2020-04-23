@@ -9,6 +9,10 @@ fn main() {
 
     // Command loop
     for line in stdin().lock().lines().filter_map(Result::ok) {
-        ryvm.send_command(line);
+        ryvm.send_command(&line);
+        match line.trim() {
+            "exit" | "quit" => break,
+            _ => {}
+        }
     }
 }

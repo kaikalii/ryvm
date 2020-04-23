@@ -385,6 +385,7 @@ impl Instruments {
                 sustain,
                 release,
             } => {
+                #[cfg(feature = "keyboard")]
                 let input = if let Some(input) = input {
                     input
                 } else {
@@ -506,6 +507,7 @@ impl Instruments {
                     );
                 }
             }
+            #[cfg(feature = "keyboard")]
             RyvmCommand::Focus { id } => {
                 for input in self.input_devices_of(id) {
                     if let Some(Instrument::Keyboard { .. }) = self.get(&input) {

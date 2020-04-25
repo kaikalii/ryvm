@@ -66,6 +66,7 @@ impl Enveloper {
                         states.push((self.i, NoteState::Released));
                     }
                 }
+                Control::EndAllNotes => self.states.clear(),
             }
         }
     }

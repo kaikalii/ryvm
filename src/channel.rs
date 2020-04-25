@@ -171,6 +171,7 @@ impl Voice {
 pub enum Control {
     StartNote(Letter, u8, u8),
     EndNote(Letter, u8),
+    EndAllNotes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,6 +231,12 @@ impl From<Voice> for Frame {
     }
 }
 
+impl From<Control> for Frame {
+    fn from(conrol: Control) -> Self {
+        Frame::Controls(vec![conrol])
+    }
+}
+
 pub fn mix(list: &[(Voice, Balance)]) -> Frame {
     if list.is_empty() {
         return Frame::None;
@@ -259,9 +266,6 @@ impl<T> Default for Channels<T> {
 }
 
 impl Channels {
-    pub fn new_empty() -> Self {
-        Channels(once((ChannelId::Primary, Frame::None)).collect())
-    }
     pub fn frames(&self) -> tiny_map::Values<ChannelId, Frame> {
         self.values()
     }

@@ -213,7 +213,7 @@ impl Instrument {
             // Drum Machine
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {
-                    return Channels::new_empty();
+                    return Channels::default();
                 }
                 let mut voices = Vec::new();
                 // Get the sample index for the current measure
@@ -295,7 +295,7 @@ impl Instrument {
                         }
                     }
                     // The loop itself is silent while recording
-                    Channels::new_empty()
+                    Frame::from(Control::EndAllNotes).into()
                 } else if *playing {
                     // Play the loop
                     // Find all controls, either for the current loop index or for
@@ -318,7 +318,7 @@ impl Instrument {
                     .into()
                 } else {
                     // The loop is silent if it is not playing
-                    Channels::new_empty()
+                    Frame::from(Control::EndAllNotes).into()
                 }
             }
             // Filters

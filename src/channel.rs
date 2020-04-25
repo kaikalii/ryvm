@@ -127,7 +127,7 @@ impl fmt::Display for InstrId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstrIdRef<'a> {
     name: &'a str,
     ty: InstrIdType,

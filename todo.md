@@ -1,7 +1,5 @@
 # TODO
 
-- Print scripts in tree and ls
-- Sort tree
 - Allow instrument removal
 - Simplify drum input
 - Allow for enveloper stopping

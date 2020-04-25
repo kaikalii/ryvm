@@ -484,28 +484,7 @@ impl Instruments {
                     }
                 })
             }
-            RyvmCommand::Ls { unsorted } => {
-                let print = |ids: &mut dyn Iterator<Item = &InstrId>| {
-                    for id in ids {
-                        println!("    {}", id)
-                    }
-                };
-                if unsorted {
-                    print(&mut self.map.keys());
-                } else {
-                    print(
-                        &mut self
-                            .map
-                            .iter()
-                            .sorted_by(|(a_id, a_instr), (b_id, b_instr)| {
-                                format!("{:?}", discriminant(*a_instr)).as_bytes()[14]
-                                    .cmp(&format!("{:?}", discriminant(*b_instr)).as_bytes()[14])
-                                    .then_with(|| a_id.cmp(b_id))
-                            })
-                            .map(|(id, _)| id),
-                    );
-                }
-            }
+            RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
             #[cfg(feature = "keyboard")]
             RyvmCommand::Focus { id } => {
                 for input in self.input_devices_of(id) {
@@ -516,7 +495,26 @@ impl Instruments {
                 }
             }
             RyvmCommand::Tree => {
+                let any_scripts = self
+                    .map
+                    .values()
+                    .any(|instr| matches!(instr, Instrument::Script{..}));
+                if any_scripts {
+                    if self.output.is_some() {
+                        println!("~~~~~ Scripts ~~~~~");
+                    }
+                    for (id, _) in self
+                        .map
+                        .iter()
+                        .filter(|(_, instr)| matches!(instr, Instrument::Script{..}))
+                    {
+                        println!("{}", id)
+                    }
+                }
                 if let Some(output) = &self.output {
+                    if any_scripts {
+                        println!("~~~ Instruments ~~~");
+                    }
                     self.print_tree(output.clone(), 0);
                 }
             }
@@ -642,6 +640,28 @@ impl Instruments {
             Err(format!("No instrument or command \"{}\"", name))
         }
     }
+    fn print_ls(&self, unsorted: bool) {
+        let print = |ids: &mut dyn Iterator<Item = &InstrId>| {
+            for id in ids {
+                println!("    {}", id)
+            }
+        };
+        if unsorted {
+            print(&mut self.map.keys());
+        } else {
+            print(
+                &mut self
+                    .map
+                    .iter()
+                    .sorted_by(|(a_id, a_instr), (b_id, b_instr)| {
+                        format!("{:?}", discriminant(*a_instr)).as_bytes()[14]
+                            .cmp(&format!("{:?}", discriminant(*b_instr)).as_bytes()[14])
+                            .then_with(|| a_id.cmp(b_id))
+                    })
+                    .map(|(id, _)| id),
+            );
+        }
+    }
     fn print_tree(&self, root: InstrId, depth: usize) {
         let exists = self.get(&root).is_some();
         print!(
@@ -652,12 +672,12 @@ impl Instruments {
         );
         if let Some(instr) = self.get(&root) {
             if let Some(loops) = self.loops.get(&root) {
-                for loop_id in loops {
+                for loop_id in loops.iter().sorted() {
                     print!(" ({})", loop_id);
                 }
             }
             println!();
-            for input in instr.inputs() {
+            for input in instr.inputs().into_iter().sorted() {
                 self.print_tree(input.into(), depth + 1);
             }
         } else {

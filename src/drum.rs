@@ -14,12 +14,14 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{SampleType, Voice};
 
+/// A path to a sample audio file and a beat pattern that is used to play it
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Sampling {
     pub path: PathBuf,
     pub beat: BeatPattern,
 }
 
+/// Data for an audio sample
 #[derive(Clone)]
 pub struct Sample {
     sample_rate: u32,
@@ -72,6 +74,10 @@ impl Sample {
     }
     pub fn samples(&self) -> &[Voice] {
         &self.samples
+    }
+    #[allow(dead_code)]
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
     }
 }
 

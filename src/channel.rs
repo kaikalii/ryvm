@@ -277,6 +277,7 @@ impl<T> Channels<T> {
     pub fn into_primary(mut self) -> Option<T> {
         self.0.remove(&ChannelId::Primary)
     }
+    #[allow(dead_code)]
     pub fn iter(&self) -> tiny_map::Iter<ChannelId, T> {
         self.0.iter()
     }

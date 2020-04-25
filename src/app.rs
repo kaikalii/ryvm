@@ -5,6 +5,8 @@ use structopt::StructOpt;
 
 use crate::{InstrId, SampleType, WaveForm};
 
+/// An input type that can either be a static number or the
+/// id of an instrument from which to get a number
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DynInput {
     Id(InstrId),
@@ -29,6 +31,7 @@ impl FromStr for DynInput {
     }
 }
 
+/// A Ryvm CLI command
 #[derive(Debug, StructOpt)]
 pub enum RyvmCommand {
     #[structopt(about = "Quit ryvm", alias = "exit")]

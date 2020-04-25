@@ -4,6 +4,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{Control, Letter, SampleType, SAMPLE_RATE};
 
+/// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ADSR {
     pub attack: SampleType,
@@ -29,6 +30,8 @@ enum NoteState {
     Released,
 }
 
+/// Keeps track of the key states of an input device
+/// and applies an ADSR envelope to them
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
     states: HashMap<(Letter, u8), Vec<(u32, NoteState)>>,
@@ -36,6 +39,7 @@ pub struct Enveloper {
 }
 
 impl Enveloper {
+    /// Register some controls
     pub fn register<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = Control>,
@@ -65,6 +69,7 @@ impl Enveloper {
             }
         }
     }
+    /// Get an iterator of frequency-amplitude pairs that are currently playing
     pub fn states(
         &self,
         base_octave: u8,
@@ -106,6 +111,7 @@ impl Enveloper {
                 }
             })
     }
+    /// Progress the enveloper to the next frame
     pub fn progress(&mut self, release: SampleType) {
         let i = self.i;
         for states in self.states.values_mut() {

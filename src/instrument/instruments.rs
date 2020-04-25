@@ -401,8 +401,8 @@ impl Instruments {
                         sustain: sustain.unwrap_or(default_adsr.sustain),
                         release: release.unwrap_or(default_adsr.release),
                     },
-                )
-                .voices(self.default_voices_from(input));
+                    self.default_voices_from(&input),
+                );
                 self.add(name, instr);
             }
             RyvmCommand::Mixer { name, inputs } => self.add(

@@ -6,6 +6,8 @@ use crate::{
     default_pan, default_volume, is_default_pan, is_default_volume, CloneLock, Frame, SampleType,
 };
 
+/// A lock used primarily to allow the manipulation of a rodio::Source
+/// while it is already playing
 #[derive(Debug)]
 pub struct SourceLock<T>(Arc<CloneLock<T>>);
 

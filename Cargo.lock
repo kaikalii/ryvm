@@ -1347,6 +1347,7 @@ dependencies = [
  "serde_derive",
  "serde_yaml",
  "structopt",
+ "tinymap",
 ]
 
 [[package]]
@@ -1576,6 +1577,10 @@ dependencies = [
  "lzw",
  "miniz_oxide",
 ]
+
+[[package]]
+name = "tinymap"
+version = "0.1.0"
 
 [[package]]
 name = "tinyvec"

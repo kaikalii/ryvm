@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     convert::Infallible,
     fmt,
     iter::{once, FromIterator},
@@ -7,6 +7,7 @@ use std::{
 };
 
 use serde_derive::{Deserialize, Serialize};
+use tinymap::{tiny_map, Inner, TinyMap};
 
 use crate::{Balance, Letter, SampleType};
 
@@ -240,18 +241,20 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
     Voice::stereo(left_sum, right_sum).into()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChannelId {
     Primary,
     Loop(InstrId),
 }
 
+type ChannelMapArray<T> = [Inner<(ChannelId, T)>; 10];
+
 #[derive(Debug, Clone)]
-pub struct Channels<T = Frame>(HashMap<ChannelId, T>);
+pub struct Channels<T = Frame>(TinyMap<[Inner<(ChannelId, T)>; 10]>);
 
 impl<T> Default for Channels<T> {
     fn default() -> Self {
-        Channels(HashMap::new())
+        Channels(TinyMap::new())
     }
 }
 
@@ -259,7 +262,7 @@ impl Channels {
     pub fn new_empty() -> Self {
         Channels(once((ChannelId::Primary, Frame::None)).collect())
     }
-    pub fn frames(&self) -> hash_map::Values<ChannelId, Frame> {
+    pub fn frames(&self) -> tiny_map::Values<ChannelId, Frame> {
         self.values()
     }
 }
@@ -274,16 +277,16 @@ impl<T> Channels<T> {
     pub fn into_primary(mut self) -> Option<T> {
         self.0.remove(&ChannelId::Primary)
     }
-    pub fn iter(&self) -> hash_map::Iter<ChannelId, T> {
+    pub fn iter(&self) -> tiny_map::Iter<ChannelId, T> {
         self.0.iter()
     }
-    pub fn values(&self) -> hash_map::Values<ChannelId, T> {
+    pub fn values(&self) -> tiny_map::Values<ChannelId, T> {
         self.0.values()
     }
-    pub fn values_mut(&mut self) -> hash_map::ValuesMut<ChannelId, T> {
+    pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, T> {
         self.0.values_mut()
     }
-    pub fn entry(&mut self, id: ChannelId) -> hash_map::Entry<ChannelId, T> {
+    pub fn entry(&mut self, id: ChannelId) -> tiny_map::Entry<ChannelMapArray<T>> {
         self.0.entry(id)
     }
     pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut T> {
@@ -317,7 +320,7 @@ impl<T> FromIterator<(ChannelId, T)> for Channels<T> {
     where
         I: IntoIterator<Item = (ChannelId, T)>,
     {
-        Channels(HashMap::from_iter(iter))
+        Channels(TinyMap::from_iter(iter))
     }
 }
 
@@ -332,7 +335,7 @@ impl<T> Extend<(ChannelId, T)> for Channels<T> {
 
 impl<T> IntoIterator for Channels<T> {
     type Item = (ChannelId, T);
-    type IntoIter = hash_map::IntoIter<ChannelId, T>;
+    type IntoIter = tiny_map::IntoIter<ChannelId, T>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }

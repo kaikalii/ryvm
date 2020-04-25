@@ -13,7 +13,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     default_voices, is_default_voices, mix, Channels, CloneLock, Control, DynInput, Enveloper,
-    Frame, FrameCache, InstrId, InstrIdRef, SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
+    Frame, FrameCache, InstrId, SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
 };
 
 /// An instrument for producing sounds
@@ -61,10 +61,13 @@ pub enum Instrument {
 
 impl Instrument {
     /// Create a new wave instrument
-    pub fn wave<I>(input: I, form: WaveForm, octave: Option<u8>, adsr: ADSR, voices: u32) -> Self
-    where
-        I: Into<InstrId>,
-    {
+    pub fn wave(
+        input: InstrId,
+        form: WaveForm,
+        octave: Option<u8>,
+        adsr: ADSR,
+        voices: u32,
+    ) -> Self {
         Instrument::Wave {
             input: input.into(),
             form,
@@ -351,13 +354,13 @@ impl Instrument {
         }
     }
     /// Get a list of this instrument's inputs
-    pub fn inputs(&self) -> Vec<InstrIdRef> {
+    pub fn inputs(&self) -> Vec<&InstrId> {
         match self {
-            Instrument::Wave { input, .. } => vec![input.as_ref()],
-            Instrument::Mixer(inputs) => inputs.keys().map(InstrId::as_ref).collect(),
-            Instrument::Filter { input, value, .. } => once(input.as_ref())
+            Instrument::Wave { input, .. } => vec![&input],
+            Instrument::Mixer(inputs) => inputs.keys().collect(),
+            Instrument::Filter { input, value, .. } => once(input)
                 .chain(if let DynInput::Id(id) = value {
-                    Some(id.as_ref())
+                    Some(id)
                 } else {
                     None
                 })

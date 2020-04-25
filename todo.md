@@ -1,6 +1,5 @@
 # TODO
 
-- Simplify id parameters
 - Simplify loop ids
 - Simplify drum input
 - Add sleep command

@@ -55,12 +55,6 @@ impl InstrId {
             ty: InstrIdType::Filter(filter_num),
         }
     }
-    pub fn as_ref(&self) -> InstrIdRef {
-        InstrIdRef {
-            name: self.name.as_ref(),
-            ty: self.ty,
-        }
-    }
 }
 
 impl<S> From<S> for InstrId
@@ -123,31 +117,10 @@ impl<'a> From<&'a InstrId> for InstrId {
 
 impl fmt::Display for InstrId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        <InstrIdRef as fmt::Display>::fmt(&self.as_ref(), f)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct InstrIdRef<'a> {
-    name: &'a str,
-    ty: InstrIdType,
-}
-
-impl<'a> fmt::Display for InstrIdRef<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.ty {
             InstrIdType::Base => write!(f, "{}", self.name),
             InstrIdType::Filter(i) => write!(f, "{}#{}", self.name, i),
             InstrIdType::Loop(i) => write!(f, "{}@{}", self.name, i),
-        }
-    }
-}
-
-impl<'a> From<InstrIdRef<'a>> for InstrId {
-    fn from(id_ref: InstrIdRef<'a>) -> Self {
-        InstrId {
-            name: id_ref.name.into(),
-            ty: id_ref.ty,
         }
     }
 }

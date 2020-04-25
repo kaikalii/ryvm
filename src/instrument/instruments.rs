@@ -109,19 +109,13 @@ impl Instruments {
     pub fn measure_i(&self) -> u32 {
         self.i % self.frames_per_measure()
     }
-    pub fn set_output<I>(&mut self, id: I)
-    where
-        I: Into<InstrId>,
-    {
+    pub fn set_output(&mut self, id: InstrId) {
         self.output = Some(id.into());
     }
     pub fn set_tempo(&mut self, tempo: SampleType) {
         self.tempo = tempo;
     }
-    pub fn add<I>(&mut self, id: I, instr: Instrument)
-    where
-        I: Into<InstrId>,
-    {
+    pub fn add(&mut self, id: InstrId, instr: Instrument) {
         self.map.insert(id.into(), instr);
     }
     pub fn add_wrapper<F>(&mut self, input: InstrId, id: InstrId, build_instr: F)
@@ -139,10 +133,7 @@ impl Instruments {
         let new_instr = build_instr(input);
         self.add(id, new_instr);
     }
-    pub fn input_devices_of<I>(&self, id: I) -> Vec<InstrId>
-    where
-        I: Into<InstrId>,
-    {
+    pub fn input_devices_of(&self, id: &InstrId) -> Vec<InstrId> {
         let id = id.into();
         if let Some(instr) = self.get(&id) {
             if instr.is_input_device() {
@@ -169,14 +160,11 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop<I>(&mut self, input: I, measures: u8)
-    where
-        I: Into<InstrId>,
-    {
+    pub fn add_loop(&mut self, input: InstrId, measures: u8) {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Create a loop for every input device of this instrument
-        for input in self.input_devices_of(input) {
+        for input in self.input_devices_of(&input) {
             self._add_loop(input, measures);
         }
         // Update loops
@@ -211,22 +199,13 @@ impl Instruments {
         println!("Added loop {}", loop_id);
         self.map.insert(loop_id, loop_instr);
     }
-    pub fn get<I>(&self, id: I) -> Option<&Instrument>
-    where
-        I: Into<InstrId>,
-    {
+    pub fn get(&self, id: &InstrId) -> Option<&Instrument> {
         self.map.get(&id.into())
     }
-    pub fn get_mut<I>(&mut self, id: I) -> Option<&mut Instrument>
-    where
-        I: Into<InstrId>,
-    {
+    pub fn get_mut(&mut self, id: &InstrId) -> Option<&mut Instrument> {
         self.map.get_mut(&id.into())
     }
-    pub fn next_from<'a, I>(&self, id: I, cache: &'a mut FrameCache) -> &'a Channels
-    where
-        I: Into<InstrId>,
-    {
+    pub fn next_from<'a>(&self, id: &InstrId, cache: &'a mut FrameCache) -> &'a Channels {
         let id = id.into();
         if cache.map.contains_key(&id) {
             // Get cached result
@@ -272,10 +251,7 @@ impl Instruments {
         }
     }
     #[cfg_attr(not(feature = "keyboard"), allow(unused_variables))]
-    pub fn default_voices_from<I>(&self, id: I) -> u32
-    where
-        I: Into<InstrId>,
-    {
+    pub fn default_voices_from(&self, id: &InstrId) -> u32 {
         #[cfg(feature = "keyboard")]
         {
             if let Some(instr) = self.get(id) {
@@ -304,7 +280,7 @@ impl Instruments {
             }
         });
         self.keyboard(|_| {});
-        self.add(&id, Instrument::Keyboard);
+        self.add(id.clone(), Instrument::Keyboard);
         self.current_keyboard = Some(id.clone());
         id
     }
@@ -392,7 +368,7 @@ impl Instruments {
                 };
                 let default_adsr = ADSR::default();
                 let instr = Instrument::wave(
-                    &input,
+                    input.clone(),
                     waveform,
                     octave,
                     ADSR {
@@ -437,7 +413,7 @@ impl Instruments {
                 } else {
                     self.last_drums.clone().unwrap_or_default()
                 };
-                if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(name) {
+                if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(&name) {
                     let index = index.unwrap_or_else(|| samplings.len());
                     samplings.resize(index + 1, Sampling::default());
                     if let Some(path) = path {
@@ -473,7 +449,7 @@ impl Instruments {
             }
             RyvmCommand::Filter { input, value } => {
                 let mut i = 1;
-                while self.get(input.as_filter(i)).is_some() {
+                while self.get(&input.as_filter(i)).is_some() {
                     i += 1;
                 }
                 self.add_wrapper(input.clone(), input.as_filter(i), |input| {
@@ -487,7 +463,7 @@ impl Instruments {
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
             #[cfg(feature = "keyboard")]
             RyvmCommand::Focus { id } => {
-                for input in self.input_devices_of(id) {
+                for input in self.input_devices_of(&id) {
                     if let Some(Instrument::Keyboard { .. }) = self.get(&input) {
                         self.current_keyboard = Some(input);
                         break;
@@ -650,7 +626,7 @@ impl Instruments {
                         .map
                         .iter()
                         .filter(|(i, _)| i != &id)
-                        .any(|(_, instr)| instr.inputs().contains(&input.as_ref()))
+                        .any(|(_, instr)| instr.inputs().contains(&&input))
                     {
                         self.remove(&input, recursive);
                     }

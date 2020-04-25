@@ -1,10 +1,6 @@
 use std::{f32::consts::FRAC_2_PI, fmt, str::FromStr, sync::Arc};
 
-use serde_derive::{Deserialize, Serialize};
-
-use crate::{
-    default_pan, default_volume, is_default_pan, is_default_volume, CloneLock, Frame, SampleType,
-};
+use crate::{CloneLock, Frame, SampleType, DEFAULT_VOLUME};
 
 /// A lock used primarily to allow the manipulation of a rodio::Source
 /// while it is already playing
@@ -39,8 +35,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WaveForm {
     Sine,
     Square,
@@ -79,26 +74,24 @@ impl FromStr for WaveForm {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct LoopFrame {
     pub frame: Frame,
     pub new: bool,
 }
 
 /// A balance wrapper for an `Instrument`
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct Balance {
-    #[serde(default = "default_volume", skip_serializing_if = "is_default_volume")]
     pub volume: SampleType,
-    #[serde(default = "default_pan", skip_serializing_if = "is_default_pan")]
     pub pan: SampleType,
 }
 
 impl Default for Balance {
     fn default() -> Self {
         Balance {
-            volume: default_volume(),
-            pan: default_pan(),
+            volume: DEFAULT_VOLUME,
+            pan: 0.0,
         }
     }
 }

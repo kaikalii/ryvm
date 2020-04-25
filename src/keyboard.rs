@@ -14,7 +14,6 @@ use crate::{Control, Letter};
 
 #[derive(Clone, Debug)]
 pub struct Keyboard {
-    name: String,
     controls: Arc<Mutex<HashSet<Control>>>,
     handle: Option<Arc<JoinHandle<()>>>,
     done: Arc<AtomicBool>,
@@ -51,7 +50,7 @@ impl Keyboard {
                                 controls_clone
                                     .lock()
                                     .unwrap()
-                                    .insert(Control::StartNote(l, o, 255));
+                                    .insert(Control::StartNote(l, o, 127));
                             }
                             ButtonState::Release => {
                                 controls_clone
@@ -71,7 +70,6 @@ impl Keyboard {
             done_clone.store(true, Ordering::Relaxed);
         });
         Keyboard {
-            name: name.into(),
             controls,
             handle: Some(Arc::new(handle)),
             done,
@@ -95,40 +93,40 @@ static KEYBINDS: Lazy<HashMap<Key, (Letter, u8)>> = Lazy::new(|| {
     let mut map = HashMap::new();
     #[allow(clippy::useless_vec)]
     for (key, letter, octave) in vec![
-        (Key::Z, Letter::C, 0),
-        (Key::S, Letter::Csh, 0),
-        (Key::X, Letter::D, 0),
-        (Key::D, Letter::Dsh, 0),
-        (Key::C, Letter::E, 0),
-        (Key::V, Letter::F, 0),
-        (Key::G, Letter::Fsh, 0),
-        (Key::B, Letter::G, 0),
-        (Key::H, Letter::Gsh, 0),
-        (Key::N, Letter::A, 0),
-        (Key::J, Letter::Ash, 0),
-        (Key::M, Letter::B, 0),
-        (Key::Comma, Letter::C, 1),
-        (Key::Q, Letter::C, 1),
-        (Key::D2, Letter::Csh, 1),
-        (Key::L, Letter::Csh, 1),
-        (Key::Period, Letter::D, 1),
-        (Key::W, Letter::D, 1),
-        (Key::Semicolon, Letter::Dsh, 1),
-        (Key::D3, Letter::Dsh, 1),
-        (Key::Slash, Letter::E, 1),
-        (Key::E, Letter::E, 1),
-        (Key::R, Letter::F, 1),
-        (Key::D5, Letter::Fsh, 1),
-        (Key::T, Letter::G, 1),
-        (Key::D6, Letter::Gsh, 1),
-        (Key::Y, Letter::A, 1),
-        (Key::D7, Letter::Ash, 1),
-        (Key::U, Letter::B, 1),
-        (Key::I, Letter::C, 2),
-        (Key::D9, Letter::Csh, 2),
-        (Key::O, Letter::D, 2),
-        (Key::D0, Letter::Dsh, 2),
-        (Key::P, Letter::E, 2),
+        (Key::Z, Letter::C, 3),
+        (Key::S, Letter::Csh, 3),
+        (Key::X, Letter::D, 3),
+        (Key::D, Letter::Dsh, 3),
+        (Key::C, Letter::E, 3),
+        (Key::V, Letter::F, 3),
+        (Key::G, Letter::Fsh, 3),
+        (Key::B, Letter::G, 3),
+        (Key::H, Letter::Gsh, 3),
+        (Key::N, Letter::A, 3),
+        (Key::J, Letter::Ash, 3),
+        (Key::M, Letter::B, 3),
+        (Key::Comma, Letter::C, 4),
+        (Key::Q, Letter::C, 4),
+        (Key::D2, Letter::Csh, 4),
+        (Key::L, Letter::Csh, 4),
+        (Key::Period, Letter::D, 4),
+        (Key::W, Letter::D, 4),
+        (Key::Semicolon, Letter::Dsh, 4),
+        (Key::D3, Letter::Dsh, 4),
+        (Key::Slash, Letter::E, 4),
+        (Key::E, Letter::E, 4),
+        (Key::R, Letter::F, 4),
+        (Key::D5, Letter::Fsh, 4),
+        (Key::T, Letter::G, 4),
+        (Key::D6, Letter::Gsh, 4),
+        (Key::Y, Letter::A, 4),
+        (Key::D7, Letter::Ash, 4),
+        (Key::U, Letter::B, 4),
+        (Key::I, Letter::C, 5),
+        (Key::D9, Letter::Csh, 5),
+        (Key::O, Letter::D, 5),
+        (Key::D0, Letter::Dsh, 5),
+        (Key::P, Letter::E, 5),
     ] {
         map.insert(key, (letter, octave));
     }

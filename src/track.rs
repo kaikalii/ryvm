@@ -1,7 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 
 use once_cell::sync::Lazy;
-use serde_derive::{Deserialize, Serialize};
 
 use crate::SampleType;
 
@@ -11,7 +10,7 @@ pub struct Note {
     pub dur: SampleType,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Letter {
     C,
     Csh,
@@ -35,6 +34,23 @@ pub enum Letter {
 impl Letter {
     pub fn freq(self, octave: u8) -> SampleType {
         *NOTES.get(&(self, octave)).unwrap()
+    }
+    pub fn from_u8(u: u8) -> (Letter, u8) {
+        static LETTERS: &[Letter] = &[
+            Letter::C,
+            Letter::Csh,
+            Letter::D,
+            Letter::Dsh,
+            Letter::E,
+            Letter::F,
+            Letter::Fsh,
+            Letter::G,
+            Letter::Gsh,
+            Letter::A,
+            Letter::Ash,
+            Letter::B,
+        ];
+        (LETTERS[(u % 12) as usize], u / 12)
     }
 }
 

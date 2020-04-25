@@ -6,19 +6,18 @@ use std::{
     str::FromStr,
 };
 
-use serde_derive::{Deserialize, Serialize};
 use tinymap::{tiny_map, Inner, TinyMap};
 
 use crate::{Balance, Letter, SampleType};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum InstrIdType {
     Base,
     Filter(u8),
     Loop(u8),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InstrId {
     pub name: String,
     pub ty: InstrIdType,
@@ -125,7 +124,7 @@ impl fmt::Display for InstrId {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Voice {
     pub left: SampleType,
     pub right: SampleType,
@@ -140,14 +139,14 @@ impl Voice {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Control {
     StartNote(Letter, u8, u8),
     EndNote(Letter, u8),
     EndAllNotes,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum Frame {
     Voice(Voice),
     Controls(Vec<Control>),

@@ -9,40 +9,32 @@ use std::{
     sync::Arc,
 };
 
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{
-    default_voices, is_default_voices, mix, Channels, CloneLock, Control, DynInput, Enveloper,
-    Frame, FrameCache, InstrId, SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
+    mix, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, Midi,
+    SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
 };
 
 /// An instrument for producing sounds
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Debug, Clone)]
 pub enum Instrument {
     Number(SampleType),
     Wave {
         input: InstrId,
         form: WaveForm,
-        #[serde(default = "default_voices", skip_serializing_if = "is_default_voices")]
         voices: u32,
-        #[serde(skip)]
         waves: CloneLock<Channels<Vec<u32>>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        octave: Option<u8>,
-        #[serde(default)]
+        octave: Option<i8>,
         adsr: ADSR,
-        #[serde(skip)]
         envelopers: CloneLock<Channels<Enveloper>>,
     },
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
     Keyboard,
+    Midi(Midi),
     DrumMachine(Vec<Sampling>),
     Loop {
         input: InstrId,
         measures: u8,
-        #[serde(skip)]
         recording: bool,
         playing: bool,
         frames: CloneLock<Vec<LoopFrame>>,
@@ -50,7 +42,6 @@ pub enum Instrument {
     Filter {
         input: InstrId,
         value: DynInput,
-        #[serde(skip)]
         avgs: Arc<CloneLock<Channels<Voice>>>,
     },
     Script {
@@ -64,7 +55,7 @@ impl Instrument {
     pub fn wave(
         input: InstrId,
         form: WaveForm,
-        octave: Option<u8>,
+        octave: Option<i8>,
         adsr: ADSR,
         voices: u32,
     ) -> Self {
@@ -83,6 +74,7 @@ impl Instrument {
         match self {
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard { .. } => true,
+            Instrument::Midi(_) => true,
             _ => false,
         }
     }
@@ -157,7 +149,7 @@ impl Instrument {
                                     .or_insert_with(Enveloper::default);
                                 enveloper.register(controls.iter().copied());
                                 enveloper
-                                    .states(octave.unwrap_or(3), *adsr)
+                                    .states(octave.unwrap_or(0), *adsr)
                                     .zip(waves)
                                     .map(|((freq, amp), i)| build_wave(freq, amp, i))
                                     .zip(repeat(Balance::default()))
@@ -167,7 +159,7 @@ impl Instrument {
                             Frame::None => {
                                 if let Some(enveloper) = envelopers.get_mut(ch_id) {
                                     enveloper
-                                        .states(octave.unwrap_or(3), *adsr)
+                                        .states(octave.unwrap_or(0), *adsr)
                                         .zip(waves)
                                         .map(|((freq, amp), i)| build_wave(freq, amp, i))
                                         .zip(repeat(Balance::default()))
@@ -213,6 +205,7 @@ impl Instrument {
                     Default::default()
                 }
             }
+            Instrument::Midi(midi) => Frame::controls(midi.controls()).into(),
             // Drum Machine
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {

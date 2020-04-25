@@ -8,7 +8,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; use $m::*;)*);
 }
 
-mods!(app, channel, consts, drum, envelope, instrument, track, utility);
+mods!(app, channel, consts, drum, envelope, instrument, midi, track, utility);
 
 #[cfg(feature = "keyboard")]
 mod keyboard;

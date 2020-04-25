@@ -1,7 +1,5 @@
 use std::sync::{Mutex, MutexGuard};
 
-use serde_derive::{Deserialize, Serialize};
-
 pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     let mut args = Vec::new();
     let mut in_quotes = false;
@@ -41,8 +39,7 @@ pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     (delay, args)
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Default)]
 pub struct CloneLock<T>(Mutex<T>);
 
 impl<T> Clone for CloneLock<T>

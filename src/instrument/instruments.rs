@@ -9,15 +9,15 @@ use std::{
 use itertools::Itertools;
 use outsource::{JobDescription, Outsourcer};
 use rodio::Source;
-use serde_derive::{Deserialize, Serialize};
 use structopt::{clap, StructOpt};
 
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    default_tempo, is_default_tempo, mix, Balance, ChannelId, Channels, CloneLock, FilterCommand,
-    Frame, FrameCache, InstrId, Instrument, LoopFrame, MixerCommand, NumberCommand, RyvmCommand,
-    Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, SAMPLE_RATE,
+    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache, InstrId,
+    Instrument, LoopFrame, Midi, MidiSubcommand, MixerCommand, NumberCommand, RyvmCommand, Sample,
+    SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO, DEFAULT_VOICES,
+    SAMPLE_RATE,
 };
 
 #[derive(Default)]
@@ -41,37 +41,21 @@ pub struct NewScript {
     pub commands: Vec<(bool, Vec<String>)>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Instruments {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     output: Option<InstrId>,
-    #[serde(
-        rename = "instruments",
-        default,
-        skip_serializing_if = "HashMap::is_empty"
-    )]
     map: HashMap<InstrId, Instrument>,
-    #[serde(default = "default_tempo", skip_serializing_if = "is_default_tempo")]
     tempo: SampleType,
-    #[serde(skip)]
     sample_queue: Option<SampleType>,
-    #[serde(skip)]
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
-    #[serde(skip)]
     i: u32,
-    #[serde(skip)]
     last_drums: Option<InstrId>,
-    #[serde(skip)]
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
-    #[serde(skip)]
     loops: HashMap<InstrId, HashSet<InstrId>>,
     #[cfg(feature = "keyboard")]
-    #[serde(skip)]
     keyboard: CloneLock<Option<Keyboard>>,
     #[cfg(feature = "keyboard")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_keyboard: Option<InstrId>,
-    #[serde(skip)]
     new_script_stack: Vec<NewScript>,
 }
 
@@ -80,7 +64,7 @@ impl Default for Instruments {
         Instruments {
             output: None,
             map: HashMap::new(),
-            tempo: 120.0,
+            tempo: DEFAULT_TEMPO,
             sample_queue: None,
             command_queue: Vec::new(),
             i: 0,
@@ -252,20 +236,16 @@ impl Instruments {
     }
     #[cfg_attr(not(feature = "keyboard"), allow(unused_variables))]
     pub fn default_voices_from(&self, id: &InstrId) -> u32 {
-        #[cfg(feature = "keyboard")]
-        {
-            if let Some(instr) = self.get(id) {
-                if let Instrument::Keyboard { .. } = instr {
-                    6
-                } else {
-                    1
-                }
-            } else {
-                1
+        if let Some(instr) = self.get(id) {
+            match instr {
+                #[cfg(feature = "keyboard")]
+                Instrument::Keyboard { .. } => 5,
+                Instrument::Midi(_) => 8,
+                _ => DEFAULT_VOICES,
             }
+        } else {
+            DEFAULT_VOICES
         }
-        #[cfg(not(feature = "keyboard"))]
-        1
     }
     #[cfg(feature = "keyboard")]
     pub fn new_keyboard(&mut self, id: Option<InstrId>) -> InstrId {
@@ -394,6 +374,20 @@ impl Instruments {
             #[cfg(feature = "keyboard")]
             RyvmCommand::Keyboard { name } => {
                 self.new_keyboard(Some(name));
+            }
+            RyvmCommand::Midi(MidiSubcommand::List) => match Midi::ports_list() {
+                Ok(list) => {
+                    for (i, name) in list.into_iter().enumerate() {
+                        println!("{}. {}", i, name);
+                    }
+                }
+                Err(e) => println!("{}", e),
+            },
+            RyvmCommand::Midi(MidiSubcommand::New { name, port }) => {
+                match Midi::new(&name.to_string(), port.unwrap_or(0)) {
+                    Ok(midi) => self.add(name, Instrument::Midi(midi)),
+                    Err(e) => println!("{}", e),
+                }
             }
             RyvmCommand::Drums { name } => {
                 self.add(name.clone(), Instrument::DrumMachine(Vec::new()));

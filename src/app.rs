@@ -1,13 +1,12 @@
 use std::{convert::Infallible, fmt, path::PathBuf, str::FromStr};
 
-use serde_derive::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use crate::{InstrId, SampleType, WaveForm};
 
 /// An input type that can either be a static number or the
 /// id of an instrument from which to get a number
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum DynInput {
     Id(InstrId),
     Num(SampleType),
@@ -71,8 +70,13 @@ pub enum RyvmCommand {
             help = "The id of the instrument supplying the frequency for the wave"
         )]
         input: InstrId,
-        #[structopt(long, short, help = "The synth's octave")]
-        octave: Option<u8>,
+        #[structopt(
+            long,
+            short,
+            allow_hyphen_values = true,
+            help = "The synth's octave relative to its input"
+        )]
+        octave: Option<i8>,
         #[structopt(long, short, help = "The synth's attack")]
         attack: Option<SampleType>,
         #[structopt(long, short, help = "The synth's decay")]
@@ -95,6 +99,8 @@ pub enum RyvmCommand {
         #[structopt(index = 1, help = "The name of the keyboard interface")]
         name: InstrId,
     },
+    #[structopt(about = "Create a new midi instrument")]
+    Midi(MidiSubcommand),
     #[structopt(about = "Create a drum machine")]
     Drums {
         #[structopt(index = 1, help = "The name of the drum machine")]
@@ -209,8 +215,8 @@ pub struct WaveCommand {
         help = "The id of the instrument supplying the frequency for the wave"
     )]
     pub input: Option<InstrId>,
-    #[structopt(long, short, help = "Set the synth's octave")]
-    pub octave: Option<u8>,
+    #[structopt(long, short, help = "Set the synth's octave relative to its input")]
+    pub octave: Option<i8>,
     #[structopt(long, short, help = "Set the synth's attack")]
     pub attack: Option<SampleType>,
     #[structopt(long, short, help = "Set the synth's decay")]
@@ -237,4 +243,20 @@ pub struct MixerCommand {
 pub struct FilterCommand {
     #[structopt(index = 1, help = "Defines filter shape")]
     pub value: DynInput,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum MidiSubcommand {
+    #[structopt(about = "List the available midi ports")]
+    List,
+    #[structopt(about = "Create a new midi inistrument")]
+    New {
+        #[structopt(index = 1, help = "The name for the midi instrument")]
+        name: InstrId,
+        #[structopt(
+            index = 2,
+            help = "The index of the midi port to use (run \"midi list\" to list ports)"
+        )]
+        port: Option<usize>,
+    },
 }

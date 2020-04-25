@@ -10,12 +10,11 @@ use std::{
 use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
-use serde_derive::{Deserialize, Serialize};
 
 use crate::{SampleType, Voice};
 
 /// A path to a sample audio file and a beat pattern that is used to play it
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct Sampling {
     pub path: PathBuf,
     pub beat: BeatPattern,
@@ -81,29 +80,12 @@ impl Sample {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(into = "BeatPatternRep", from = "BeatPatternRep")]
+#[derive(Clone, PartialEq, Eq, Default)]
 pub struct BeatPattern(pub Vec<bool>);
 
 impl fmt::Debug for BeatPattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self)
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct BeatPatternRep(String);
-
-impl From<BeatPattern> for BeatPatternRep {
-    fn from(bp: BeatPattern) -> Self {
-        BeatPatternRep(bp.to_string())
-    }
-}
-
-impl From<BeatPatternRep> for BeatPattern {
-    fn from(bpr: BeatPatternRep) -> Self {
-        bpr.0.parse().unwrap()
     }
 }
 

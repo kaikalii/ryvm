@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
-use serde_derive::{Deserialize, Serialize};
-
 use crate::{Control, Letter, SampleType, SAMPLE_RATE};
 
 /// A set of values defining an attack-decay-sustain-release envelope
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ADSR {
     pub attack: SampleType,
     pub decay: SampleType,
@@ -73,7 +71,7 @@ impl Enveloper {
     /// Get an iterator of frequency-amplitude pairs that are currently playing
     pub fn states(
         &self,
-        base_octave: u8,
+        base_octave: i8,
         adsr: ADSR,
     ) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
         self.states
@@ -83,7 +81,7 @@ impl Enveloper {
                 let t = (self.i - *start) as SampleType / SAMPLE_RATE as SampleType;
                 let amplitude = match state {
                     NoteState::Pressed { velocity } => {
-                        let velocity = *velocity as SampleType / std::u8::MAX as SampleType;
+                        let velocity = *velocity as SampleType / 127.0 as SampleType;
                         if t < adsr.attack {
                             t / adsr.attack * velocity
                         } else {
@@ -106,7 +104,10 @@ impl Enveloper {
                     }
                 };
                 if amplitude > 0.0 {
-                    Some((letter.freq(*octave + base_octave), amplitude))
+                    Some((
+                        letter.freq((*octave as i16 + base_octave as i16).max(0) as u8),
+                        amplitude,
+                    ))
                 } else {
                     None
                 }

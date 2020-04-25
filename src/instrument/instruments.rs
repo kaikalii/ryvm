@@ -534,6 +534,7 @@ impl Instruments {
                     )
                 }
             }
+            RyvmCommand::Rm { id, recursive } => self.remove(&id, recursive),
         }
     }
     fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> Result<(), String> {
@@ -638,6 +639,24 @@ impl Instruments {
             Ok(())
         } else {
             Err(format!("No instrument or command \"{}\"", name))
+        }
+    }
+    fn remove(&mut self, id: &InstrId, recursive: bool) {
+        if let Some(instr) = self.get(id) {
+            if recursive {
+                let inputs: Vec<_> = instr.inputs().into_iter().map(InstrId::from).collect();
+                for input in inputs {
+                    if !self
+                        .map
+                        .iter()
+                        .filter(|(i, _)| i != &id)
+                        .any(|(_, instr)| instr.inputs().contains(&input.as_ref()))
+                    {
+                        self.remove(&input, recursive);
+                    }
+                }
+            }
+            self.map.remove(&id);
         }
     }
     fn print_ls(&self, unsorted: bool) {

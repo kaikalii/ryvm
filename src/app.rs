@@ -183,6 +183,17 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "End a script")]
     End,
+    #[structopt(about = "Remove an instrument", alias = "remove")]
+    Rm {
+        #[structopt(index = 1, help = "The id of the instrument to be removed")]
+        id: InstrId,
+        #[structopt(
+            long,
+            short,
+            help = "Recursively remove all the instrument's unique inputs as well"
+        )]
+        recursive: bool,
+    },
 }
 
 #[derive(Debug, StructOpt)]

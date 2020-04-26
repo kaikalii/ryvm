@@ -67,6 +67,7 @@ impl Enveloper {
                 }
                 Control::PitchBend(pb) => self.pitch_bend = pb,
                 Control::EndAllNotes => self.states.clear(),
+                Control::Controller(..) => {}
             }
         }
     }

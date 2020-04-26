@@ -145,6 +145,7 @@ pub enum Control {
     EndNote(Letter, u8),
     EndAllNotes,
     PitchBend(SampleType),
+    Controller(u8, SampleType),
 }
 
 #[derive(Debug, Clone)]

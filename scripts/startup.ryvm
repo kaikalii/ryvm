@@ -1,0 +1,3 @@
+script default_midi name
+    midi new name
+end

@@ -14,10 +14,10 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache, InstrId,
-    Instrument, LoopFrame, Midi, MidiSubcommand, MixerCommand, NumberCommand, RyvmCommand, Sample,
-    SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO, DEFAULT_VOICES,
-    SAMPLE_RATE,
+    load_script, mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache,
+    InstrId, Instrument, LoopFrame, Midi, MidiSubcommand, MixerCommand, NumberCommand, RyvmCommand,
+    Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO,
+    DEFAULT_VOICES, SAMPLE_RATE,
 };
 
 #[derive(Default)]
@@ -63,7 +63,7 @@ pub struct Instruments {
 
 impl Default for Instruments {
     fn default() -> Self {
-        Instruments {
+        let mut instruments = Instruments {
             output: None,
             map: HashMap::new(),
             tempo: DEFAULT_TEMPO,
@@ -80,7 +80,18 @@ impl Default for Instruments {
             current_keyboard: None,
             current_midi: None,
             new_script_stack: Vec::new(),
+        };
+
+        if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
+            let command_args = &["startup".to_string()];
+            if let Err(e) =
+                instruments.run_script(command_args, "startup", script_args, unresolved_commands)
+            {
+                println!("{}", e);
+            }
         }
+
+        instruments
     }
 }
 
@@ -525,9 +536,7 @@ impl Instruments {
                     .values()
                     .any(|instr| matches!(instr, Instrument::Script{..}));
                 if any_scripts {
-                    if self.output.is_some() {
-                        println!("~~~~~ Scripts ~~~~~");
-                    }
+                    println!("~~~~~ Scripts ~~~~~");
                     for (id, _) in self
                         .map
                         .iter()
@@ -537,9 +546,7 @@ impl Instruments {
                     }
                 }
                 if let Some(output) = &self.output {
-                    if any_scripts {
-                        println!("~~~ Instruments ~~~");
-                    }
+                    println!("~~~ Instruments ~~~");
                     self.print_tree(output.clone(), 0);
                 }
             }

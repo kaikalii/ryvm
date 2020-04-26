@@ -19,6 +19,3 @@ send_wrapper = '*'
 [features]
 default = []
 keyboard = ['piston_window']
-
-[profile.release]
-debug = true

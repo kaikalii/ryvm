@@ -153,7 +153,7 @@ impl Instruments {
         self.loops.clear();
         for (id, instr) in &self.map {
             if let InstrId::Loop(i) = id {
-                if let Instrument::Loop { input, .. } | Instrument::RecordingLoop { input, .. } =
+                if let Instrument::Loop { input, .. } | Instrument::InitialLoop { input, .. } =
                     instr
                 {
                     self.loops
@@ -164,21 +164,22 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop(&mut self, number: u8, input: InstrId) {
+    pub fn add_loop(&mut self, number: u8, input: InstrId, size: SampleType) {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Create a loop for every input device of this instrument
         for input in self.input_devices_of(&input) {
-            self._add_loop(number, input);
+            self._add_loop(number, input, size);
         }
         // Update loops
         self.update_loops();
     }
-    fn _add_loop(&mut self, number: u8, input: InstrId) {
+    fn _add_loop(&mut self, number: u8, input: InstrId, size: SampleType) {
         // Create new loop id
         let loop_id = InstrId::Loop(number);
         // Create the loop instrument
         let loop_instr = if let Some(frame_count) = self.loop_period {
+            let frame_count = (frame_count as SampleType * size.abs()) as usize;
             Instrument::Loop {
                 input,
                 recording: true,
@@ -189,12 +190,12 @@ impl Instruments {
                         frame: Frame::None,
                         new: false,
                     };
-                    frame_count as usize
+                    frame_count
                 ]),
                 start_i: self.i(),
             }
         } else {
-            Instrument::RecordingLoop {
+            Instrument::InitialLoop {
                 input,
                 frames: CloneLock::new(Vec::new()),
                 started: CloneLock::new(false),
@@ -256,7 +257,7 @@ impl Instruments {
                     }
                     *recording = false;
                 }
-                Instrument::RecordingLoop { input, frames, .. } => {
+                Instrument::InitialLoop { input, frames, .. } => {
                     if frames.lock().is_empty() {
                         println!("Cancelled recording {}", id);
                     } else {
@@ -522,7 +523,11 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Loop { number, input } => self.add_loop(number, input),
+            RyvmCommand::Loop {
+                number,
+                input,
+                size,
+            } => self.add_loop(number, input, size.unwrap_or(1.0)),
             RyvmCommand::Start { loops } => {
                 for i in loops {
                     if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&InstrId::Loop(i))

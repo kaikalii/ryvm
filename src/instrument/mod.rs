@@ -46,7 +46,7 @@ pub enum Instrument {
         frames: CloneLock<Vec<LoopFrame>>,
         start_i: u32,
     },
-    RecordingLoop {
+    InitialLoop {
         input: InstrId,
         frames: CloneLock<Vec<LoopFrame>>,
         started: CloneLock<bool>,
@@ -323,7 +323,7 @@ impl Instrument {
                 })
             }
             // Loops
-            Instrument::RecordingLoop {
+            Instrument::InitialLoop {
                 input,
                 frames,
                 started,
@@ -367,7 +367,6 @@ impl Instrument {
                     for frame in frames.iter_mut() {
                         frame.new = false;
                     }
-                    println!("frames made old");
                 }
                 // Get input frame
                 let input_channels = instruments.next_from(&*input, cache);

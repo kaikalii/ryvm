@@ -138,6 +138,11 @@ pub enum RyvmCommand {
         number: u8,
         #[structopt(index = 2, help = "The instrument to be looped")]
         input: InstrId,
+        #[structopt(
+            index = 3,
+            help = "The length of this loop compared to the established one"
+        )]
+        size: Option<SampleType>,
     },
     #[structopt(about = "Start (a) loop(s)")]
     Start {

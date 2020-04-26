@@ -1,6 +1,8 @@
+midi new midi1
+drums d midi1
+drum -p kick.wav
+drum -p clap.wav
+drum -p hat.wav
+wave tri s midi1
 mixer m s d
 output m
-drums d
-drum -p kick.wav -b ----
-drum -p clap.wav -b _-_-
-wave tri s

@@ -3,7 +3,7 @@ mod parts;
 pub use {instruments::*, parts::*};
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     f32::consts::PI,
     iter::{once, repeat},
     path::PathBuf,
@@ -36,7 +36,7 @@ pub enum Instrument {
     },
     DrumMachine {
         samples: Vec<PathBuf>,
-        input: Option<InstrId>,
+        input: InstrId,
         manual_samples: CloneLock<Channels<Vec<ActiveSampling>>>,
     },
     Loop {
@@ -44,13 +44,14 @@ pub enum Instrument {
         recording: bool,
         playing: bool,
         tempo: SampleType,
-        frames: CloneLock<Vec<LoopFrame>>,
-        start_i: u32,
+        frames: CloneLock<BTreeMap<u32, Frame>>,
+        start_i: CloneLock<Option<u32>>,
+        period: u32,
     },
     InitialLoop {
         input: InstrId,
-        frames: CloneLock<Vec<LoopFrame>>,
-        started: CloneLock<bool>,
+        frames: Option<CloneLock<BTreeMap<u32, Frame>>>,
+        start_i: CloneLock<Option<u32>>,
     },
     Filter {
         input: InstrId,
@@ -240,12 +241,7 @@ impl Instrument {
                 input,
                 manual_samples,
             } => {
-                let channels = Channels::empty_primary();
-                let channels = if let Some(input) = input {
-                    instruments.next_from(input, cache)
-                } else {
-                    &channels
-                };
+                let channels = instruments.next_from(input, cache);
                 channels.id_map(|ch_id, frame| {
                     let mut voices = Vec::new();
                     let mut manual_samples = manual_samples.lock();
@@ -291,23 +287,26 @@ impl Instrument {
             Instrument::InitialLoop {
                 input,
                 frames,
-                started,
+                start_i,
             } => {
                 let input_frame = instruments
                     .next_from(&*input, cache)
                     .primary()
                     .cloned()
                     .unwrap_or_default();
-                let mut started = started.lock();
-                if !*started && input_frame.is_some() {
-                    *started = true;
-                    println!("Started recording {}", my_id)
-                }
-                if *started {
-                    frames.lock().push(LoopFrame {
-                        frame: input_frame,
-                        new: false,
-                    });
+                let mut start_i = start_i.lock();
+                if input_frame.is_some() {
+                    if start_i.is_none() {
+                        *start_i = Some(instruments.i());
+                        println!("Started recording {}", my_id)
+                    }
+                    if let Some(start_i) = *start_i {
+                        frames
+                            .as_ref()
+                            .unwrap()
+                            .lock()
+                            .insert(instruments.i() - start_i, input_frame);
+                    }
                 }
                 Channels::default()
             }
@@ -318,9 +317,26 @@ impl Instrument {
                 tempo,
                 frames,
                 start_i,
+                period,
             } => {
                 let mut frames = frames.lock();
-                let len = frames.len();
+                let input_channels = instruments.next_from(&*input, cache);
+                let mut start_i = start_i.lock();
+                // Get input frame
+                let frame_is_some = input_channels
+                    .primary()
+                    .map(Frame::is_some)
+                    .unwrap_or(false);
+                // Set start_i if not set
+                if start_i.is_none() && frame_is_some {
+                    *start_i = Some(instruments.i());
+                    println!("Started recording {}", my_id);
+                }
+                let start_i = if let Some(i) = *start_i {
+                    i
+                } else {
+                    return Channels::default();
+                };
 
                 let adjust_i =
                     |i: u32| (i as u64 * instruments.tempo as u64 / *tempo as u64) as u32;
@@ -328,36 +344,14 @@ impl Instrument {
                 let raw_loop_i = instruments.i() - start_i;
                 // Calculate the index of the loop's current sample adjusting for changes in tempo
                 let loop_i = adjust_i(raw_loop_i);
-                if loop_i % len as u32 == 0 && *recording {
-                    for frame in frames.iter_mut() {
-                        frame.new = false;
-                    }
-                }
-                // Get input frame
-                let input_channels = instruments.next_from(&*input, cache);
-                let frame_is_some = || {
-                    input_channels
-                        .primary()
-                        .map(Frame::is_some)
-                        .unwrap_or(false)
-                };
-                if *recording && frame_is_some() {
+                assert_eq!(loop_i, raw_loop_i);
+
+                if *recording && frame_is_some {
                     // Record if recording and there is input
-                    frames[loop_i as usize % len] = LoopFrame {
-                        frame: input_channels.primary().cloned().unwrap_or_default(),
-                        new: true,
-                    };
-                    // Go backward and set all old frames to new and empty
-                    for i in (0..(loop_i as usize % len)).rev() {
-                        if frames[i].new {
-                            break;
-                        } else {
-                            frames[i] = LoopFrame {
-                                frame: Frame::None,
-                                new: true,
-                            }
-                        }
-                    }
+                    let frame = input_channels.primary().cloned().unwrap_or_default();
+                    // TODO: fix this
+                    frames.split_off(&(loop_i % *period));
+                    frames.insert(loop_i % *period, frame);
                     // The loop itself is silent while recording
                     Frame::from(Control::EndAllNotes).into()
                 } else if *playing {
@@ -366,7 +360,7 @@ impl Instrument {
                     // ones would be skipped because of tempo changes
                     let controls: Vec<Control> = (loop_i..adjust_i(raw_loop_i + 1))
                         .flat_map(|i| {
-                            if let Frame::Controls(controls) = &frames[i as usize % len].frame {
+                            if let Some(Frame::Controls(controls)) = frames.get(&(i % *period)) {
                                 controls.clone()
                             } else {
                                 Vec::new()
@@ -375,7 +369,10 @@ impl Instrument {
                         .collect();
                     if controls.is_empty() {
                         // If there were no controls found, simply output the loop's stored frame
-                        frames[loop_i as usize % len].frame.clone()
+                        frames
+                            .get(&(loop_i % *period))
+                            .cloned()
+                            .unwrap_or(Frame::None)
                     } else {
                         Frame::Controls(controls)
                     }
@@ -417,7 +414,7 @@ impl Instrument {
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&InstrId> {
         match self {
-            Instrument::Wave { input, .. } => vec![&input],
+            Instrument::Wave { input, .. } => vec![input],
             Instrument::Mixer(inputs) => inputs.keys().collect(),
             Instrument::Filter { input, value, .. } => once(input)
                 .chain(if let DynInput::Id(id) = value {
@@ -426,7 +423,7 @@ impl Instrument {
                     None
                 })
                 .collect(),
-            Instrument::DrumMachine { input, .. } => input.as_ref().into_iter().collect(),
+            Instrument::DrumMachine { input, .. } => vec![input],
             _ => Vec::new(),
         }
     }

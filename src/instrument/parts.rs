@@ -1,6 +1,6 @@
 use std::{f32::consts::FRAC_2_PI, fmt, str::FromStr, sync::Arc};
 
-use crate::{CloneLock, Frame, SampleType, DEFAULT_VOLUME};
+use crate::{CloneLock, SampleType, DEFAULT_VOLUME};
 
 /// A lock used primarily to allow the manipulation of a rodio::Source
 /// while it is already playing
@@ -74,12 +74,6 @@ impl FromStr for WaveForm {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LoopFrame {
-    pub frame: Frame,
-    pub new: bool,
-}
-
 /// A balance wrapper for an `Instrument`
 #[derive(Debug, Clone, Copy)]
 pub struct Balance {
@@ -110,4 +104,10 @@ pub struct ActiveSampling {
     pub index: usize,
     pub i: usize,
     pub velocity: SampleType,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LoopMaster {
+    pub id: u8,
+    pub period: u32,
 }

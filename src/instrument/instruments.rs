@@ -133,10 +133,9 @@ impl Instruments {
         self.add(id, new_instr);
     }
     pub fn input_devices_of(&self, id: &InstrId) -> Vec<InstrId> {
-        let id = id.into();
         if let Some(instr) = self.get(&id) {
             if instr.is_input_device() {
-                vec![id]
+                vec![id.clone()]
             } else {
                 instr
                     .inputs()
@@ -159,26 +158,19 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop(&mut self, input: InstrId, measures: u8) {
+    pub fn add_loop(&mut self, number: u8, input: InstrId, measures: u8) {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Create a loop for every input device of this instrument
         for input in self.input_devices_of(&input) {
-            self._add_loop(input, measures);
+            self._add_loop(number, input, measures);
         }
         // Update loops
         self.update_loops();
     }
-    fn _add_loop(&mut self, input: InstrId, measures: u8) {
+    fn _add_loop(&mut self, number: u8, input: InstrId, measures: u8) {
         // Create new loop id
-        let mut i = 1;
-        let loop_id = loop {
-            let possible = input.as_loop(i);
-            if self.get(&possible).is_none() {
-                break possible;
-            }
-            i += 1;
-        };
+        let loop_id = InstrId::Loop(number);
         // Create the loop instrument
         let frame_count = self.frames_per_measure() as usize * measures as usize;
         let loop_instr = Instrument::Loop {
@@ -199,13 +191,12 @@ impl Instruments {
         self.map.insert(loop_id, loop_instr);
     }
     pub fn get(&self, id: &InstrId) -> Option<&Instrument> {
-        self.map.get(&id.into())
+        self.map.get(id)
     }
     pub fn get_mut(&mut self, id: &InstrId) -> Option<&mut Instrument> {
-        self.map.get_mut(&id.into())
+        self.map.get_mut(id)
     }
     pub fn next_from<'a>(&self, id: &InstrId, cache: &'a mut FrameCache) -> &'a Channels {
-        let id = id.into();
         if cache.map.contains_key(&id) {
             // Get cached result
             cache.map.get(&id).unwrap()
@@ -484,17 +475,23 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Loop { input, measures } => self.add_loop(input, measures),
-            RyvmCommand::Start { inputs } => {
-                for input in inputs {
-                    if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&input) {
+            RyvmCommand::Loop {
+                number,
+                input,
+                measures,
+            } => self.add_loop(number, input, measures.unwrap_or(4)),
+            RyvmCommand::Start { loops } => {
+                for i in loops {
+                    if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&InstrId::Loop(i))
+                    {
                         *playing = true;
                     }
                 }
             }
-            RyvmCommand::Stop { inputs } => {
-                for input in inputs {
-                    if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&input) {
+            RyvmCommand::Stop { loops } => {
+                for i in loops {
+                    if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&InstrId::Loop(i))
+                    {
                         *playing = false;
                     }
                 }
@@ -728,7 +725,7 @@ impl Instruments {
     fn remove(&mut self, id: &InstrId, recursive: bool) {
         if let Some(instr) = self.get(id) {
             if recursive {
-                let inputs: Vec<_> = instr.inputs().into_iter().map(InstrId::from).collect();
+                let inputs: Vec<_> = instr.inputs().into_iter().cloned().collect();
                 for input in inputs {
                     if !self
                         .map
@@ -781,7 +778,7 @@ impl Instruments {
             }
             println!();
             for input in instr.inputs().into_iter().sorted() {
-                self.print_tree(input.into(), depth + 1);
+                self.print_tree(input.clone(), depth + 1);
             }
         } else {
             println!();

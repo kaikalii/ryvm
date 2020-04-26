@@ -10,25 +10,17 @@ use tinymap::{tiny_map, Inner, TinyMap};
 
 use crate::{Balance, Letter, SampleType};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
-pub enum InstrIdType {
-    Base,
-    Filter(u8),
-    Loop(u8),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct InstrId {
-    pub name: String,
-    pub ty: InstrIdType,
+pub enum InstrId {
+    Base(String),
+    Filter(String, u8),
+    Loop(u8),
+    Nothing,
 }
 
 impl Default for InstrId {
     fn default() -> Self {
-        InstrId {
-            name: String::new(),
-            ty: InstrIdType::Base,
-        }
+        InstrId::Nothing
     }
 }
 
@@ -37,21 +29,13 @@ impl InstrId {
     where
         S: Into<String>,
     {
-        InstrId {
-            name: name.into(),
-            ty: InstrIdType::Base,
-        }
-    }
-    pub fn as_loop(&self, loop_num: u8) -> Self {
-        InstrId {
-            name: self.name.clone(),
-            ty: InstrIdType::Loop(loop_num),
-        }
+        InstrId::Base(name.into())
     }
     pub fn as_filter(&self, filter_num: u8) -> Self {
-        InstrId {
-            name: self.name.clone(),
-            ty: InstrIdType::Filter(filter_num),
+        match self {
+            InstrId::Base(name) => InstrId::Filter(name.clone(), filter_num),
+            InstrId::Filter(name, _) => InstrId::Filter(name.clone(), filter_num),
+            id => id.clone(),
         }
     }
 }
@@ -68,6 +52,9 @@ where
 impl FromStr for InstrId {
     type Err = Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.trim() == "<nothing>" {
+            return Ok(InstrId::Nothing);
+        }
         let mut name = String::new();
         let mut secondary = String::new();
         let mut is_loop = false;
@@ -87,15 +74,9 @@ impl FromStr for InstrId {
         }
         Ok(if let Ok(i) = secondary.parse::<u8>() {
             if is_filter {
-                InstrId {
-                    name,
-                    ty: InstrIdType::Filter(i),
-                }
+                InstrId::Filter(name, i)
             } else if is_loop {
-                InstrId {
-                    name,
-                    ty: InstrIdType::Loop(i),
-                }
+                InstrId::Loop(i)
             } else {
                 InstrId::new_base(name)
             }
@@ -105,21 +86,13 @@ impl FromStr for InstrId {
     }
 }
 
-impl<'a> From<&'a InstrId> for InstrId {
-    fn from(id_ref: &'a InstrId) -> Self {
-        InstrId {
-            name: id_ref.name.to_owned(),
-            ty: id_ref.ty,
-        }
-    }
-}
-
 impl fmt::Display for InstrId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.ty {
-            InstrIdType::Base => write!(f, "{}", self.name),
-            InstrIdType::Filter(i) => write!(f, "{}#{}", self.name, i),
-            InstrIdType::Loop(i) => write!(f, "{}@{}", self.name, i),
+        match self {
+            InstrId::Base(name) => write!(f, "{}", name),
+            InstrId::Filter(name, i) => write!(f, "{}#{}", name, i),
+            InstrId::Loop(i) => write!(f, "@{}", i),
+            InstrId::Nothing => write!(f, "<nothing>"),
         }
     }
 }

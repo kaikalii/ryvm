@@ -132,23 +132,25 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Create a loop")]
     Loop {
-        #[structopt(index = 1, help = "The instrument to be looped")]
+        #[structopt(index = 1, help = "The loop number")]
+        number: u8,
+        #[structopt(index = 2, help = "The instrument to be looped")]
         input: InstrId,
         #[structopt(
-            index = 2,
-            help = "How many measures each loop will last before looping"
+            index = 3,
+            help = "How many measures each loop will last before looping (default is 4)"
         )]
-        measures: u8,
+        measures: Option<u8>,
     },
     #[structopt(about = "Start (a) loop(s)")]
     Start {
         #[structopt(index = 1, required = true, help = "The loops to start")]
-        inputs: Vec<InstrId>,
+        loops: Vec<u8>,
     },
     #[structopt(about = "Stop (a) loop(s)")]
     Stop {
         #[structopt(index = 1, required = true, help = "The loops to stop")]
-        inputs: Vec<InstrId>,
+        loops: Vec<u8>,
     },
     #[structopt(about = "Create a low-pass filter")]
     Filter {

@@ -6,12 +6,13 @@ use std::{
     collections::HashMap,
     f32::consts::PI,
     iter::{once, repeat},
+    path::PathBuf,
     sync::Arc,
 };
 
 use crate::{
-    mix, ChannelId, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId,
-    Letter, SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
+    mix, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, Letter,
+    SampleType, Voice, ADSR, SAMPLE_RATE,
 };
 
 /// An instrument for producing sounds
@@ -34,7 +35,7 @@ pub enum Instrument {
         port: usize,
     },
     DrumMachine {
-        samplings: Vec<Sampling>,
+        samples: Vec<PathBuf>,
         input: Option<InstrId>,
         manual_samples: CloneLock<Channels<Vec<ActiveSampling>>>,
     },
@@ -235,7 +236,7 @@ impl Instrument {
             }
             // Drum Machine
             Instrument::DrumMachine {
-                samplings,
+                samples,
                 input,
                 manual_samples,
             } => {
@@ -247,39 +248,6 @@ impl Instrument {
                 };
                 channels.id_map(|ch_id, frame| {
                     let mut voices = Vec::new();
-                    // Handle automated samples
-                    if ch_id == &ChannelId::Primary {
-                        // Get the sample index for the current measure
-                        let ix = instruments.measure_i();
-                        // For all samplings...
-                        for sampling in samplings {
-                            let frames_per_sub = instruments.frames_per_measure() as SampleType
-                                / sampling.beat.0.len() as SampleType;
-                            // If the sample data is loaded...
-                            if let Some(res) =
-                                instruments.sample_bank.get(&sampling.path).finished()
-                            {
-                                if let Ok(sample) = &*res {
-                                    let samples = &sample.samples();
-                                    // Check each beat in the sampling to see if it should be playing
-                                    for b in 0..sampling.beat.0.len() {
-                                        // Determine the beat's start index
-                                        let start = (frames_per_sub * b as f32) as u32;
-                                        // If the sampling is playing and the current index is after its start...
-                                        if sampling.beat.0[b as usize] && ix >= start {
-                                            // And before its end
-                                            let si = (ix - start) as usize;
-                                            if si < samples.len() {
-                                                // Add the voice from the sample for this measure index to the list to be mixed
-                                                voices.push((samples[si], Balance::default()));
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Handle manual samples
                     let mut manual_samples = manual_samples.lock();
                     let manual_samples =
                         manual_samples.entry(ch_id.clone()).or_insert_with(Vec::new);
@@ -289,7 +257,7 @@ impl Instrument {
                             if let Control::PadStart(l, o, v) = control {
                                 let min_index = Letter::C.to_u8(3);
                                 let index = (l.to_u8(o).max(min_index) - min_index) as usize;
-                                if index < samplings.len() {
+                                if index < samples.len() {
                                     manual_samples.push(ActiveSampling {
                                         index,
                                         i: 0,
@@ -302,10 +270,7 @@ impl Instrument {
                     // Add manual samples to voies
                     for ms in (0..manual_samples.len()).rev() {
                         let ActiveSampling { index, i, velocity } = &mut manual_samples[ms];
-                        if let Some(res) = instruments
-                            .sample_bank
-                            .get(&samplings[*index].path)
-                            .finished()
+                        if let Some(res) = instruments.sample_bank.get(&samples[*index]).finished()
                         {
                             if let Ok(sample) = &*res {
                                 if *i < sample.samples().len() {

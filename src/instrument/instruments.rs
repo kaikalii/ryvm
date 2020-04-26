@@ -16,8 +16,8 @@ use crate::Keyboard;
 use crate::{
     load_script, mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, Frame, FrameCache,
     InstrId, Instrument, LoopFrame, Midi, MidiSubcommand, MixerCommand, NumberCommand, RyvmCommand,
-    Sample, SampleType, Sampling, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO,
-    DEFAULT_VOICES, SAMPLE_RATE,
+    Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO, DEFAULT_VOICES,
+    SAMPLE_RATE,
 };
 
 #[derive(Default)]
@@ -483,7 +483,7 @@ impl Instruments {
                 self.add(
                     name.clone(),
                     Instrument::DrumMachine {
-                        samplings: Vec::new(),
+                        samples: Vec::new(),
                         input,
                         manual_samples: CloneLock::new(Channels::new()),
                     },
@@ -494,8 +494,6 @@ impl Instruments {
                 machine_id,
                 index,
                 path,
-                beat,
-                repeat: rep,
                 remove,
             } => {
                 let name = if let Some(name) = machine_id {
@@ -504,22 +502,14 @@ impl Instruments {
                 } else {
                     self.last_drums.clone().unwrap_or_default()
                 };
-                if let Some(Instrument::DrumMachine { samplings, .. }) = self.get_mut(&name) {
-                    let index = index.unwrap_or_else(|| samplings.len());
-                    samplings.resize(index + 1, Sampling::default());
+                if let Some(Instrument::DrumMachine { samples, .. }) = self.get_mut(&name) {
+                    let index = index.unwrap_or_else(|| samples.len());
+                    samples.resize(index + 1, PathBuf::from(""));
                     if let Some(path) = path {
-                        samplings[index].path = path;
-                    }
-                    if let Some(be) = beat {
-                        samplings[index].beat = repeat(be.chars())
-                            .take(rep.unwrap_or(1) as usize)
-                            .flatten()
-                            .collect::<String>()
-                            .parse()
-                            .unwrap();
+                        samples[index] = path;
                     }
                     if remove {
-                        samplings[index] = Sampling::default();
+                        samples[index] = PathBuf::from("");
                     }
                 }
             }

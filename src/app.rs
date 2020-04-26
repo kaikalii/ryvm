@@ -115,20 +115,6 @@ pub enum RyvmCommand {
         index: Option<usize>,
         #[structopt(long, short, help = "Path to the sound file")]
         path: Option<PathBuf>,
-        #[structopt(
-            long,
-            short,
-            allow_hyphen_values = true,
-            help = "A string repesentation of the beat"
-        )]
-        beat: Option<String>,
-        #[structopt(
-            long,
-            short = "x",
-            help = "Repeat the entered beat some number of times",
-            requires = "beat"
-        )]
-        repeat: Option<u8>,
         #[structopt(long, short, help = "Remove the specified drum", conflicts_with_all = &["path", "beat"])]
         remove: bool,
     },

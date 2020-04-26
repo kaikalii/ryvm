@@ -3,7 +3,7 @@ use std::{
     env::{current_dir, current_exe},
     error::Error,
     fmt, fs,
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
 };
 
@@ -12,13 +12,6 @@ use itertools::Itertools;
 use rodio::{Decoder, Source};
 
 use crate::{SampleType, Voice};
-
-/// A path to a sample audio file and a beat pattern that is used to play it
-#[derive(Debug, Clone, Default)]
-pub struct Sampling {
-    pub path: PathBuf,
-    pub beat: BeatPattern,
-}
 
 /// Data for an audio sample
 #[derive(Clone)]

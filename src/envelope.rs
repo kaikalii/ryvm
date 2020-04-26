@@ -32,6 +32,7 @@ enum NoteState {
 /// and applies an ADSR envelope to them
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
+    pitch_bend: SampleType,
     states: HashMap<(Letter, u8), Vec<(u32, NoteState, u8)>>,
     i: u32,
 }
@@ -64,6 +65,7 @@ impl Enveloper {
                         states.push((self.i, NoteState::Released, velocity));
                     }
                 }
+                Control::PitchBend(pb) => self.pitch_bend = pb,
                 Control::EndAllNotes => self.states.clear(),
             }
         }
@@ -105,7 +107,8 @@ impl Enveloper {
                 };
                 if amplitude > 0.0 {
                     Some((
-                        letter.freq((*octave as i16 + base_octave as i16).max(0) as u8),
+                        letter.freq((*octave as i16 + base_octave as i16).max(0) as u8)
+                            * 2f32.powf(self.pitch_bend),
                         amplitude,
                     ))
                 } else {

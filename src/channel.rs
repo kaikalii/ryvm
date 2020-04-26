@@ -139,11 +139,12 @@ impl Voice {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
     StartNote(Letter, u8, u8),
     EndNote(Letter, u8),
     EndAllNotes,
+    PitchBend(SampleType),
 }
 
 #[derive(Debug, Clone)]

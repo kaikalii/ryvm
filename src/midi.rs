@@ -3,10 +3,11 @@ use std::{fmt, sync::Arc};
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
 
-use crate::{CloneLock, Control, Letter};
+use crate::{CloneLock, Control, Letter, SampleType};
 
 const START_NOTE: u8 = 0x90;
 const END_NOTE: u8 = 0x80;
+const PITCH_BEND: u8 = 0xE0;
 
 pub fn decode_control(data: &[u8]) -> Option<Control> {
     let mut padded = [0; 3];
@@ -21,6 +22,11 @@ pub fn decode_control(data: &[u8]) -> Option<Control> {
         [START_NOTE, n, v] => {
             let (letter, octave) = Letter::from_u8(n);
             Some(Control::StartNote(letter, octave, v))
+        }
+        [PITCH_BEND, lsb, msb] => {
+            let pb_u16 = msb as u16 * 0x80 + lsb as u16;
+            let pb = pb_u16 as SampleType / 0x3fff as SampleType * 2.0 - 1.0;
+            Some(Control::PitchBend(pb))
         }
         _ => None,
     }

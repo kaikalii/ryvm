@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-    mix, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, Midi,
-    SampleType, Sampling, Voice, ADSR, SAMPLE_RATE,
+    mix, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, SampleType,
+    Sampling, Voice, ADSR, SAMPLE_RATE,
 };
 
 /// An instrument for producing sounds
@@ -30,7 +30,9 @@ pub enum Instrument {
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
     Keyboard,
-    Midi(Midi),
+    Midi {
+        port: usize,
+    },
     DrumMachine(Vec<Sampling>),
     Loop {
         input: InstrId,
@@ -74,7 +76,7 @@ impl Instrument {
         match self {
             #[cfg(feature = "keyboard")]
             Instrument::Keyboard { .. } => true,
-            Instrument::Midi(_) => true,
+            Instrument::Midi { .. } => true,
             _ => false,
         }
     }
@@ -205,7 +207,22 @@ impl Instrument {
                     Default::default()
                 }
             }
-            Instrument::Midi(midi) => Frame::controls(midi.controls()).into(),
+            Instrument::Midi { port } => {
+                if instruments
+                    .current_midi
+                    .as_ref()
+                    .map(|midi_id| midi_id == &my_id)
+                    .unwrap_or(false)
+                {
+                    if let Some(midi) = instruments.midis.get(port) {
+                        Frame::controls(midi.controls()).into()
+                    } else {
+                        Default::default()
+                    }
+                } else {
+                    Default::default()
+                }
+            }
             // Drum Machine
             Instrument::DrumMachine(samplings) => {
                 if samplings.is_empty() {

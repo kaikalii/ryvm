@@ -54,8 +54,10 @@ pub struct Instruments {
     loops: HashMap<InstrId, HashSet<InstrId>>,
     #[cfg(feature = "keyboard")]
     keyboard: CloneLock<Option<Keyboard>>,
+    pub midis: HashMap<usize, Midi>,
     #[cfg(feature = "keyboard")]
     pub current_keyboard: Option<InstrId>,
+    pub current_midi: Option<InstrId>,
     new_script_stack: Vec<NewScript>,
 }
 
@@ -73,8 +75,10 @@ impl Default for Instruments {
             loops: HashMap::new(),
             #[cfg(feature = "keyboard")]
             keyboard: CloneLock::new(None),
+            midis: HashMap::new(),
             #[cfg(feature = "keyboard")]
             current_keyboard: None,
+            current_midi: None,
             new_script_stack: Vec::new(),
         }
     }
@@ -240,7 +244,7 @@ impl Instruments {
             match instr {
                 #[cfg(feature = "keyboard")]
                 Instrument::Keyboard { .. } => 5,
-                Instrument::Midi(_) => 8,
+                Instrument::Midi { .. } => 8,
                 _ => DEFAULT_VOICES,
             }
         } else {
@@ -263,6 +267,40 @@ impl Instruments {
         self.add(id.clone(), Instrument::Keyboard);
         self.current_keyboard = Some(id.clone());
         id
+    }
+    pub fn new_default_input_device(&mut self, id: Option<InstrId>) -> InstrId {
+        let default_midi = InstrId::from("default_midi");
+        if let Some(Instrument::Script { args, commands }) = self.get(&default_midi) {
+            let id = id.unwrap_or_else(|| {
+                let mut i = 1;
+                loop {
+                    let possible = InstrId::from(format!("midi{}", i));
+                    if self.get(&possible).is_none() {
+                        break possible;
+                    }
+                    i += 1;
+                }
+            });
+            let script_args = args.clone();
+            let unresolved_commands = commands.clone();
+            let command_args = &["default_midi".to_string(), id.to_string()];
+            if let Err(e) = self.run_script(
+                command_args,
+                "default_midi",
+                script_args,
+                unresolved_commands,
+            ) {
+                println!("{}", e);
+            }
+            id
+        } else {
+            #[cfg(feature = "keyboard")]
+            {
+                self.new_keyboard(id)
+            }
+            #[cfg(not(feature = "keyboard"))]
+            InstrId::default()
+        }
     }
     #[cfg(feature = "keyboard")]
     pub fn keyboard<F, R>(&self, f: F) -> R
@@ -340,11 +378,10 @@ impl Instruments {
                 sustain,
                 release,
             } => {
-                #[cfg(feature = "keyboard")]
                 let input = if let Some(input) = input {
                     input
                 } else {
-                    self.new_keyboard(input)
+                    self.new_default_input_device(input)
                 };
                 let default_adsr = ADSR::default();
                 let instr = Instrument::wave(
@@ -384,9 +421,19 @@ impl Instruments {
                 Err(e) => println!("{}", e),
             },
             RyvmCommand::Midi(MidiSubcommand::New { name, port }) => {
-                match Midi::new(&name.to_string(), port.unwrap_or(0)) {
-                    Ok(midi) => self.add(name, Instrument::Midi(midi)),
-                    Err(e) => println!("{}", e),
+                let port = port.unwrap_or(0);
+                if self.midis.contains_key(&port) {
+                    self.current_midi = Some(name.clone());
+                    self.add(name, Instrument::Midi { port });
+                } else {
+                    match Midi::new(&name.to_string(), port) {
+                        Ok(midi) => {
+                            self.midis.entry(port).or_insert(midi);
+                            self.current_midi = Some(name.clone());
+                            self.add(name, Instrument::Midi { port });
+                        }
+                        Err(e) => println!("{}", e),
+                    }
                 }
             }
             RyvmCommand::Drums { name } => {
@@ -568,41 +615,9 @@ impl Instruments {
                     args: script_args,
                     commands: unresolved_commands,
                 } => {
-                    let script_clap_args: Vec<clap::Arg> = script_args
-                        .iter()
-                        .enumerate()
-                        .map(|(i, arg_name)| {
-                            clap::Arg::with_name(arg_name)
-                                .index(i as u64 + 1)
-                                .required(true)
-                        })
-                        .collect();
-                    let script_app = clap::App::new(&name.to_string()).args(&script_clap_args);
-                    match script_app.get_matches_from_safe(&*args) {
-                        Ok(matches) => {
-                            let mut resolved_commands = Vec::new();
-                            for (delay, unresolved_command) in unresolved_commands {
-                                let resolved_command: Vec<String> = unresolved_command
-                                    .iter()
-                                    .map(|arg| {
-                                        if let Some(script_arg) =
-                                            script_args.iter().find(|sa| sa == &arg)
-                                        {
-                                            matches.value_of(script_arg).unwrap().into()
-                                        } else {
-                                            arg.clone()
-                                        }
-                                    })
-                                    .collect();
-                                let parsed = RyvmCommand::from_iter_safe(&resolved_command);
-                                resolved_commands.push((*delay, resolved_command, parsed))
-                            }
-                            for (delay, args, parsed) in resolved_commands {
-                                self.queue_command(delay, args, parsed);
-                            }
-                        }
-                        Err(e) => println!("{}", e),
-                    }
+                    let script_args = script_args.clone();
+                    let unresolved_commands = unresolved_commands.clone();
+                    self.run_script(args, &name.to_string(), script_args, unresolved_commands)?
                 }
                 _ => return Err(format!("No commands available for \"{}\"", name)),
             }
@@ -610,6 +625,46 @@ impl Instruments {
         } else {
             Err(format!("No instrument or command \"{}\"", name))
         }
+    }
+    fn run_script(
+        &mut self,
+        command_args: &[String],
+        script_name: &str,
+        script_args: Vec<String>,
+        unresolved_commands: Vec<(bool, Vec<String>)>,
+    ) -> Result<(), String> {
+        let script_clap_args: Vec<clap::Arg> = script_args
+            .iter()
+            .enumerate()
+            .map(|(i, arg_name)| {
+                clap::Arg::with_name(arg_name)
+                    .index(i as u64 + 1)
+                    .required(true)
+            })
+            .collect();
+        let script_app = clap::App::new(script_name).args(&script_clap_args);
+        let matches = script_app
+            .get_matches_from_safe(command_args)
+            .map_err(|e| e.to_string())?;
+        let mut resolved_commands = Vec::new();
+        for (delay, unresolved_command) in unresolved_commands {
+            let resolved_command: Vec<String> = unresolved_command
+                .iter()
+                .map(|arg| {
+                    if let Some(script_arg) = script_args.iter().find(|sa| sa == &arg) {
+                        matches.value_of(script_arg).unwrap().into()
+                    } else {
+                        arg.clone()
+                    }
+                })
+                .collect();
+            let parsed = RyvmCommand::from_iter_safe(&resolved_command);
+            resolved_commands.push((delay, resolved_command, parsed))
+        }
+        for (delay, args, parsed) in resolved_commands {
+            self.queue_command(delay, args, parsed);
+        }
+        Ok(())
     }
     fn remove(&mut self, id: &InstrId, recursive: bool) {
         if let Some(instr) = self.get(id) {

@@ -98,6 +98,8 @@ pub enum RyvmCommand {
     Drums {
         #[structopt(index = 1, help = "The name of the drum machine")]
         name: InstrId,
+        #[structopt(index = 2, help = "The id of a midi input device")]
+        input: Option<InstrId>,
     },
     #[structopt(about = "Modify a drum machine")]
     Drum {

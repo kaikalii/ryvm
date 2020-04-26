@@ -5,10 +5,12 @@ use send_wrapper::SendWrapper;
 
 use crate::{CloneLock, Control, Letter, SampleType};
 
-const START_NOTE: u8 = 0x90;
-const END_NOTE: u8 = 0x80;
+const NOTE_START: u8 = 0x90;
+const NOTE_END: u8 = 0x80;
 const PITCH_BEND: u8 = 0xE0;
 const CONTROLLER: u8 = 0xB0;
+const PAD_START: u8 = 0x99;
+const PAD_END: u8 = 0x89;
 
 pub fn decode_control(data: &[u8]) -> Option<Control> {
     let mut padded = [0; 3];
@@ -16,13 +18,13 @@ pub fn decode_control(data: &[u8]) -> Option<Control> {
         padded[i] = b;
     }
     match padded {
-        [END_NOTE, n, _] => {
+        [NOTE_START, n, v] => {
             let (letter, octave) = Letter::from_u8(n);
-            Some(Control::EndNote(letter, octave))
+            Some(Control::NoteStart(letter, octave, v))
         }
-        [START_NOTE, n, v] => {
+        [NOTE_END, n, _] => {
             let (letter, octave) = Letter::from_u8(n);
-            Some(Control::StartNote(letter, octave, v))
+            Some(Control::NoteEnd(letter, octave))
         }
         [PITCH_BEND, lsb, msb] => {
             let pb_u16 = msb as u16 * 0x80 + lsb as u16;
@@ -30,6 +32,14 @@ pub fn decode_control(data: &[u8]) -> Option<Control> {
             Some(Control::PitchBend(pb))
         }
         [CONTROLLER, n, i] => Some(Control::Controller(n, i as SampleType / 0x7f as SampleType)),
+        [PAD_START, n, v] => {
+            let (letter, octave) = Letter::from_u8(n);
+            Some(Control::PadStart(letter, octave, v))
+        }
+        [PAD_END, n, _] => {
+            let (letter, octave) = Letter::from_u8(n);
+            Some(Control::PadEnd(letter, octave))
+        }
         _ => None,
     }
 }

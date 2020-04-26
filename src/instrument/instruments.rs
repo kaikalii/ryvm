@@ -51,7 +51,7 @@ pub struct Instruments {
     i: u32,
     last_drums: Option<InstrId>,
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
-    loops: HashMap<InstrId, HashSet<InstrId>>,
+    loops: HashMap<InstrId, HashSet<u8>>,
     #[cfg(feature = "keyboard")]
     keyboard: CloneLock<Option<Keyboard>>,
     pub midis: HashMap<usize, Midi>,
@@ -150,11 +150,13 @@ impl Instruments {
     fn update_loops(&mut self) {
         self.loops.clear();
         for (id, instr) in &self.map {
-            if let Instrument::Loop { input, .. } = instr {
-                self.loops
-                    .entry(input.clone())
-                    .or_insert_with(HashSet::new)
-                    .insert(id.clone());
+            if let InstrId::Loop(i) = id {
+                if let Instrument::Loop { input, .. } = instr {
+                    self.loops
+                        .entry(input.clone())
+                        .or_insert_with(HashSet::new)
+                        .insert(*i);
+                }
             }
         }
     }
@@ -211,13 +213,14 @@ impl Instruments {
                 // Cache this initial version
                 cache.map.insert(id.clone(), channels.clone());
                 // Append loop channels
-                if let Some(loop_ids) = self.loops.get(&id) {
-                    for loop_id in loop_ids {
-                        if let Some(instr) = self.map.get(loop_id) {
+                if let Some(loop_i) = self.loops.get(&id) {
+                    for &loop_i in loop_i {
+                        let loop_id = InstrId::Loop(loop_i);
+                        if let Some(instr) = self.map.get(&loop_id) {
                             let loop_channel = instr
                                 .next(cache, self, loop_id.clone())
                                 .into_primary()
-                                .map(|frame| (ChannelId::Loop(loop_id.clone()), frame));
+                                .map(|frame| (ChannelId::Loop(loop_i), frame));
                             channels.extend(loop_channel);
                         }
                     }
@@ -438,8 +441,15 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Drums { name } => {
-                self.add(name.clone(), Instrument::DrumMachine(Vec::new()));
+            RyvmCommand::Drums { name, input } => {
+                self.add(
+                    name.clone(),
+                    Instrument::DrumMachine {
+                        samplings: Vec::new(),
+                        input,
+                        manual_samples: CloneLock::new(Channels::new()),
+                    },
+                );
                 self.last_drums = Some(name);
             }
             RyvmCommand::Drum {
@@ -456,7 +466,7 @@ impl Instruments {
                 } else {
                     self.last_drums.clone().unwrap_or_default()
                 };
-                if let Some(Instrument::DrumMachine(samplings)) = self.get_mut(&name) {
+                if let Some(Instrument::DrumMachine { samplings, .. }) = self.get_mut(&name) {
                     let index = index.unwrap_or_else(|| samplings.len());
                     samplings.resize(index + 1, Sampling::default());
                     if let Some(path) = path {

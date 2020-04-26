@@ -3,6 +3,7 @@ use std::{
     convert::Infallible,
     fmt,
     iter::{once, FromIterator},
+    ops::Mul,
     str::FromStr,
 };
 
@@ -112,13 +113,25 @@ impl Voice {
     }
 }
 
+impl Mul<SampleType> for Voice {
+    type Output = Self;
+    fn mul(self, m: SampleType) -> Self::Output {
+        Voice {
+            left: self.left * m,
+            right: self.right * m,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
-    StartNote(Letter, u8, u8),
-    EndNote(Letter, u8),
+    NoteStart(Letter, u8, u8),
+    NoteEnd(Letter, u8),
     EndAllNotes,
     PitchBend(SampleType),
     Controller(u8, SampleType),
+    PadStart(Letter, u8, u8),
+    PadEnd(Letter, u8),
 }
 
 #[derive(Debug, Clone)]
@@ -197,7 +210,7 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChannelId {
     Primary,
-    Loop(InstrId),
+    Loop(u8),
 }
 
 type ChannelMapArray<T> = [Inner<(ChannelId, T)>; 10];
@@ -214,6 +227,9 @@ impl<T> Default for Channels<T> {
 impl Channels {
     pub fn frames(&self) -> tiny_map::Values<ChannelId, Frame> {
         self.values()
+    }
+    pub fn empty_primary() -> Self {
+        Frame::None.into()
     }
 }
 

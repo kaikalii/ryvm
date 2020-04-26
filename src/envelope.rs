@@ -45,7 +45,7 @@ impl Enveloper {
     {
         for control in iter {
             match control {
-                Control::StartNote(l, o, v) => {
+                Control::NoteStart(l, o, v) => {
                     let states = self.states.entry((l, o)).or_insert_with(Vec::new);
                     if !states
                         .iter()
@@ -55,7 +55,7 @@ impl Enveloper {
                         states.push(new_state);
                     }
                 }
-                Control::EndNote(l, o) => {
+                Control::NoteEnd(l, o) => {
                     let states = self.states.entry((l, o)).or_insert_with(Vec::new);
                     if let Some(i) = states
                         .iter()
@@ -68,6 +68,8 @@ impl Enveloper {
                 Control::PitchBend(pb) => self.pitch_bend = pb,
                 Control::EndAllNotes => self.states.clear(),
                 Control::Controller(..) => {}
+                Control::PadStart(..) => {}
+                Control::PadEnd(..) => {}
             }
         }
     }

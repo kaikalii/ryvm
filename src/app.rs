@@ -235,6 +235,8 @@ pub struct WaveCommand {
     pub sustain: Option<SampleType>,
     #[structopt(long, short, help = "Set the synth's release")]
     pub release: Option<SampleType>,
+    #[structopt(long, short, help = "Set the synth's waveform")]
+    pub form: Option<WaveForm>,
 }
 
 #[derive(Debug, StructOpt)]

@@ -606,6 +606,7 @@ impl Instruments {
                     input,
                     adsr,
                     octave,
+                    form,
                     ..
                 } => {
                     let com = WaveCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
@@ -626,6 +627,9 @@ impl Instruments {
                     }
                     if let Some(release) = com.release {
                         adsr.release = release;
+                    }
+                    if let Some(wf) = com.form {
+                        *form = wf;
                     }
                 }
                 Instrument::Filter { value, .. } => {

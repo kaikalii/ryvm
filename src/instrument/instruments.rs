@@ -503,10 +503,18 @@ impl Instruments {
             }
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
             #[cfg(feature = "keyboard")]
-            RyvmCommand::Focus { id } => {
+            RyvmCommand::KFocus { id } => {
                 for input in self.input_devices_of(&id) {
                     if let Some(Instrument::Keyboard { .. }) = self.get(&input) {
                         self.current_keyboard = Some(input);
+                        break;
+                    }
+                }
+            }
+            RyvmCommand::Focus { id } => {
+                for input in self.input_devices_of(&id) {
+                    if let Some(Instrument::Midi { .. }) = self.get(&input) {
+                        self.current_midi = Some(input);
                         break;
                     }
                 }

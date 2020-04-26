@@ -176,8 +176,13 @@ pub enum RyvmCommand {
     )]
     #[cfg(feature = "keyboard")]
     #[structopt(about = "Set the active keyboard")]
-    Focus {
+    KFocus {
         #[structopt(index = 1, help = "The id of the keyboard instrument")]
+        id: InstrId,
+    },
+    #[structopt(about = "Set the midi controller")]
+    Focus {
+        #[structopt(index = 1, help = "The id of the midi instrument")]
         id: InstrId,
     },
     #[structopt(about = "Start a new script")]

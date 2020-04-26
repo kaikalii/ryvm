@@ -181,7 +181,6 @@ impl Frame {
             Default::default()
         }
     }
-    #[cfg(feature = "keyboard")]
     pub fn controls<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = Control>,

@@ -17,5 +17,5 @@ midir = '*'
 send_wrapper = '*'
 
 [features]
-default = ['keyboard']
+default = []
 keyboard = ['piston_window']

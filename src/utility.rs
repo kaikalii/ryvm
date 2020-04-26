@@ -1,6 +1,7 @@
 use std::{
     env::{current_dir, current_exe},
     iter::once,
+    path::PathBuf,
     sync::{Mutex, MutexGuard},
 };
 
@@ -46,26 +47,37 @@ pub fn parse_args(s: &str) -> (bool, Vec<String>) {
 }
 
 pub fn load_script(name: &str) -> Option<(Vec<String>, Vec<(bool, Vec<String>)>)> {
-    let path = "scripts";
+    let folder = "scripts";
     let search = Search::KidsThenParents(2, 1);
     let scripts_path = search
         .of(current_dir().ok()?)
-        .for_folder(&path)
-        .or_else(|_| search.of(current_exe()?).for_folder(&path))
+        .for_folder(&folder)
+        .or_else(|_| search.of(current_exe()?).for_folder(&folder))
         .ok()?;
-    let script_path = scripts_path.join(name);
+    let script_path = scripts_path.join(PathBuf::from(name).with_extension("ryvm"));
     let script_str = std::fs::read_to_string(script_path).ok()?;
     let lines = script_str.lines().filter(|line| !line.trim().is_empty());
-    let commands: Vec<(bool, Vec<String>)> = lines
-        .map(|line| {
-            let (delay, args) = parse_args(line);
-            (
+    let mut script_args = Vec::new();
+    let mut commands = Vec::new();
+    for line in lines {
+        let mut is_args = false;
+        let line = if line.starts_with(':') {
+            is_args = true;
+            &line[1..]
+        } else {
+            line
+        };
+        let (delay, args) = parse_args(line);
+        if is_args {
+            script_args = args;
+        } else {
+            commands.push((
                 delay,
                 once("ryvm".to_string()).chain(args).collect::<Vec<_>>(),
-            )
-        })
-        .collect();
-    Some((Vec::new(), commands))
+            ));
+        }
+    }
+    Some((script_args, commands))
 }
 
 #[derive(Debug, Default)]

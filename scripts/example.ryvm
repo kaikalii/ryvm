@@ -1,0 +1,6 @@
+mixer m s d
+output m
+drums d
+drum -p kick.wav -b ----
+drum -p clap.wav -b _-_-
+wave tri s

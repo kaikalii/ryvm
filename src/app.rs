@@ -205,6 +205,11 @@ pub enum RyvmCommand {
         )]
         recursive: bool,
     },
+    #[structopt(about = "Load a script")]
+    Load {
+        #[structopt(index = 1, help = "The name of the script to load")]
+        name: String,
+    },
 }
 
 #[derive(Debug, StructOpt)]

@@ -567,6 +567,12 @@ impl Instruments {
                 }
             }
             RyvmCommand::Rm { id, recursive } => self.remove(&id, recursive),
+            RyvmCommand::Load { name } => {
+                if let Some((args, commands)) = load_script(&name) {
+                    let instr = Instrument::Script { args, commands };
+                    self.add(name.into(), instr);
+                }
+            }
         }
     }
     fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> Result<(), String> {
@@ -677,6 +683,10 @@ impl Instruments {
             resolved_commands.push((delay, resolved_command, parsed))
         }
         for (delay, args, parsed) in resolved_commands {
+            for arg in args.iter().skip(1) {
+                print!("{} ", arg);
+            }
+            println!();
             self.queue_command(delay, args, parsed);
         }
         Ok(())

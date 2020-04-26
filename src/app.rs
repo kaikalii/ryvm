@@ -203,6 +203,13 @@ pub enum RyvmCommand {
         #[structopt(index = 1, help = "The name of the script to load")]
         name: String,
     },
+    #[structopt(about = "Run a script, loading it first if necessary")]
+    Run {
+        #[structopt(index = 1, help = "The name of the script to run")]
+        name: String,
+        #[structopt(index = 2, help = "The arguments to pass to the script")]
+        args: Vec<String>,
+    },
 }
 
 #[derive(Debug, StructOpt)]

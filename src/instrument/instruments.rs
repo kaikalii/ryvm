@@ -567,10 +567,11 @@ impl Instruments {
                 }
             }
             RyvmCommand::Rm { id, recursive } => self.remove(&id, recursive),
-            RyvmCommand::Load { name } => {
-                if let Some((args, commands)) = load_script(&name) {
-                    let instr = Instrument::Script { args, commands };
-                    self.add(name.into(), instr);
+            RyvmCommand::Load { name } => self.load_script(&name, true),
+            RyvmCommand::Run { name, args } => {
+                self.load_script(&name, false);
+                if let Err(e) = self.run_script_by_name(&name, &args) {
+                    println!("{}", e)
                 }
             }
         }
@@ -651,6 +652,27 @@ impl Instruments {
             Err(format!("No instrument or command \"{}\"", name))
         }
     }
+    fn load_script(&mut self, name: &str, reload: bool) {
+        if self.get(&name.into()).is_none() || reload {
+            if let Some((args, commands)) = load_script(&name) {
+                let instr = Instrument::Script { args, commands };
+                self.add(name.into(), instr);
+            }
+        }
+    }
+    fn run_script_by_name(&mut self, name: &str, args: &[String]) -> Result<(), String> {
+        if let Some(Instrument::Script {
+            args: script_args,
+            commands,
+        }) = self.get(&name.into())
+        {
+            let script_args = script_args.clone();
+            let unresolved_commands = commands.clone();
+            self.run_script(args, name, script_args, unresolved_commands)
+        } else {
+            Ok(())
+        }
+    }
     fn run_script(
         &mut self,
         command_args: &[String],
@@ -686,11 +708,19 @@ impl Instruments {
             let parsed = RyvmCommand::from_iter_safe(&resolved_command);
             resolved_commands.push((delay, resolved_command, parsed))
         }
+        let mut depth = 0;
         for (delay, args, parsed) in resolved_commands {
+            if let Some("end") = args.get(1).map(|s| s.as_str()) {
+                depth -= 1;
+            }
+            print!("> {}", (0..depth).map(|_| "  ").collect::<String>());
             for arg in args.iter().skip(1) {
                 print!("{} ", arg);
             }
             println!();
+            if let Some("script") = args.get(1).map(|s| s.as_str()) {
+                depth += 1;
+            }
             self.queue_command(delay, args, parsed);
         }
         Ok(())

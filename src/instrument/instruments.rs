@@ -45,7 +45,7 @@ pub struct NewScript {
 pub struct Instruments {
     output: Option<InstrId>,
     map: HashMap<InstrId, Instrument>,
-    tempo: SampleType,
+    pub tempo: SampleType,
     sample_queue: Option<SampleType>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
     i: u32,
@@ -59,6 +59,7 @@ pub struct Instruments {
     pub current_keyboard: Option<InstrId>,
     pub current_midi: Option<InstrId>,
     new_script_stack: Vec<NewScript>,
+    pub loop_period: Option<u32>,
 }
 
 impl Default for Instruments {
@@ -80,6 +81,7 @@ impl Default for Instruments {
             current_keyboard: None,
             current_midi: None,
             new_script_stack: Vec::new(),
+            loop_period: None,
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -151,7 +153,9 @@ impl Instruments {
         self.loops.clear();
         for (id, instr) in &self.map {
             if let InstrId::Loop(i) = id {
-                if let Instrument::Loop { input, .. } = instr {
+                if let Instrument::Loop { input, .. } | Instrument::RecordingLoop { input, .. } =
+                    instr
+                {
                     self.loops
                         .entry(input.clone())
                         .or_insert_with(HashSet::new)
@@ -160,33 +164,41 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop(&mut self, number: u8, input: InstrId, measures: u8) {
+    pub fn add_loop(&mut self, number: u8, input: InstrId) {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Create a loop for every input device of this instrument
         for input in self.input_devices_of(&input) {
-            self._add_loop(number, input, measures);
+            self._add_loop(number, input);
         }
         // Update loops
         self.update_loops();
     }
-    fn _add_loop(&mut self, number: u8, input: InstrId, measures: u8) {
+    fn _add_loop(&mut self, number: u8, input: InstrId) {
         // Create new loop id
         let loop_id = InstrId::Loop(number);
         // Create the loop instrument
-        let frame_count = self.frames_per_measure() as usize * measures as usize;
-        let loop_instr = Instrument::Loop {
-            input,
-            measures,
-            recording: true,
-            playing: true,
-            frames: CloneLock::new(vec![
-                LoopFrame {
-                    frame: Frame::None,
-                    new: true,
-                };
-                frame_count
-            ]),
+        let loop_instr = if let Some(frame_count) = self.loop_period {
+            Instrument::Loop {
+                input,
+                recording: true,
+                playing: true,
+                tempo: self.tempo,
+                frames: CloneLock::new(vec![
+                    LoopFrame {
+                        frame: Frame::None,
+                        new: false,
+                    };
+                    frame_count as usize
+                ]),
+                start_i: self.i(),
+            }
+        } else {
+            Instrument::RecordingLoop {
+                input,
+                frames: CloneLock::new(Vec::new()),
+                started: CloneLock::new(false),
+            }
         };
         // Insert the loop
         println!("Added loop {}", loop_id);
@@ -234,14 +246,39 @@ impl Instruments {
         }
     }
     pub fn stop_recording_all(&mut self) {
+        let self_i = self.i();
+        let mut loop_period = None;
         for (id, instr) in self.map.iter_mut() {
-            if let Instrument::Loop { recording, .. } = instr {
-                if *recording {
-                    println!("Stopped recording {}", id);
+            match instr {
+                Instrument::Loop { recording, .. } => {
+                    if *recording {
+                        println!("Stopped recording {}", id);
+                    }
+                    *recording = false;
                 }
-                *recording = false;
+                Instrument::RecordingLoop { input, frames, .. } => {
+                    if frames.lock().is_empty() {
+                        println!("Cancelled recording {}", id);
+                    } else {
+                        let input = input.clone();
+                        let frames = frames.clone();
+                        loop_period = Some(frames.lock().len() as u32);
+                        *instr = Instrument::Loop {
+                            input,
+                            frames,
+                            recording: false,
+                            playing: true,
+                            tempo: self.tempo,
+                            start_i: self_i,
+                        };
+                        println!("Finished recording {}", id);
+                    }
+                }
+                _ => {}
             }
         }
+        self.loop_period = loop_period.or(self.loop_period);
+        self.update_loops();
     }
     #[cfg_attr(not(feature = "keyboard"), allow(unused_variables))]
     pub fn default_voices_from(&self, id: &InstrId) -> u32 {
@@ -485,11 +522,7 @@ impl Instruments {
                     }
                 }
             }
-            RyvmCommand::Loop {
-                number,
-                input,
-                measures,
-            } => self.add_loop(number, input, measures.unwrap_or(4)),
+            RyvmCommand::Loop { number, input } => self.add_loop(number, input),
             RyvmCommand::Start { loops } => {
                 for i in loops {
                     if let Some(Instrument::Loop { playing, .. }) = self.get_mut(&InstrId::Loop(i))
@@ -573,7 +606,10 @@ impl Instruments {
                     )
                 }
             }
-            RyvmCommand::Rm { id, recursive } => self.remove(&id, recursive),
+            RyvmCommand::Rm { id, recursive } => {
+                self.remove(&id, recursive);
+                self.update_loops();
+            }
             RyvmCommand::Load { name } => self.load_script(&name, true),
             RyvmCommand::Run { name, args } => {
                 self.load_script(&name, false);

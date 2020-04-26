@@ -40,10 +40,16 @@ pub enum Instrument {
     },
     Loop {
         input: InstrId,
-        measures: u8,
         recording: bool,
         playing: bool,
+        tempo: SampleType,
         frames: CloneLock<Vec<LoopFrame>>,
+        start_i: u32,
+    },
+    RecordingLoop {
+        input: InstrId,
+        frames: CloneLock<Vec<LoopFrame>>,
+        started: CloneLock<bool>,
     },
     Filter {
         input: InstrId,
@@ -317,28 +323,51 @@ impl Instrument {
                 })
             }
             // Loops
+            Instrument::RecordingLoop {
+                input,
+                frames,
+                started,
+            } => {
+                let input_frame = instruments
+                    .next_from(&*input, cache)
+                    .primary()
+                    .cloned()
+                    .unwrap_or_default();
+                let mut started = started.lock();
+                if !*started && input_frame.is_some() {
+                    *started = true;
+                    println!("Started recording {}", my_id)
+                }
+                if *started {
+                    frames.lock().push(LoopFrame {
+                        frame: input_frame,
+                        new: false,
+                    });
+                }
+                Channels::default()
+            }
             Instrument::Loop {
                 input,
-                measures,
                 recording,
                 playing,
+                tempo,
                 frames,
+                start_i,
             } => {
                 let mut frames = frames.lock();
-                // The correct number of frames per loop at the current tempo
-                let ideal_fpl = instruments.frames_per_measure() * *measures as u32;
-                // The actual number of frames per loop
-                let actual_fpl = frames.len() as u32;
+                let len = frames.len();
 
-                let adjust_i = |i: u32| (i as u64 * actual_fpl as u64 / ideal_fpl as u64) as u32;
-                // The index of the loop's current sample with adjusting for tempo changes
-                let raw_loop_i = instruments.i() % ideal_fpl;
+                let adjust_i =
+                    |i: u32| (i as u64 * instruments.tempo as u64 / *tempo as u64) as u32;
+                // The index of the loop's current sample without adjusting for tempo changes
+                let raw_loop_i = instruments.i() - start_i;
                 // Calculate the index of the loop's current sample adjusting for changes in tempo
                 let loop_i = adjust_i(raw_loop_i);
-                if loop_i == 0 {
+                if loop_i % len as u32 == 0 && *recording {
                     for frame in frames.iter_mut() {
                         frame.new = false;
                     }
+                    println!("frames made old");
                 }
                 // Get input frame
                 let input_channels = instruments.next_from(&*input, cache);
@@ -350,12 +379,12 @@ impl Instrument {
                 };
                 if *recording && frame_is_some() {
                     // Record if recording and there is input
-                    frames[loop_i as usize] = LoopFrame {
+                    frames[loop_i as usize % len] = LoopFrame {
                         frame: input_channels.primary().cloned().unwrap_or_default(),
                         new: true,
                     };
                     // Go backward and set all old frames to new and empty
-                    for i in (0..(loop_i as usize)).rev() {
+                    for i in (0..(loop_i as usize % len)).rev() {
                         if frames[i].new {
                             break;
                         } else {
@@ -373,7 +402,7 @@ impl Instrument {
                     // ones would be skipped because of tempo changes
                     let controls: Vec<Control> = (loop_i..adjust_i(raw_loop_i + 1))
                         .flat_map(|i| {
-                            if let Frame::Controls(controls) = &frames[i as usize].frame {
+                            if let Frame::Controls(controls) = &frames[i as usize % len].frame {
                                 controls.clone()
                             } else {
                                 Vec::new()
@@ -382,7 +411,7 @@ impl Instrument {
                         .collect();
                     if controls.is_empty() {
                         // If there were no controls found, simply output the loop's stored frame
-                        frames[loop_i as usize].frame.clone()
+                        frames[loop_i as usize % len].frame.clone()
                     } else {
                         Frame::Controls(controls)
                     }

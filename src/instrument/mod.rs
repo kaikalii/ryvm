@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     adjust_i, mix, Channels, CloneCell, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache,
-    InstrId, Letter, SampleType, Voice, ADSR, SAMPLE_RATE,
+    InstrId, Letter, SampleType, Voice, ADSR,
 };
 
 /// An instrument for producing sounds
@@ -123,7 +123,7 @@ impl Instrument {
                                 return Voice::mono(0.0);
                             }
                             // spc = samples per cycle
-                            let spc = SAMPLE_RATE as SampleType / freq;
+                            let spc = instruments.sample_rate as SampleType / freq;
                             let t = *i as SampleType / spc;
                             let s = match form {
                                 WaveForm::Sine => (t * 2.0 * PI).sin(),
@@ -163,7 +163,7 @@ impl Instrument {
                                     .or_insert_with(Enveloper::default);
                                 enveloper.register(controls.iter().copied());
                                 enveloper
-                                    .states(octave.unwrap_or(0), *adsr)
+                                    .states(instruments.sample_rate, octave.unwrap_or(0), *adsr)
                                     .zip(waves)
                                     .map(|((freq, amp), i)| build_wave(freq, amp, i))
                                     .zip(repeat(Balance::default()))
@@ -173,7 +173,7 @@ impl Instrument {
                             Frame::None => {
                                 if let Some(enveloper) = envelopers.get_mut(ch_id) {
                                     enveloper
-                                        .states(octave.unwrap_or(0), *adsr)
+                                        .states(instruments.sample_rate, octave.unwrap_or(0), *adsr)
                                         .zip(waves)
                                         .map(|((freq, amp), i)| build_wave(freq, amp, i))
                                         .zip(repeat(Balance::default()))
@@ -186,7 +186,7 @@ impl Instrument {
                         mix(&mix_inputs)
                     });
                 for enveloper in envelopers.values_mut() {
-                    enveloper.progress(adsr.release);
+                    enveloper.progress(instruments.sample_rate, adsr.release);
                 }
                 res
             }
@@ -268,8 +268,9 @@ impl Instrument {
                         if let Some(res) = instruments.sample_bank.get(&samples[*index]).finished()
                         {
                             if let Ok(sample) = &*res {
-                                if *i < sample.len() {
-                                    let voice = *sample.voice(*i) * *velocity;
+                                if *i < sample.len(instruments.sample_rate) {
+                                    let voice =
+                                        *sample.voice(*i, instruments.sample_rate) * *velocity;
                                     voices.push((voice, Balance::default()));
                                     *i += 1;
                                 } else {

@@ -16,8 +16,7 @@ use crate::Keyboard;
 use crate::{
     adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, FilterCommand,
     FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand, NumberCommand,
-    RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_VOICES,
-    SAMPLE_RATE,
+    RyvmApp, RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_VOICES,
 };
 
 #[derive(Default)]
@@ -43,6 +42,7 @@ pub struct NewScript {
 
 #[derive(Debug)]
 pub struct Instruments {
+    pub sample_rate: u32,
     output: Option<InstrId>,
     map: HashMap<InstrId, Instrument>,
     pub tempo: SampleType,
@@ -64,7 +64,9 @@ pub struct Instruments {
 
 impl Default for Instruments {
     fn default() -> Self {
+        let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
         let mut instruments = Instruments {
+            sample_rate: app.sample_rate.unwrap_or(44100),
             output: None,
             map: HashMap::new(),
             tempo: 1.0,
@@ -102,7 +104,7 @@ impl Instruments {
         SourceLock::new(Self::default())
     }
     pub fn frames_per_measure(&self) -> u32 {
-        (SAMPLE_RATE as SampleType / (self.tempo / 60.0) * 4.0) as u32
+        (self.sample_rate as SampleType / (self.tempo / 60.0) * 4.0) as u32
     }
     pub fn i(&self) -> u32 {
         self.i
@@ -905,7 +907,7 @@ impl Source for SourceLock<Instruments> {
         2
     }
     fn sample_rate(&self) -> u32 {
-        SAMPLE_RATE
+        self.update(|instrs| instrs.sample_rate)
     }
     fn total_duration(&self) -> std::option::Option<std::time::Duration> {
         None

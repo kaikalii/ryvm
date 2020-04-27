@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Control, Letter, SampleType, SAMPLE_RATE};
+use crate::{Control, Letter, SampleType};
 
 /// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,6 +76,7 @@ impl Enveloper {
     /// Get an iterator of frequency-amplitude pairs that are currently playing
     pub fn states(
         &self,
+        sample_rate: u32,
         base_octave: i8,
         adsr: ADSR,
     ) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
@@ -83,7 +84,7 @@ impl Enveloper {
             .iter()
             .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
             .filter_map(move |((letter, octave), (start, state, velocity))| {
-                let t = (self.i - *start) as SampleType / SAMPLE_RATE as SampleType;
+                let t = (self.i - *start) as SampleType / sample_rate as SampleType;
                 let velocity = *velocity as SampleType / 127.0 as SampleType;
                 let amplitude = match state {
                     NoteState::Pressed => {
@@ -120,13 +121,13 @@ impl Enveloper {
             })
     }
     /// Progress the enveloper to the next frame
-    pub fn progress(&mut self, release: SampleType) {
+    pub fn progress(&mut self, sample_rate: u32, release: SampleType) {
         let i = self.i;
         for states in self.states.values_mut() {
             states.retain(|(start, state, _)| match state {
                 NoteState::Pressed { .. } => true,
                 NoteState::Released => {
-                    let t = (i - *start) as SampleType / SAMPLE_RATE as SampleType;
+                    let t = (i - *start) as SampleType / sample_rate as SampleType;
                     t < release
                 }
             });

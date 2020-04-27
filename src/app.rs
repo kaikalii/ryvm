@@ -262,3 +262,9 @@ pub enum MidiSubcommand {
         port: Option<usize>,
     },
 }
+
+#[derive(Debug, Default, StructOpt)]
+pub struct RyvmApp {
+    #[structopt(short = "r", long, about = "List the available midi ports")]
+    pub sample_rate: Option<u32>,
+}

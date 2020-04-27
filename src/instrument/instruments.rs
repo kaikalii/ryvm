@@ -842,12 +842,12 @@ impl Iterator for Instruments {
             .or_else(|| {
                 if let Some(output_id) = &self.output {
                     let channels = self.next_from(output_id, &mut cache);
-                    if self.debug_live {
-                        for id in channels.keys() {
-                            print!("{:?}, ", id);
-                        }
-                        println!();
-                    }
+                    // if self.debug_live {
+                    //     for id in channels.keys() {
+                    //         print!("{:?}, ", id);
+                    //     }
+                    //     println!();
+                    // }
                     let voices: Vec<(Voice, Balance)> = channels
                         .values()
                         .filter(|ch| ch.validated)

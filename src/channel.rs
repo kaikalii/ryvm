@@ -101,7 +101,7 @@ impl fmt::Display for InstrId {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Voice {
     pub left: f32,
     pub right: f32,
@@ -122,6 +122,16 @@ impl Mul<f32> for Voice {
         Voice {
             left: self.left * m,
             right: self.right * m,
+        }
+    }
+}
+
+impl fmt::Debug for Voice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.left == self.right {
+            write!(f, "{}", self.left)
+        } else {
+            write!(f, "({}, {})", self.left, self.right)
         }
     }
 }
@@ -203,6 +213,28 @@ impl From<Control> for Frame {
     }
 }
 
+impl FromIterator<Control> for Frame {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Control>,
+    {
+        Frame::controls(iter)
+    }
+}
+
+impl Extend<Control> for Frame {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = Control>,
+    {
+        match self {
+            Frame::None => *self = Frame::controls(iter),
+            Frame::Controls(controls) => controls.extend(iter),
+            _ => {}
+        }
+    }
+}
+
 pub fn mix(list: &[(Voice, Balance)]) -> Frame {
     if list.is_empty() {
         return Frame::None;
@@ -251,22 +283,31 @@ impl Channels {
     pub fn new() -> Self {
         Channels::default()
     }
-    pub fn focuses(channel: Channel) -> Self {
-        let mut channels = Channels::new();
-        channels
-            .0
-            .insert(ChannelId::Focus(FocusType::Drum), channel.clone());
-        channels
-            .0
-            .insert(ChannelId::Focus(FocusType::Keyboard), channel);
-        channels
-    }
     pub fn end_all_notes() -> Self {
         (
             ChannelId::Dummy,
             Frame::from(Control::EndAllNotes).unvalidated(),
         )
             .into()
+    }
+    pub fn split_controls<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Control>,
+    {
+        let (keyboard, drums): (Frame, Frame) =
+            iter.into_iter().partition(|control| match control {
+                Control::PadStart(..) | Control::PadEnd(..) => false,
+                _ => true,
+            });
+        once((
+            ChannelId::Focus(FocusType::Keyboard),
+            keyboard.unvalidated(),
+        ))
+        .chain(once((
+            ChannelId::Focus(FocusType::Drum),
+            drums.unvalidated(),
+        )))
+        .collect()
     }
     pub fn iter(&self) -> tiny_map::Iter<ChannelId, Channel> {
         self.0.iter()

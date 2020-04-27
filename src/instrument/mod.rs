@@ -252,17 +252,24 @@ impl Instrument {
                     .unwrap_or(false)
                 {
                     if let Some(midi) = instruments.midis.get(port) {
-                        Channels::focuses(Frame::controls(midi.controls()).unvalidated())
+                        let channels = Channels::split_controls(midi.controls());
+                        if instruments.debug_live {
+                            println!("{:?}", channels);
+                        }
+                        channels
                     } else {
-                        Channels::focuses(Frame::None.unvalidated())
+                        Channels::default()
                     }
                 } else {
-                    Channels::focuses(Frame::None.unvalidated())
+                    Channels::default()
                 }
             }
             // Drum Machine
             Instrument::DrumMachine(drums) => {
                 let channels = instruments.next_from(&drums.input, cache);
+                // if instruments.debug_live {
+                //     println!("{:?}", channels);
+                // }
                 channels.id_map(|ch_id, channel| {
                     let mut voices = Vec::new();
                     let mut samplings = drums.samplings.lock();

@@ -45,13 +45,6 @@ pub enum RyvmCommand {
         #[structopt(index = 1, help = "The new value for the relative tempo")]
         tempo: f32,
     },
-    #[structopt(about = "Create a number source", alias = "num")]
-    Number {
-        #[structopt(index = 1, help = "The name of the number")]
-        name: InstrId,
-        #[structopt(index = 2, help = "The value of the number")]
-        num: f32,
-    },
     #[structopt(about = "Create a wave synthesizer")]
     Wave {
         #[structopt(index = 1, help = "The waveform to use")]
@@ -157,15 +150,9 @@ pub enum RyvmCommand {
     #[structopt(
         about = "Choose which keyboard instrument to be controlled by the actual keyboard"
     )]
-    #[cfg(feature = "keyboard")]
-    #[structopt(about = "Set the active keyboard")]
-    KFocus {
-        #[structopt(index = 1, help = "The id of the keyboard instrument")]
-        id: InstrId,
-    },
-    #[structopt(about = "Set the midi controller")]
+    #[structopt(about = "Set the active instrument to be controlled")]
     Focus {
-        #[structopt(index = 1, help = "The id of the midi instrument")]
+        #[structopt(index = 1, help = "The id instrument")]
         id: InstrId,
     },
     #[structopt(about = "Start a new script")]
@@ -200,12 +187,10 @@ pub enum RyvmCommand {
         #[structopt(index = 2, help = "The arguments to pass to the script")]
         args: Vec<String>,
     },
-}
-
-#[derive(Debug, StructOpt)]
-pub struct NumberCommand {
-    #[structopt(index = 1, help = "Set the value of the number")]
-    pub val: f32,
+    Debug {
+        #[structopt(long, short)]
+        live: bool,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -252,11 +237,9 @@ pub enum MidiSubcommand {
     #[structopt(about = "List the available midi ports")]
     List,
     #[structopt(about = "Create a new midi inistrument")]
-    New {
-        #[structopt(index = 1, help = "The name for the midi instrument")]
-        name: InstrId,
+    Init {
         #[structopt(
-            index = 2,
+            index = 1,
             help = "The index of the midi port to use (run \"midi list\" to list ports)"
         )]
         port: Option<usize>,

@@ -9,7 +9,7 @@ use std::{
 
 use tinymap::{tiny_map, Inner, TinyMap};
 
-use crate::{Balance, Instruments, Letter};
+use crate::{Balance, FocusType, Instruments, Letter};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum InstrId {
@@ -38,6 +38,9 @@ impl InstrId {
             InstrId::Filter(name, _) => InstrId::Filter(name.clone(), filter_num),
             id => id.clone(),
         }
+    }
+    pub fn default_input_device() -> Self {
+        "midi0".into()
     }
 }
 
@@ -180,12 +183,10 @@ impl Frame {
             Frame::Controls(controls)
         }
     }
-    #[allow(dead_code)]
-    pub fn is_some(&self) -> bool {
-        match self {
-            Frame::Voice(_) => true,
-            Frame::Controls(controls) => !controls.is_empty(),
-            Frame::None => false,
+    pub fn unvalidated(self) -> Channel {
+        Channel {
+            frame: self,
+            validated: false,
         }
     }
 }
@@ -215,61 +216,79 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChannelId {
-    Primary,
-    Loop { num: u8, validated: bool },
+    Focus(FocusType),
+    Loop(u8),
+    Dummy,
 }
 
-impl ChannelId {
-    pub fn should_output(&self) -> bool {
-        match self {
-            ChannelId::Primary => true,
-            ChannelId::Loop { validated, .. } => *validated,
+#[derive(Debug, Clone)]
+pub struct Channel {
+    pub frame: Frame,
+    pub validated: bool,
+}
+
+impl Channel {
+    pub fn with_frame(&self, frame: Frame) -> Self {
+        Channel {
+            frame,
+            validated: self.validated,
         }
     }
 }
 
-type ChannelMapArray<T> = [Inner<(ChannelId, T)>; 10];
+type ChannelMapArray = [Inner<(ChannelId, Channel)>; 10];
 
 #[derive(Debug, Clone)]
-pub struct Channels<T = Frame>(TinyMap<[Inner<(ChannelId, T)>; 10]>);
+pub struct Channels(TinyMap<ChannelMapArray>);
 
-impl<T> Default for Channels<T> {
+impl Default for Channels {
     fn default() -> Self {
         Channels(TinyMap::new())
     }
 }
 
 impl Channels {
-    pub fn empty_primary() -> Self {
-        Frame::None.into()
-    }
-}
-
-impl<T> Channels<T> {
     pub fn new() -> Self {
         Channels::default()
     }
-    pub fn primary(&self) -> Option<&T> {
-        self.0.get(&ChannelId::Primary)
+    pub fn focuses(channel: Channel) -> Self {
+        let mut channels = Channels::new();
+        channels
+            .0
+            .insert(ChannelId::Focus(FocusType::Drum), channel.clone());
+        channels
+            .0
+            .insert(ChannelId::Focus(FocusType::Keyboard), channel);
+        channels
     }
-    pub fn into_primary(mut self) -> Option<T> {
-        self.0.remove(&ChannelId::Primary)
+    pub fn end_all_notes() -> Self {
+        (
+            ChannelId::Dummy,
+            Frame::from(Control::EndAllNotes).unvalidated(),
+        )
+            .into()
     }
-    pub fn iter(&self) -> tiny_map::Iter<ChannelId, T> {
+    pub fn iter(&self) -> tiny_map::Iter<ChannelId, Channel> {
         self.0.iter()
     }
-    pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, T> {
-        self.0.values_mut()
+    pub fn keys(&self) -> tiny_map::Keys<ChannelId, Channel> {
+        self.0.keys()
     }
-    pub fn entry(&mut self, id: ChannelId) -> tiny_map::Entry<ChannelMapArray<T>> {
-        self.0.entry(id)
+    pub fn values(&self) -> tiny_map::Values<ChannelId, Channel> {
+        self.0.values()
     }
-    pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut T> {
-        self.0.get_mut(id)
-    }
-    pub fn id_map<F, U>(&self, mut f: F) -> Channels<U>
+    // pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, Channel> {
+    //     self.0.values_mut()
+    // }
+    // pub fn entry(&mut self, id: ChannelId) -> tiny_map::Entry<ChannelMapArray> {
+    //     self.0.entry(id)
+    // }
+    // pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut Channel> {
+    //     self.0.get_mut(id)
+    // }
+    pub fn id_map<F>(&self, mut f: F) -> Channels
     where
-        F: FnMut(&ChannelId, &T) -> U,
+        F: FnMut(&ChannelId, &Channel) -> Channel,
     {
         self.0
             .iter()
@@ -278,53 +297,67 @@ impl<T> Channels<T> {
     }
     pub fn validate(self, instr_id: &InstrId, instruments: &Instruments) -> Self {
         self.into_iter()
-            .map(|(mut id, ch)| {
-                if let ChannelId::Loop { num, validated } = &mut id {
-                    let validator = instruments
-                        .loop_validators
-                        .get(num)
-                        .expect("no validator for loop");
-                    *validated = *validated || validator == instr_id;
+            .map(|(ch_id, mut ch)| {
+                match &ch_id {
+                    ChannelId::Loop(num) => {
+                        let validator = instruments
+                            .loop_validators
+                            .get(num)
+                            .expect("no validator for loop");
+                        ch.validated = ch.validated || validator == instr_id;
+                    }
+                    ChannelId::Focus(focus) => {
+                        ch.validated = ch.validated
+                            || instruments
+                                .focused
+                                .get(focus)
+                                .map(|foc| foc == instr_id)
+                                .unwrap_or(false)
+                    }
+                    ChannelId::Dummy => {}
                 }
-                (id, ch)
+                (ch_id, ch)
             })
             .collect()
     }
 }
 
-impl<T> From<T> for Channels<T> {
-    fn from(frame: T) -> Self {
-        Channels(once((ChannelId::Primary, frame)).collect())
+impl From<(ChannelId, Channel)> for Channels {
+    fn from((id, channel): (ChannelId, Channel)) -> Self {
+        Channels(once((id, channel)).collect())
     }
 }
 
-impl<T> From<Option<T>> for Channels<T> {
-    fn from(frame: Option<T>) -> Self {
-        Channels(frame.into_iter().map(|f| (ChannelId::Primary, f)).collect())
+impl<T> From<Option<T>> for Channels
+where
+    T: Into<Channels>,
+{
+    fn from(channel: Option<T>) -> Self {
+        channel.map(Into::into).unwrap_or_default()
     }
 }
 
-impl<T> FromIterator<(ChannelId, T)> for Channels<T> {
+impl FromIterator<(ChannelId, Channel)> for Channels {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (ChannelId, T)>,
+        I: IntoIterator<Item = (ChannelId, Channel)>,
     {
         Channels(TinyMap::from_iter(iter))
     }
 }
 
-impl<T> Extend<(ChannelId, T)> for Channels<T> {
+impl Extend<(ChannelId, Channel)> for Channels {
     fn extend<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = (ChannelId, T)>,
+        I: IntoIterator<Item = (ChannelId, Channel)>,
     {
         self.0.extend(iter)
     }
 }
 
-impl<T> IntoIterator for Channels<T> {
-    type Item = (ChannelId, T);
-    type IntoIter = tiny_map::IntoIter<ChannelId, T>;
+impl IntoIterator for Channels {
+    type Item = (ChannelId, Channel);
+    type IntoIter = tiny_map::IntoIter<ChannelId, Channel>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -333,7 +366,7 @@ impl<T> IntoIterator for Channels<T> {
 /// Cache for each frame
 #[derive(Default)]
 pub struct FrameCache {
-    pub map: HashMap<InstrId, Channels<Frame>>,
+    pub map: HashMap<InstrId, Channels>,
     pub visited: HashSet<InstrId>,
-    pub default_channels: Channels<Frame>,
+    pub default_channels: Channels,
 }

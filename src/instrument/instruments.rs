@@ -15,8 +15,8 @@ use structopt::{clap, StructOpt};
 use crate::Keyboard;
 use crate::{
     adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, DrumMachine,
-    FilterCommand, FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand,
-    NumberCommand, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, WaveCommand, ADSR,
+    FilterCommand, FocusType, FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand,
+    MixerCommand, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -59,8 +59,11 @@ pub struct Instruments {
     pub midis: HashMap<usize, Midi>,
     #[cfg(feature = "keyboard")]
     pub current_keyboard: Option<InstrId>,
-    pub current_midi: Option<InstrId>,
+    pub default_midi: Option<InstrId>,
+    pub focused: HashMap<FocusType, InstrId>,
     new_script_stack: Vec<NewScript>,
+    pub debug: bool,
+    pub debug_live: bool,
 }
 
 impl Default for Instruments {
@@ -84,8 +87,11 @@ impl Default for Instruments {
             midis: HashMap::new(),
             #[cfg(feature = "keyboard")]
             current_keyboard: None,
-            current_midi: None,
+            default_midi: None,
+            focused: HashMap::new(),
             new_script_stack: Vec::new(),
+            debug: false,
+            debug_live: false,
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -235,19 +241,11 @@ impl Instruments {
                     for &loop_i in loop_i {
                         let loop_id = InstrId::Loop(loop_i);
                         if let Some(instr) = self.map.get(&loop_id) {
-                            let loop_channel = instr
+                            let loop_channels = instr
                                 .next(cache, self, loop_id.clone())
-                                .into_primary()
-                                .map(|frame| {
-                                    (
-                                        ChannelId::Loop {
-                                            num: loop_i,
-                                            validated: false,
-                                        },
-                                        frame,
-                                    )
-                                });
-                            channels.extend(loop_channel);
+                                .into_iter()
+                                .map(|(_, channel)| (ChannelId::Loop(loop_i), channel));
+                            channels.extend(loop_channels);
                         }
                     }
                     // Cache the result
@@ -352,40 +350,6 @@ impl Instruments {
         self.current_keyboard = Some(id.clone());
         id
     }
-    pub fn new_default_input_device(&mut self, id: Option<InstrId>) -> InstrId {
-        let default_midi = InstrId::from("default_midi");
-        if let Some(Instrument::Script { args, commands }) = self.get(&default_midi) {
-            let id = id.unwrap_or_else(|| {
-                let mut i = 1;
-                loop {
-                    let possible = InstrId::from(format!("midi{}", i));
-                    if self.get(&possible).is_none() {
-                        break possible;
-                    }
-                    i += 1;
-                }
-            });
-            let script_args = args.clone();
-            let unresolved_commands = commands.clone();
-            let command_args = &["default_midi".to_string(), id.to_string()];
-            if let Err(e) = self.run_script(
-                command_args,
-                "default_midi",
-                script_args,
-                unresolved_commands,
-            ) {
-                println!("{}", e);
-            }
-            id
-        } else {
-            #[cfg(feature = "keyboard")]
-            {
-                self.new_keyboard(id)
-            }
-            #[cfg(not(feature = "keyboard"))]
-            InstrId::default()
-        }
-    }
     #[cfg(feature = "keyboard")]
     pub fn keyboard<F, R>(&self, f: F) -> R
     where
@@ -451,7 +415,6 @@ impl Instruments {
             RyvmCommand::Quit => {}
             RyvmCommand::Output { name } => self.set_output(name),
             RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
-            RyvmCommand::Number { name, num } => self.add(name, Instrument::Number(num)),
             RyvmCommand::Wave {
                 waveform,
                 name,
@@ -462,11 +425,7 @@ impl Instruments {
                 sustain,
                 release,
             } => {
-                let input = if let Some(input) = input {
-                    input
-                } else {
-                    self.new_default_input_device(input)
-                };
+                let input = input.unwrap_or_else(InstrId::default_input_device);
                 let default_adsr = ADSR::default();
                 let instr = Instrument::wave(
                     input.clone(),
@@ -480,6 +439,7 @@ impl Instruments {
                     },
                     self.default_voices_from(&input),
                 );
+                self.focused.insert(FocusType::Keyboard, name.clone());
                 self.add(name, instr);
             }
             RyvmCommand::Mixer { name, inputs } => self.add(
@@ -504,16 +464,17 @@ impl Instruments {
                 }
                 Err(e) => println!("{}", e),
             },
-            RyvmCommand::Midi(MidiSubcommand::New { name, port }) => {
+            RyvmCommand::Midi(MidiSubcommand::Init { port }) => {
                 let port = port.unwrap_or(0);
+                let name = InstrId::from(format!("midi{}", port));
                 if self.midis.contains_key(&port) {
-                    self.current_midi = Some(name.clone());
+                    self.default_midi = Some(name.clone());
                     self.add(name, Instrument::Midi { port });
                 } else {
                     match Midi::new(&name.to_string(), port) {
                         Ok(midi) => {
                             self.midis.entry(port).or_insert(midi);
-                            self.current_midi = Some(name.clone());
+                            self.default_midi = Some(name.clone());
                             self.add(name, Instrument::Midi { port });
                         }
                         Err(e) => println!("{}", e),
@@ -521,19 +482,16 @@ impl Instruments {
                 }
             }
             RyvmCommand::Drums { name, input } => {
-                let input = if let Some(input) = input {
-                    input
-                } else {
-                    self.new_default_input_device(input)
-                };
+                let input = input.unwrap_or_else(InstrId::default_input_device);
                 self.add(
                     name.clone(),
                     Instrument::DrumMachine(Box::new(DrumMachine {
                         samples: Vec::new(),
                         input,
-                        samplings: CloneLock::new(Channels::new()),
+                        samplings: CloneLock::new(HashMap::new()),
                     })),
                 );
+                self.focused.insert(FocusType::Drum, name.clone());
                 self.last_drums = Some(name);
             }
             RyvmCommand::Drum {
@@ -589,24 +547,15 @@ impl Instruments {
                     Instrument::Filter {
                         input,
                         value,
-                        avgs: Arc::new(CloneLock::new(Channels::new())),
+                        avgs: Arc::new(CloneLock::new(HashMap::new())),
                     }
                 })
             }
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
-            #[cfg(feature = "keyboard")]
-            RyvmCommand::KFocus { id } => {
-                for input in self.input_devices_of(&id) {
-                    if let Some(Instrument::Keyboard { .. }) = self.get(&input) {
-                        self.current_keyboard = Some(input);
-                        break;
-                    }
-                }
-            }
             RyvmCommand::Focus { id } => {
                 for input in self.input_devices_of(&id) {
                     if let Some(Instrument::Midi { .. }) = self.get(&input) {
-                        self.current_midi = Some(input);
+                        self.default_midi = Some(input);
                         break;
                     }
                 }
@@ -658,16 +607,18 @@ impl Instruments {
                     println!("{}", e)
                 }
             }
+            RyvmCommand::Debug { live } => {
+                self.debug = !self.debug;
+                if live {
+                    self.debug_live = !self.debug_live;
+                }
+            }
         }
     }
     fn process_instr_command(&mut self, name: InstrId, args: Vec<String>) -> Result<(), String> {
         let args = &args[1..];
         if let Some(instr) = self.get_mut(&name) {
             match instr {
-                Instrument::Number(num) => {
-                    let com = NumberCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
-                    *num = com.val;
-                }
                 Instrument::Mixer(inputs) => {
                     let com = MixerCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
 
@@ -891,11 +842,16 @@ impl Iterator for Instruments {
             .or_else(|| {
                 if let Some(output_id) = &self.output {
                     let channels = self.next_from(output_id, &mut cache);
+                    if self.debug_live {
+                        for id in channels.keys() {
+                            print!("{:?}, ", id);
+                        }
+                        println!();
+                    }
                     let voices: Vec<(Voice, Balance)> = channels
-                        .iter()
-                        .filter(|(id, _)| id.should_output())
-                        .map(|(_, frame)| frame)
-                        .map(|frame| (frame.voice(), Balance::default()))
+                        .values()
+                        .filter(|ch| ch.validated)
+                        .map(|ch| (ch.frame.voice(), Balance::default()))
                         .collect();
                     let frame = mix(&voices);
                     self.sample_queue = Some(frame.right());

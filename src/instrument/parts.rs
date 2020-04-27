@@ -118,3 +118,9 @@ pub struct LoopMaster {
     pub start_i: u32,
     pub period: u32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FocusType {
+    Drum,
+    Keyboard,
+}

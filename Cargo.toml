@@ -15,6 +15,7 @@ tinymap = { path = '../tinymap' }
 find_folder = '*'
 midir = '*'
 send_wrapper = '*'
+crossbeam-utils = '*'
 
 [features]
 default = []

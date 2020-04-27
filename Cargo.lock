@@ -1423,6 +1423,7 @@ dependencies = [
 name = "ryvm"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-utils",
  "find_folder",
  "itertools",
  "midir",

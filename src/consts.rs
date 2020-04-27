@@ -5,4 +5,3 @@ pub const SAMPLE_RATE: u32 = 44100;
 
 pub const DEFAULT_VOICES: u32 = 1;
 pub const DEFAULT_VOLUME: SampleType = 0.8;
-pub const DEFAULT_TEMPO: SampleType = 120.0;

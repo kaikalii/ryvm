@@ -11,8 +11,8 @@ use std::{
 };
 
 use crate::{
-    mix, Channels, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache, InstrId, Letter,
-    SampleType, Voice, ADSR, SAMPLE_RATE,
+    adjust_i, mix, Channels, CloneCell, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache,
+    InstrId, Letter, SampleType, Voice, ADSR, SAMPLE_RATE,
 };
 
 /// An instrument for producing sounds
@@ -44,14 +44,15 @@ pub enum Instrument {
         recording: bool,
         playing: bool,
         tempo: SampleType,
-        frames: CloneLock<BTreeMap<u32, Frame>>,
-        start_i: CloneLock<Option<u32>>,
+        last_frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
+        frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
+        start_i: CloneCell<Option<u32>>,
         period: u32,
     },
     InitialLoop {
         input: InstrId,
-        frames: Option<CloneLock<BTreeMap<u32, Frame>>>,
-        start_i: CloneLock<Option<u32>>,
+        frames: Option<CloneLock<BTreeMap<u32, Vec<Control>>>>,
+        start_i: CloneCell<Option<u32>>,
     },
     Filter {
         input: InstrId,
@@ -294,18 +295,17 @@ impl Instrument {
                     .primary()
                     .cloned()
                     .unwrap_or_default();
-                let mut start_i = start_i.lock();
-                if input_frame.is_some() {
-                    if start_i.is_none() {
-                        *start_i = Some(instruments.i());
+                if let Frame::Controls(controls) = input_frame {
+                    if start_i.load().is_none() {
+                        start_i.store(Some(instruments.i()));
                         println!("Started recording {}", my_id)
                     }
-                    if let Some(start_i) = *start_i {
+                    if let Some(start_i) = start_i.load() {
                         frames
                             .as_ref()
                             .unwrap()
                             .lock()
-                            .insert(instruments.i() - start_i, input_frame);
+                            .insert(instruments.i() - start_i, controls);
                     }
                 }
                 Channels::default()
@@ -316,51 +316,53 @@ impl Instrument {
                 playing,
                 tempo,
                 frames,
+                last_frames,
                 start_i,
                 period,
             } => {
                 let mut frames = frames.lock();
                 let input_channels = instruments.next_from(&*input, cache);
-                let mut start_i = start_i.lock();
-                // Get input frame
+                // Get input frames
                 let frame_is_some = input_channels
                     .primary()
                     .map(Frame::is_some)
                     .unwrap_or(false);
                 // Set start_i if not set
-                if start_i.is_none() && frame_is_some {
-                    *start_i = Some(instruments.i());
+                if start_i.load().is_none() && frame_is_some {
+                    start_i.store(Some(instruments.i()));
                     println!("Started recording {}", my_id);
                 }
-                let start_i = if let Some(i) = *start_i {
+                let start_i = if let Some(i) = start_i.load() {
                     i
                 } else {
                     return Channels::default();
                 };
 
-                let adjust_i =
-                    |i: u32| (i as u64 * instruments.tempo as u64 / *tempo as u64) as u32;
                 // The index of the loop's current sample without adjusting for tempo changes
                 let raw_loop_i = instruments.i() - start_i;
                 // Calculate the index of the loop's current sample adjusting for changes in tempo
-                let loop_i = adjust_i(raw_loop_i);
-                assert_eq!(loop_i, raw_loop_i);
+                let loop_i = adjust_i(raw_loop_i, *tempo, instruments.tempo);
 
-                if *recording && frame_is_some {
+                if *recording {
+                    if raw_loop_i % *period == 0 {
+                        last_frames.lock().append(&mut *frames);
+                    }
                     // Record if recording and there is input
                     let frame = input_channels.primary().cloned().unwrap_or_default();
-                    // TODO: fix this
-                    frames.split_off(&(loop_i % *period));
-                    frames.insert(loop_i % *period, frame);
+                    let frame_i = loop_i % *period;
+                    if let Frame::Controls(controls) = frame {
+                        frames.insert(frame_i, controls);
+                    }
                     // The loop itself is silent while recording
                     Frame::from(Control::EndAllNotes).into()
                 } else if *playing {
                     // Play the loop
                     // Find all controls, either for the current loop index or for
                     // ones would be skipped because of tempo changes
-                    let controls: Vec<Control> = (loop_i..adjust_i(raw_loop_i + 1))
+                    let controls: Vec<Control> = (loop_i
+                        ..adjust_i(raw_loop_i + 1, *tempo, instruments.tempo))
                         .flat_map(|i| {
-                            if let Some(Frame::Controls(controls)) = frames.get(&(i % *period)) {
+                            if let Some(controls) = frames.get(&(i % *period)) {
                                 controls.clone()
                             } else {
                                 Vec::new()
@@ -372,6 +374,7 @@ impl Instrument {
                         frames
                             .get(&(loop_i % *period))
                             .cloned()
+                            .map(Frame::controls)
                             .unwrap_or(Frame::None)
                     } else {
                         Frame::Controls(controls)

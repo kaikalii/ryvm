@@ -173,7 +173,12 @@ impl Frame {
     where
         I: IntoIterator<Item = Control>,
     {
-        Frame::Controls(iter.into_iter().collect())
+        let controls: Vec<_> = iter.into_iter().collect();
+        if controls.is_empty() {
+            Frame::None
+        } else {
+            Frame::Controls(controls)
+        }
     }
     pub fn is_some(&self) -> bool {
         match self {

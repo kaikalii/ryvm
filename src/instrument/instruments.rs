@@ -14,9 +14,10 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    load_script, mix, Balance, ChannelId, Channels, CloneLock, FilterCommand, FrameCache, InstrId,
-    Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand, NumberCommand, RyvmCommand, Sample,
-    SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_TEMPO, DEFAULT_VOICES, SAMPLE_RATE,
+    adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, FilterCommand,
+    FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand, NumberCommand,
+    RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_VOICES,
+    SAMPLE_RATE,
 };
 
 #[derive(Default)]
@@ -66,7 +67,7 @@ impl Default for Instruments {
         let mut instruments = Instruments {
             output: None,
             map: HashMap::new(),
-            tempo: DEFAULT_TEMPO,
+            tempo: 1.0,
             sample_queue: None,
             command_queue: Vec::new(),
             i: 0,
@@ -190,15 +191,16 @@ impl Instruments {
                 recording: true,
                 playing: true,
                 tempo: self.tempo,
+                last_frames: CloneLock::new(Default::default()),
                 frames: CloneLock::new(Default::default()),
-                start_i: CloneLock::new(None),
+                start_i: CloneCell::new(None),
                 period,
             }
         } else {
             Instrument::InitialLoop {
                 input,
                 frames: Some(CloneLock::new(Default::default())),
-                start_i: CloneLock::new(None),
+                start_i: CloneCell::new(None),
             }
         };
         // Insert the loop
@@ -249,14 +251,27 @@ impl Instruments {
     pub fn stop_recording_all(&mut self) {
         let self_i = self.i();
         let mut loop_master = None;
+        let curr_tempo = self.tempo;
         for (id, instr) in self.map.iter_mut() {
             if let InstrId::Loop(loop_id) = id {
                 match instr {
-                    Instrument::Loop { recording, .. } => {
-                        if *recording {
+                    Instrument::Loop {
+                        recording,
+                        frames,
+                        last_frames,
+                        start_i,
+                        tempo,
+                        period,
+                        ..
+                    } => {
+                        if let (true, Some(start_i)) = (*recording, start_i.load()) {
+                            let mut frames = frames.lock();
+                            let loop_i = adjust_i(self_i - start_i, *tempo, curr_tempo) % *period;
+                            frames.split_off(&loop_i);
+                            frames.append(&mut last_frames.lock().split_off(&loop_i));
                             println!("Stopped recording {}", id);
+                            *recording = false;
                         }
-                        *recording = false;
                     }
                     Instrument::InitialLoop {
                         input,
@@ -264,7 +279,7 @@ impl Instruments {
                         start_i,
                         ..
                     } => {
-                        let start_i = *start_i.lock();
+                        let start_i = start_i.load();
                         if let Some(start_i) = start_i {
                             let input = input.clone();
                             let frames = frames.take().unwrap();
@@ -279,7 +294,8 @@ impl Instruments {
                                 recording: false,
                                 playing: true,
                                 tempo: self.tempo,
-                                start_i: CloneLock::new(Some(self_i)),
+                                last_frames: CloneLock::new(Default::default()),
+                                start_i: CloneCell::new(Some(self_i)),
                                 period,
                             };
                             println!("Finished recording {}", id);

@@ -40,9 +40,9 @@ pub enum RyvmCommand {
         #[structopt(index = 1, help = "The id of the new output instrument")]
         name: InstrId,
     },
-    #[structopt(about = "Set the project tempo")]
+    #[structopt(about = "Set the project's relative tempo")]
     Tempo {
-        #[structopt(index = 1, help = "The new value for the tempo")]
+        #[structopt(index = 1, help = "The new value for the relative tempo")]
         tempo: f32,
     },
     #[structopt(about = "Create a number source", alias = "num")]

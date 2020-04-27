@@ -15,30 +15,36 @@ use crate::{
     InstrId, Letter, SampleType, Voice, ADSR,
 };
 
+#[derive(Debug, Clone)]
+pub struct Wave {
+    input: InstrId,
+    form: WaveForm,
+    voices: u32,
+    waves: CloneLock<Channels<Vec<u32>>>,
+    octave: Option<i8>,
+    adsr: ADSR,
+    envelopers: CloneLock<Channels<Enveloper>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DrumMachine {
+    samples: Vec<PathBuf>,
+    input: InstrId,
+    samplings: CloneLock<Channels<Vec<ActiveSampling>>>,
+}
+
 /// An instrument for producing sounds
 #[derive(Debug, Clone)]
 pub enum Instrument {
     Number(SampleType),
-    Wave {
-        input: InstrId,
-        form: WaveForm,
-        voices: u32,
-        waves: CloneLock<Channels<Vec<u32>>>,
-        octave: Option<i8>,
-        adsr: ADSR,
-        envelopers: CloneLock<Channels<Enveloper>>,
-    },
+    Wave(Box<Wave>),
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
     Keyboard,
     Midi {
         port: usize,
     },
-    DrumMachine {
-        samples: Vec<PathBuf>,
-        input: InstrId,
-        samplings: CloneLock<Channels<Vec<ActiveSampling>>>,
-    },
+    DrumMachine(Box<DrumMachine>),
     Loop {
         input: InstrId,
         recording: bool,
@@ -73,15 +79,15 @@ impl Instrument {
         adsr: ADSR,
         voices: u32,
     ) -> Self {
-        Instrument::Wave {
-            input: input.into(),
+        Instrument::Wave(Box::new(Wave {
+            input,
             form,
             voices,
             octave,
             adsr,
             waves: CloneLock::new(Channels::new()),
             envelopers: CloneLock::new(Channels::new()),
-        }
+        }))
     }
     /// Check if the instrument is an input device
     pub fn is_input_device(&self) -> bool {
@@ -103,16 +109,17 @@ impl Instrument {
             // Numbers
             Instrument::Number(n) => Frame::from(Voice::mono(*n)).into(),
             // Waves
-            Instrument::Wave {
-                input,
-                form,
-                voices,
-                octave,
-                adsr,
-                waves,
-                envelopers,
-                ..
-            } => {
+            Instrument::Wave(wave) => {
+                let Wave {
+                    input,
+                    form,
+                    voices,
+                    octave,
+                    adsr,
+                    waves,
+                    envelopers,
+                    ..
+                } = &**wave;
                 let mut envelopers = envelopers.lock();
                 let res = instruments
                     .next_from(&*input, cache)
@@ -193,13 +200,16 @@ impl Instrument {
             // Mixers
             Instrument::Mixer(list) => {
                 // Simply mix all inputs
-                let mut voices = Vec::new();
+                let mut voice_channels = Channels::new();
                 for (id, bal) in list {
-                    for frame in instruments.next_from(id, cache).frames() {
-                        voices.push((frame.voice(), *bal));
+                    for (id, frame) in instruments.next_from(id, cache).iter() {
+                        voice_channels
+                            .entry(id.clone())
+                            .or_insert_with(Vec::new)
+                            .push((frame.voice(), *bal));
                     }
                 }
-                mix(&voices).into()
+                voice_channels.id_map(|_, voices| mix(&voices))
             }
             // Keyboards
             #[cfg(feature = "keyboard")]
@@ -236,15 +246,11 @@ impl Instrument {
                 }
             }
             // Drum Machine
-            Instrument::DrumMachine {
-                samples,
-                input,
-                samplings,
-            } => {
-                let channels = instruments.next_from(input, cache);
+            Instrument::DrumMachine(drums) => {
+                let channels = instruments.next_from(&drums.input, cache);
                 channels.id_map(|ch_id, frame| {
                     let mut voices = Vec::new();
-                    let mut samplings = samplings.lock();
+                    let mut samplings = drums.samplings.lock();
                     let samplings = samplings.entry(ch_id.clone()).or_insert_with(Vec::new);
                     // Register controls from input frame
                     if let Frame::Controls(controls) = frame {
@@ -252,7 +258,7 @@ impl Instrument {
                             if let Control::PadStart(l, o, v) = control {
                                 let min_index = Letter::C.to_u8(3);
                                 let index = (l.to_u8(o).max(min_index) - min_index) as usize;
-                                if index < samples.len() {
+                                if index < drums.samples.len() {
                                     samplings.push(ActiveSampling {
                                         index,
                                         i: 0,
@@ -265,7 +271,10 @@ impl Instrument {
                     // Add manual samples to voies
                     for ms in (0..samplings.len()).rev() {
                         let ActiveSampling { index, i, velocity } = &mut samplings[ms];
-                        if let Some(res) = instruments.sample_bank.get(&samples[*index]).finished()
+                        if let Some(res) = instruments
+                            .sample_bank
+                            .get(&drums.samples[*index])
+                            .finished()
                         {
                             if let Ok(sample) = &*res {
                                 if *i < sample.len(instruments.sample_rate) {
@@ -279,8 +288,7 @@ impl Instrument {
                             }
                         }
                     }
-
-                    mix(&voices).into()
+                    mix(&voices)
                 })
             }
             // Loops
@@ -404,11 +412,12 @@ impl Instrument {
             // Script are not actual instruments, so they do not output frames
             Instrument::Script { .. } => Channels::new(),
         }
+        .validate(&my_id, instruments)
     }
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&InstrId> {
         match self {
-            Instrument::Wave { input, .. } => vec![input],
+            Instrument::Wave(wave) => vec![&wave.input],
             Instrument::Mixer(inputs) => inputs.keys().collect(),
             Instrument::Filter { input, value, .. } => once(input)
                 .chain(if let DynInput::Id(id) = value {
@@ -417,7 +426,7 @@ impl Instrument {
                     None
                 })
                 .collect(),
-            Instrument::DrumMachine { input, .. } => vec![input],
+            Instrument::DrumMachine(drums) => vec![&drums.input],
             _ => Vec::new(),
         }
     }
@@ -429,7 +438,7 @@ impl Instrument {
             }
         };
         match self {
-            Instrument::Wave { input, .. } => replace(input),
+            Instrument::Wave(wave) => replace(&mut wave.input),
             Instrument::Mixer(inputs) => {
                 let mixed: Vec<_> = inputs.drain().collect();
                 for (mut id, bal) in mixed {

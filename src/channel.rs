@@ -9,7 +9,7 @@ use std::{
 
 use tinymap::{tiny_map, Inner, TinyMap};
 
-use crate::{Balance, Letter, SampleType};
+use crate::{Balance, Instruments, Letter, SampleType};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum InstrId {
@@ -216,7 +216,16 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChannelId {
     Primary,
-    Loop(u8),
+    Loop { num: u8, validated: bool },
+}
+
+impl ChannelId {
+    pub fn should_output(&self) -> bool {
+        match self {
+            ChannelId::Primary => true,
+            ChannelId::Loop { validated, .. } => *validated,
+        }
+    }
 }
 
 type ChannelMapArray<T> = [Inner<(ChannelId, T)>; 10];
@@ -231,9 +240,6 @@ impl<T> Default for Channels<T> {
 }
 
 impl Channels {
-    pub fn frames(&self) -> tiny_map::Values<ChannelId, Frame> {
-        self.values()
-    }
     pub fn empty_primary() -> Self {
         Frame::None.into()
     }
@@ -249,12 +255,8 @@ impl<T> Channels<T> {
     pub fn into_primary(mut self) -> Option<T> {
         self.0.remove(&ChannelId::Primary)
     }
-    #[allow(dead_code)]
     pub fn iter(&self) -> tiny_map::Iter<ChannelId, T> {
         self.0.iter()
-    }
-    pub fn values(&self) -> tiny_map::Values<ChannelId, T> {
-        self.0.values()
     }
     pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, T> {
         self.0.values_mut()
@@ -265,13 +267,27 @@ impl<T> Channels<T> {
     pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut T> {
         self.0.get_mut(id)
     }
-    pub fn id_map<F>(&self, mut f: F) -> Channels<T>
+    pub fn id_map<F, U>(&self, mut f: F) -> Channels<U>
     where
-        F: FnMut(&ChannelId, &T) -> T,
+        F: FnMut(&ChannelId, &T) -> U,
     {
         self.0
             .iter()
-            .map(|(id, frame)| (id.clone(), f(id, frame)))
+            .map(|(id, value)| (id.clone(), f(id, value)))
+            .collect()
+    }
+    pub fn validate(self, instr_id: &InstrId, instruments: &Instruments) -> Self {
+        self.into_iter()
+            .map(|(mut id, ch)| {
+                if let ChannelId::Loop { num, validated } = &mut id {
+                    let validator = instruments
+                        .loop_validators
+                        .get(num)
+                        .expect("no validator for loop");
+                    *validated = *validated || validator == instr_id;
+                }
+                (id, ch)
+            })
             .collect()
     }
 }

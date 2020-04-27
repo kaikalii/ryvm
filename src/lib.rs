@@ -8,7 +8,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; use $m::*;)*);
 }
 
-mods!(app, channel, consts, drum, envelope, instrument, midi, track, utility);
+mods!(app, channel, drum, envelope, instrument, midi, track, utility);
 
 #[cfg(feature = "keyboard")]
 mod keyboard;
@@ -20,6 +20,8 @@ use std::{iter::once, sync::mpsc, thread, time::Duration};
 use structopt::StructOpt;
 
 pub use rodio::{default_output_device, output_devices, Device};
+
+type SampleType = f32;
 
 /// A Ryvm context
 pub struct Ryvm {

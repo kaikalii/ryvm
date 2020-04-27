@@ -28,12 +28,15 @@ enum NoteState {
     Released,
 }
 
+pub type LetterOctave = (Letter, u8);
+type NoteEnvelope = (u32, NoteState, u8);
+
 /// Keeps track of the key states of an input device
 /// and applies an ADSR envelope to them
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
     pitch_bend: SampleType,
-    states: HashMap<(Letter, u8), Vec<(u32, NoteState, u8)>>,
+    states: HashMap<LetterOctave, Vec<NoteEnvelope>>,
     i: u32,
 }
 

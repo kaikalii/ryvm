@@ -1,6 +1,6 @@
 use std::{f32::consts::FRAC_2_PI, fmt, str::FromStr, sync::Arc};
 
-use crate::{CloneLock, SampleType, DEFAULT_VOLUME};
+use crate::{CloneLock, SampleType};
 
 /// A lock used primarily to allow the manipulation of a rodio::Source
 /// while it is already playing
@@ -84,7 +84,7 @@ pub struct Balance {
 impl Default for Balance {
     fn default() -> Self {
         Balance {
-            volume: DEFAULT_VOLUME,
+            volume: 1.0,
             pan: 0.0,
         }
     }
@@ -96,6 +96,12 @@ impl Balance {
             self.volume * (1.0 - self.pan.max(0.0)),
             self.volume * (1.0 + self.pan.min(0.0)),
         )
+    }
+    pub fn mixer_default() -> Self {
+        Balance {
+            volume: 0.5,
+            pan: 0.0,
+        }
     }
 }
 

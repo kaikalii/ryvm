@@ -14,9 +14,9 @@ use structopt::{clap, StructOpt};
 #[cfg(feature = "keyboard")]
 use crate::Keyboard;
 use crate::{
-    adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, FilterCommand,
-    FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand, NumberCommand,
-    RyvmApp, RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR, DEFAULT_VOICES,
+    adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, DrumMachine,
+    FilterCommand, FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand,
+    NumberCommand, RyvmApp, RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -52,6 +52,8 @@ pub struct Instruments {
     last_drums: Option<InstrId>,
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     loops: HashMap<InstrId, HashSet<u8>>,
+    pub loop_validators: HashMap<u8, InstrId>,
+    pub loop_master: Option<LoopMaster>,
     #[cfg(feature = "keyboard")]
     keyboard: CloneLock<Option<Keyboard>>,
     pub midis: HashMap<usize, Midi>,
@@ -59,7 +61,6 @@ pub struct Instruments {
     pub current_keyboard: Option<InstrId>,
     pub current_midi: Option<InstrId>,
     new_script_stack: Vec<NewScript>,
-    pub loop_master: Option<LoopMaster>,
 }
 
 impl Default for Instruments {
@@ -76,6 +77,8 @@ impl Default for Instruments {
             last_drums: None,
             sample_bank: Outsourcer::default(),
             loops: HashMap::new(),
+            loop_master: None,
+            loop_validators: HashMap::new(),
             #[cfg(feature = "keyboard")]
             keyboard: CloneLock::new(None),
             midis: HashMap::new(),
@@ -83,7 +86,6 @@ impl Default for Instruments {
             current_keyboard: None,
             current_midi: None,
             new_script_stack: Vec::new(),
-            loop_master: None,
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -113,13 +115,13 @@ impl Instruments {
         self.i % self.frames_per_measure()
     }
     pub fn set_output(&mut self, id: InstrId) {
-        self.output = Some(id.into());
+        self.output = Some(id);
     }
     pub fn set_tempo(&mut self, tempo: SampleType) {
         self.tempo = tempo;
     }
     pub fn add(&mut self, id: InstrId, instr: Instrument) {
-        self.map.insert(id.into(), instr);
+        self.map.insert(id, instr);
     }
     pub fn add_wrapper<F>(&mut self, input: InstrId, id: InstrId, build_instr: F)
     where
@@ -179,6 +181,7 @@ impl Instruments {
         for input in self.input_devices_of(&input) {
             self._add_loop(number, input, size);
         }
+        self.loop_validators.insert(number, input);
         // Update loops
         self.update_loops();
     }
@@ -235,7 +238,15 @@ impl Instruments {
                             let loop_channel = instr
                                 .next(cache, self, loop_id.clone())
                                 .into_primary()
-                                .map(|frame| (ChannelId::Loop(loop_i), frame));
+                                .map(|frame| {
+                                    (
+                                        ChannelId::Loop {
+                                            num: loop_i,
+                                            validated: false,
+                                        },
+                                        frame,
+                                    )
+                                });
                             channels.extend(loop_channel);
                         }
                     }
@@ -318,10 +329,10 @@ impl Instruments {
                 #[cfg(feature = "keyboard")]
                 Instrument::Keyboard { .. } => 5,
                 Instrument::Midi { .. } => 8,
-                _ => DEFAULT_VOICES,
+                _ => 1,
             }
         } else {
-            DEFAULT_VOICES
+            1
         }
     }
     #[cfg(feature = "keyboard")]
@@ -419,7 +430,7 @@ impl Instruments {
                 },
             ) => println!("{}", e),
             Err(e) => {
-                let offender = if let Some([offender, ..]) = e.info.as_ref().map(Vec::as_slice) {
+                let offender = if let Some([offender, ..]) = e.info.as_deref() {
                     offender
                 } else {
                     ""
@@ -477,7 +488,7 @@ impl Instruments {
                     inputs
                         .into_iter()
                         .map(Into::into)
-                        .zip(repeat(Balance::default()))
+                        .zip(repeat(Balance::mixer_default()))
                         .collect(),
                 ),
             ),
@@ -517,11 +528,11 @@ impl Instruments {
                 };
                 self.add(
                     name.clone(),
-                    Instrument::DrumMachine {
+                    Instrument::DrumMachine(Box::new(DrumMachine {
                         samples: Vec::new(),
                         input,
                         samplings: CloneLock::new(Channels::new()),
-                    },
+                    })),
                 );
                 self.last_drums = Some(name);
             }
@@ -537,14 +548,14 @@ impl Instruments {
                 } else {
                     self.last_drums.clone().unwrap_or_default()
                 };
-                if let Some(Instrument::DrumMachine { samples, .. }) = self.get_mut(&name) {
-                    let index = index.unwrap_or_else(|| samples.len());
-                    samples.resize(index + 1, PathBuf::from(""));
+                if let Some(Instrument::DrumMachine(drums)) = self.get_mut(&name) {
+                    let index = index.unwrap_or_else(|| drums.samples.len());
+                    drums.samples.resize(index + 1, PathBuf::from(""));
                     if let Some(path) = path {
-                        samples[index] = path;
+                        drums.samples[index] = path;
                     }
                     if remove {
-                        samples[index] = PathBuf::from("");
+                        drums.samples[index] = PathBuf::from("");
                     }
                 }
             }
@@ -666,7 +677,8 @@ impl Instruments {
                         }
                     } else {
                         for input in com.inputs {
-                            let balance = inputs.entry(input).or_insert_with(Balance::default);
+                            let balance =
+                                inputs.entry(input).or_insert_with(Balance::mixer_default);
                             if let Some(volume) = com.volume {
                                 balance.volume = volume;
                             }
@@ -676,34 +688,28 @@ impl Instruments {
                         }
                     }
                 }
-                Instrument::Wave {
-                    input,
-                    adsr,
-                    octave,
-                    form,
-                    ..
-                } => {
+                Instrument::Wave(wave) => {
                     let com = WaveCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     if let Some(id) = com.input {
-                        *input = id;
+                        wave.input = id;
                     }
                     if let Some(o) = com.octave {
-                        *octave = Some(o);
+                        wave.octave = Some(o);
                     }
                     if let Some(attack) = com.attack {
-                        adsr.attack = attack;
+                        wave.adsr.attack = attack;
                     }
                     if let Some(decay) = com.decay {
-                        adsr.decay = decay;
+                        wave.adsr.decay = decay;
                     }
                     if let Some(sustain) = com.sustain {
-                        adsr.sustain = sustain;
+                        wave.adsr.sustain = sustain;
                     }
                     if let Some(release) = com.release {
-                        adsr.release = release;
+                        wave.adsr.release = release;
                     }
                     if let Some(wf) = com.form {
-                        *form = wf;
+                        wave.form = wf;
                     }
                 }
                 Instrument::Filter { value, .. } => {
@@ -886,7 +892,9 @@ impl Iterator for Instruments {
                 if let Some(output_id) = &self.output {
                     let channels = self.next_from(output_id, &mut cache);
                     let voices: Vec<(Voice, Balance)> = channels
-                        .frames()
+                        .iter()
+                        .filter(|(id, _)| id.should_output())
+                        .map(|(_, frame)| frame)
                         .map(|frame| (frame.voice(), Balance::default()))
                         .collect();
                     let frame = mix(&voices);

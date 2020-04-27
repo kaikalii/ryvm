@@ -55,7 +55,9 @@ pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     (delay, args)
 }
 
-pub fn load_script(name: &str) -> Option<(Vec<String>, Vec<(bool, Vec<String>)>)> {
+pub type DelayedCommands = (bool, Vec<String>);
+
+pub fn load_script(name: &str) -> Option<(Vec<String>, Vec<DelayedCommands>)> {
     let folder = "scripts";
     let search = Search::KidsThenParents(2, 1);
     let scripts_path = search

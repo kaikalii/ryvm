@@ -16,7 +16,7 @@ use crate::Keyboard;
 use crate::{
     adjust_i, load_script, mix, Balance, ChannelId, Channels, CloneCell, CloneLock, DrumMachine,
     FilterCommand, FrameCache, InstrId, Instrument, LoopMaster, Midi, MidiSubcommand, MixerCommand,
-    NumberCommand, RyvmApp, RyvmCommand, Sample, SampleType, SourceLock, Voice, WaveCommand, ADSR,
+    NumberCommand, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -45,8 +45,8 @@ pub struct Instruments {
     pub sample_rate: u32,
     output: Option<InstrId>,
     map: HashMap<InstrId, Instrument>,
-    pub tempo: SampleType,
-    sample_queue: Option<SampleType>,
+    pub tempo: f32,
+    sample_queue: Option<f32>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
     i: u32,
     last_drums: Option<InstrId>,
@@ -106,7 +106,7 @@ impl Instruments {
         SourceLock::new(Self::default())
     }
     pub fn frames_per_measure(&self) -> u32 {
-        (self.sample_rate as SampleType / (self.tempo / 60.0) * 4.0) as u32
+        (self.sample_rate as f32 / (self.tempo / 60.0) * 4.0) as u32
     }
     pub fn i(&self) -> u32 {
         self.i
@@ -117,7 +117,7 @@ impl Instruments {
     pub fn set_output(&mut self, id: InstrId) {
         self.output = Some(id);
     }
-    pub fn set_tempo(&mut self, tempo: SampleType) {
+    pub fn set_tempo(&mut self, tempo: f32) {
         self.tempo = tempo;
     }
     pub fn add(&mut self, id: InstrId, instr: Instrument) {
@@ -168,7 +168,7 @@ impl Instruments {
             }
         }
     }
-    pub fn add_loop(&mut self, number: u8, input: InstrId, size: SampleType) {
+    pub fn add_loop(&mut self, number: u8, input: InstrId, size: f32) {
         // Stop recording on all other loops
         self.stop_recording_all();
         // Clear the loop master if its id matches the number
@@ -185,7 +185,7 @@ impl Instruments {
         // Update loops
         self.update_loops();
     }
-    fn _add_loop(&mut self, number: u8, input: InstrId, size: SampleType) {
+    fn _add_loop(&mut self, number: u8, input: InstrId, size: f32) {
         // Create new loop id
         let loop_id = InstrId::Loop(number);
         // Create the loop instrument
@@ -869,7 +869,7 @@ impl Instruments {
 }
 
 impl Iterator for Instruments {
-    type Item = SampleType;
+    type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         // Process commands
         if self.measure_i() == 0 && self.sample_queue.is_none() {

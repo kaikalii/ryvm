@@ -2,14 +2,14 @@ use std::{convert::Infallible, fmt, path::PathBuf, str::FromStr};
 
 use structopt::StructOpt;
 
-use crate::{InstrId, SampleType, WaveForm};
+use crate::{InstrId, WaveForm};
 
 /// An input type that can either be a static number or the
 /// id of an instrument from which to get a number
 #[derive(Debug, Clone)]
 pub enum DynInput {
     Id(InstrId),
-    Num(SampleType),
+    Num(f32),
 }
 
 impl fmt::Display for DynInput {
@@ -24,7 +24,7 @@ impl fmt::Display for DynInput {
 impl FromStr for DynInput {
     type Err = Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.parse::<SampleType>()
+        Ok(s.parse::<f32>()
             .map(DynInput::Num)
             .unwrap_or_else(|_| s.parse::<InstrId>().map(DynInput::Id).unwrap()))
     }
@@ -71,13 +71,13 @@ pub enum RyvmCommand {
         )]
         octave: Option<i8>,
         #[structopt(long, short, help = "The synth's attack")]
-        attack: Option<SampleType>,
+        attack: Option<f32>,
         #[structopt(long, short, help = "The synth's decay")]
-        decay: Option<SampleType>,
+        decay: Option<f32>,
         #[structopt(long, short, help = "The synth's sustain")]
-        sustain: Option<SampleType>,
+        sustain: Option<f32>,
         #[structopt(long, short, help = "The synth's release")]
-        release: Option<SampleType>,
+        release: Option<f32>,
     },
     #[structopt(about = "Create a mixer")]
     Mixer {
@@ -128,7 +128,7 @@ pub enum RyvmCommand {
             index = 3,
             help = "The length of this loop compared to the established one"
         )]
-        size: Option<SampleType>,
+        size: Option<f32>,
     },
     #[structopt(about = "Start (a) loop(s)")]
     Start {
@@ -218,13 +218,13 @@ pub struct WaveCommand {
     #[structopt(long, short, help = "Set the synth's octave relative to its input")]
     pub octave: Option<i8>,
     #[structopt(long, short, help = "Set the synth's attack")]
-    pub attack: Option<SampleType>,
+    pub attack: Option<f32>,
     #[structopt(long, short, help = "Set the synth's decay")]
-    pub decay: Option<SampleType>,
+    pub decay: Option<f32>,
     #[structopt(long, short, help = "Set the synth's sustain")]
-    pub sustain: Option<SampleType>,
+    pub sustain: Option<f32>,
     #[structopt(long, short, help = "Set the synth's release")]
-    pub release: Option<SampleType>,
+    pub release: Option<f32>,
     #[structopt(long, short, help = "Set the synth's waveform")]
     pub form: Option<WaveForm>,
 }

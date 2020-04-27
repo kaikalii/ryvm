@@ -11,7 +11,7 @@ use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
 
-use crate::{SampleType, Voice};
+use crate::Voice;
 
 /// Data for an audio sample
 #[derive(Clone)]
@@ -45,7 +45,7 @@ impl Sample {
         let channels = decoder.channels();
         let samples = if channels == 1 {
             decoder
-                .map(|i| Voice::mono(i as SampleType / std::i16::MAX as SampleType))
+                .map(|i| Voice::mono(i as f32 / std::i16::MAX as f32))
                 .collect()
         } else {
             decoder
@@ -53,8 +53,8 @@ impl Sample {
                 .into_iter()
                 .map(|mut lr| {
                     Voice::stereo(
-                        lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
-                        lr.next().unwrap_or(0) as SampleType / std::i16::MAX as SampleType,
+                        lr.next().unwrap_or(0) as f32 / std::i16::MAX as f32,
+                        lr.next().unwrap_or(0) as f32 / std::i16::MAX as f32,
                     )
                 })
                 .collect()

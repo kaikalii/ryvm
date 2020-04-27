@@ -1,6 +1,6 @@
 use std::{f32::consts::FRAC_2_PI, fmt, str::FromStr, sync::Arc};
 
-use crate::{CloneLock, SampleType};
+use crate::CloneLock;
 
 /// A lock used primarily to allow the manipulation of a rodio::Source
 /// while it is already playing
@@ -44,8 +44,8 @@ pub enum WaveForm {
 }
 
 impl WaveForm {
-    pub const MIN_ENERGY: SampleType = 0.5;
-    pub fn energy(self) -> SampleType {
+    pub const MIN_ENERGY: f32 = 0.5;
+    pub fn energy(self) -> f32 {
         match self {
             WaveForm::Sine => FRAC_2_PI,
             WaveForm::Square => 1.0,
@@ -77,8 +77,8 @@ impl FromStr for WaveForm {
 /// A balance wrapper for an `Instrument`
 #[derive(Debug, Clone, Copy)]
 pub struct Balance {
-    pub volume: SampleType,
-    pub pan: SampleType,
+    pub volume: f32,
+    pub pan: f32,
 }
 
 impl Default for Balance {
@@ -91,7 +91,7 @@ impl Default for Balance {
 }
 
 impl Balance {
-    pub fn stereo_volume(self) -> (SampleType, SampleType) {
+    pub fn stereo_volume(self) -> (f32, f32) {
         (
             self.volume * (1.0 - self.pan.max(0.0)),
             self.volume * (1.0 + self.pan.min(0.0)),
@@ -109,7 +109,7 @@ impl Balance {
 pub struct ActiveSampling {
     pub index: usize,
     pub i: u32,
-    pub velocity: SampleType,
+    pub velocity: f32,
 }
 
 #[derive(Debug, Clone, Copy)]

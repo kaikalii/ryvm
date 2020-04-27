@@ -9,7 +9,7 @@ use std::{
 
 use tinymap::{tiny_map, Inner, TinyMap};
 
-use crate::{Balance, Instruments, Letter, SampleType};
+use crate::{Balance, Instruments, Letter};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum InstrId {
@@ -100,22 +100,22 @@ impl fmt::Display for InstrId {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Voice {
-    pub left: SampleType,
-    pub right: SampleType,
+    pub left: f32,
+    pub right: f32,
 }
 
 impl Voice {
-    pub fn stereo(left: SampleType, right: SampleType) -> Self {
+    pub fn stereo(left: f32, right: f32) -> Self {
         Voice { left, right }
     }
-    pub fn mono(both: SampleType) -> Self {
+    pub fn mono(both: f32) -> Self {
         Voice::stereo(both, both)
     }
 }
 
-impl Mul<SampleType> for Voice {
+impl Mul<f32> for Voice {
     type Output = Self;
-    fn mul(self, m: SampleType) -> Self::Output {
+    fn mul(self, m: f32) -> Self::Output {
         Voice {
             left: self.left * m,
             right: self.right * m,
@@ -128,8 +128,8 @@ pub enum Control {
     NoteStart(Letter, u8, u8),
     NoteEnd(Letter, u8),
     EndAllNotes,
-    PitchBend(SampleType),
-    Controller(u8, SampleType),
+    PitchBend(f32),
+    Controller(u8, f32),
     PadStart(Letter, u8, u8),
     PadEnd(Letter, u8),
 }
@@ -148,14 +148,14 @@ impl Default for Frame {
 }
 
 impl Frame {
-    pub fn left(&self) -> SampleType {
+    pub fn left(&self) -> f32 {
         if let Frame::Voice(voice) = self {
             voice.left
         } else {
             0.0
         }
     }
-    pub fn right(&self) -> SampleType {
+    pub fn right(&self) -> f32 {
         if let Frame::Voice(voice) = self {
             voice.right
         } else {

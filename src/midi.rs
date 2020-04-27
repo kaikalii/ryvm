@@ -3,7 +3,7 @@ use std::{fmt, sync::Arc};
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
 
-use crate::{CloneLock, Control, Letter, SampleType};
+use crate::{CloneLock, Control, Letter};
 
 const NOTE_START: u8 = 0x90;
 const NOTE_END: u8 = 0x80;
@@ -12,6 +12,7 @@ const CONTROLLER: u8 = 0xB0;
 const PAD_START: u8 = 0x99;
 const PAD_END: u8 = 0x89;
 
+#[allow(clippy::unnecessary_cast)]
 pub fn decode_control(data: &[u8]) -> Option<Control> {
     let mut padded = [0; 3];
     for (i, &b) in data.iter().enumerate() {
@@ -28,10 +29,10 @@ pub fn decode_control(data: &[u8]) -> Option<Control> {
         }
         [PITCH_BEND, lsb, msb] => {
             let pb_u16 = msb as u16 * 0x80 + lsb as u16;
-            let pb = pb_u16 as SampleType / 0x3fff as SampleType * 2.0 - 1.0;
+            let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
             Some(Control::PitchBend(pb))
         }
-        [CONTROLLER, n, i] => Some(Control::Controller(n, i as SampleType / 0x7f as SampleType)),
+        [CONTROLLER, n, i] => Some(Control::Controller(n, i as f32 / 0x7f as f32)),
         [PAD_START, n, v] => {
             let (letter, octave) = Letter::from_u8(n);
             Some(Control::PadStart(letter, octave, v))

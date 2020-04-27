@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
-use crate::{Control, Letter, SampleType};
+use crate::{Control, Letter};
 
 /// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ADSR {
-    pub attack: SampleType,
-    pub decay: SampleType,
-    pub sustain: SampleType,
-    pub release: SampleType,
+    pub attack: f32,
+    pub decay: f32,
+    pub sustain: f32,
+    pub release: f32,
 }
 
 impl Default for ADSR {
@@ -35,7 +35,7 @@ type NoteEnvelope = (u32, NoteState, u8);
 /// and applies an ADSR envelope to them
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
-    pitch_bend: SampleType,
+    pitch_bend: f32,
     states: HashMap<LetterOctave, Vec<NoteEnvelope>>,
     i: u32,
 }
@@ -82,13 +82,13 @@ impl Enveloper {
         sample_rate: u32,
         base_octave: i8,
         adsr: ADSR,
-    ) -> impl Iterator<Item = (SampleType, SampleType)> + '_ {
+    ) -> impl Iterator<Item = (f32, f32)> + '_ {
         self.states
             .iter()
             .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
             .filter_map(move |((letter, octave), (start, state, velocity))| {
-                let t = (self.i - *start) as SampleType / sample_rate as SampleType;
-                let velocity = *velocity as SampleType / 127.0 as SampleType;
+                let t = (self.i - *start) as f32 / sample_rate as f32;
+                let velocity = *velocity as f32 / 127.0 as f32;
                 let amplitude = match state {
                     NoteState::Pressed => {
                         if t < adsr.attack {
@@ -124,13 +124,13 @@ impl Enveloper {
             })
     }
     /// Progress the enveloper to the next frame
-    pub fn progress(&mut self, sample_rate: u32, release: SampleType) {
+    pub fn progress(&mut self, sample_rate: u32, release: f32) {
         let i = self.i;
         for states in self.states.values_mut() {
             states.retain(|(start, state, _)| match state {
                 NoteState::Pressed { .. } => true,
                 NoteState::Released => {
-                    let t = (i - *start) as SampleType / sample_rate as SampleType;
+                    let t = (i - *start) as f32 / sample_rate as f32;
                     t < release
                 }
             });

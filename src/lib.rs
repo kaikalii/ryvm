@@ -21,8 +21,6 @@ use structopt::StructOpt;
 
 pub use rodio::{default_output_device, output_devices, Device};
 
-type SampleType = f32;
-
 /// A Ryvm context
 pub struct Ryvm {
     send: mpsc::Sender<String>,

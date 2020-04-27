@@ -2,12 +2,10 @@ use std::{collections::HashMap, str::FromStr};
 
 use once_cell::sync::Lazy;
 
-use crate::SampleType;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Note {
-    pub freq: SampleType,
-    pub dur: SampleType,
+    pub freq: f32,
+    pub dur: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,7 +30,7 @@ pub enum Letter {
 }
 
 impl Letter {
-    pub fn freq(self, octave: u8) -> SampleType {
+    pub fn freq(self, octave: u8) -> f32 {
         *NOTES.get(&(self, octave)).unwrap()
     }
     pub fn to_u8(self, octave: u8) -> u8 {
@@ -73,7 +71,7 @@ impl Letter {
 
 macro_rules! notes {
     ($(($letter:ident, $octave:literal) = $val:literal,)*) => {
-        pub static NOTES: Lazy<HashMap<(Letter, u8), SampleType>> = Lazy::new(|| {
+        pub static NOTES: Lazy<HashMap<(Letter, u8), f32>> = Lazy::new(|| {
             let mut map = HashMap::new();
             $(map.insert((Letter::$letter, $octave), $val);)*
             map

@@ -10,10 +10,8 @@ use std::{
 use crossbeam_utils::atomic::AtomicCell;
 use find_folder::Search;
 
-use crate::SampleType;
-
-pub fn adjust_i(i: u32, recording_tempo: SampleType, current_tempo: SampleType) -> u32 {
-    (i as SampleType * current_tempo.abs() / recording_tempo.abs()).round() as u32
+pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
+    (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
 }
 
 pub fn parse_args(s: &str) -> (bool, Vec<String>) {

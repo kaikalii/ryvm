@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     adjust_i, mix, Channels, CloneCell, CloneLock, Control, DynInput, Enveloper, Frame, FrameCache,
-    InstrId, Letter, SampleType, Voice, ADSR,
+    InstrId, Letter, Voice, ADSR,
 };
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ pub struct DrumMachine {
 /// An instrument for producing sounds
 #[derive(Debug, Clone)]
 pub enum Instrument {
-    Number(SampleType),
+    Number(f32),
     Wave(Box<Wave>),
     Mixer(HashMap<InstrId, Balance>),
     #[cfg(feature = "keyboard")]
@@ -49,10 +49,10 @@ pub enum Instrument {
         input: InstrId,
         recording: bool,
         playing: bool,
-        tempo: SampleType,
+        tempo: f32,
         last_frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
         frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
-        size: SampleType,
+        size: f32,
     },
     InitialLoop {
         input: InstrId,
@@ -125,13 +125,13 @@ impl Instrument {
                     .next_from(&*input, cache)
                     .id_map(|ch_id, input_frame| {
                         // Closure for building the wave
-                        let build_wave = |freq: SampleType, amp: SampleType, i: &mut u32| {
+                        let build_wave = |freq: f32, amp: f32, i: &mut u32| {
                             if freq == 0.0 {
                                 return Voice::mono(0.0);
                             }
                             // spc = samples per cycle
-                            let spc = instruments.sample_rate as SampleType / freq;
-                            let t = *i as SampleType / spc;
+                            let spc = instruments.sample_rate as f32 / freq;
+                            let t = *i as f32 / spc;
                             let s = match form {
                                 WaveForm::Sine => (t * 2.0 * PI).sin(),
                                 WaveForm::Square => {
@@ -262,7 +262,7 @@ impl Instrument {
                                     samplings.push(ActiveSampling {
                                         index,
                                         i: 0,
-                                        velocity: v as SampleType / 127.0,
+                                        velocity: v as f32 / 127.0,
                                     });
                                 }
                             }
@@ -333,7 +333,7 @@ impl Instrument {
                 } = instruments
                     .loop_master
                     .expect("logic error: Loop is running with no master set");
-                let period = (period as SampleType * *size) as u32;
+                let period = (period as f32 * *size) as u32;
 
                 // The index of the loop's current sample without adjusting for tempo changes
                 let raw_loop_i = instruments.i() - start_i;

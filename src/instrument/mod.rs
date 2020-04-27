@@ -37,7 +37,7 @@ pub enum Instrument {
     DrumMachine {
         samples: Vec<PathBuf>,
         input: InstrId,
-        manual_samples: CloneLock<Channels<Vec<ActiveSampling>>>,
+        samplings: CloneLock<Channels<Vec<ActiveSampling>>>,
     },
     Loop {
         input: InstrId,
@@ -240,14 +240,14 @@ impl Instrument {
             Instrument::DrumMachine {
                 samples,
                 input,
-                manual_samples,
+                samplings,
             } => {
                 let channels = instruments.next_from(input, cache);
                 channels.id_map(|ch_id, frame| {
                     let mut voices = Vec::new();
-                    let mut manual_samples = manual_samples.lock();
-                    let manual_samples =
-                        manual_samples.entry(ch_id.clone()).or_insert_with(Vec::new);
+                    let mut samplings = samplings.lock();
+                    let samplings =
+                        samplings.entry(ch_id.clone()).or_insert_with(Vec::new);
                     // Register controls from input frame
                     if let Frame::Controls(controls) = frame {
                         for &control in controls {
@@ -255,7 +255,7 @@ impl Instrument {
                                 let min_index = Letter::C.to_u8(3);
                                 let index = (l.to_u8(o).max(min_index) - min_index) as usize;
                                 if index < samples.len() {
-                                    manual_samples.push(ActiveSampling {
+                                    samplings.push(ActiveSampling {
                                         index,
                                         i: 0,
                                         velocity: v as SampleType / 127.0,
@@ -265,8 +265,8 @@ impl Instrument {
                         }
                     }
                     // Add manual samples to voies
-                    for ms in (0..manual_samples.len()).rev() {
-                        let ActiveSampling { index, i, velocity } = &mut manual_samples[ms];
+                    for ms in (0..samplings.len()).rev() {
+                        let ActiveSampling { index, i, velocity } = &mut samplings[ms];
                         if let Some(res) = instruments.sample_bank.get(&samples[*index]).finished()
                         {
                             if let Ok(sample) = &*res {
@@ -275,7 +275,7 @@ impl Instrument {
                                     voices.push((voice, Balance::default()));
                                     *i += 1;
                                 } else {
-                                    manual_samples.remove(ms);
+                                    samplings.remove(ms);
                                 }
                             }
                         }

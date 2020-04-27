@@ -519,7 +519,7 @@ impl Instruments {
                     Instrument::DrumMachine {
                         samples: Vec::new(),
                         input,
-                        manual_samples: CloneLock::new(Channels::new()),
+                        samplings: CloneLock::new(Channels::new()),
                     },
                 );
                 self.last_drums = Some(name);

@@ -109,5 +109,6 @@ pub struct ActiveSampling {
 #[derive(Debug, Clone, Copy)]
 pub struct LoopMaster {
     pub id: u8,
+    pub start_i: u32,
     pub period: u32,
 }

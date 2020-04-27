@@ -180,6 +180,7 @@ impl Frame {
             Frame::Controls(controls)
         }
     }
+    #[allow(dead_code)]
     pub fn is_some(&self) -> bool {
         match self {
             Frame::Voice(_) => true,

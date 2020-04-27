@@ -184,8 +184,7 @@ impl Instruments {
         // Create new loop id
         let loop_id = InstrId::Loop(number);
         // Create the loop instrument
-        let loop_instr = if let Some(master) = self.loop_master {
-            let period = (master.period as SampleType * size) as u32;
+        let loop_instr = if self.loop_master.is_some() {
             Instrument::Loop {
                 input,
                 recording: true,
@@ -193,8 +192,7 @@ impl Instruments {
                 tempo: self.tempo,
                 last_frames: CloneLock::new(Default::default()),
                 frames: CloneLock::new(Default::default()),
-                start_i: CloneCell::new(None),
-                period,
+                size,
             }
         } else {
             Instrument::InitialLoop {
@@ -252,6 +250,7 @@ impl Instruments {
         let self_i = self.i();
         let mut loop_master = None;
         let curr_tempo = self.tempo;
+        let lm = self.loop_master;
         for (id, instr) in self.map.iter_mut() {
             if let InstrId::Loop(loop_id) = id {
                 match instr {
@@ -259,14 +258,14 @@ impl Instruments {
                         recording,
                         frames,
                         last_frames,
-                        start_i,
                         tempo,
-                        period,
                         ..
                     } => {
-                        if let (true, Some(start_i)) = (*recording, start_i.load()) {
+                        if *recording {
                             let mut frames = frames.lock();
-                            let loop_i = adjust_i(self_i - start_i, *tempo, curr_tempo) % *period;
+                            let lm = lm.expect("logic error: Loop is running with no master set");
+                            let loop_i =
+                                adjust_i(self_i - lm.start_i, *tempo, curr_tempo) % lm.period;
                             frames.split_off(&loop_i);
                             frames.append(&mut last_frames.lock().split_off(&loop_i));
                             println!("Stopped recording {}", id);
@@ -286,6 +285,7 @@ impl Instruments {
                             let period = self_i - start_i;
                             loop_master = Some(LoopMaster {
                                 id: *loop_id,
+                                start_i,
                                 period,
                             });
                             *instr = Instrument::Loop {
@@ -295,8 +295,7 @@ impl Instruments {
                                 playing: true,
                                 tempo: self.tempo,
                                 last_frames: CloneLock::new(Default::default()),
-                                start_i: CloneCell::new(Some(self_i)),
-                                period,
+                                size: 1.0,
                             };
                             println!("Finished recording {}", id);
                         } else {

@@ -46,8 +46,7 @@ pub enum Instrument {
         tempo: SampleType,
         last_frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
         frames: CloneLock<BTreeMap<u32, Vec<Control>>>,
-        start_i: CloneCell<Option<u32>>,
-        period: u32,
+        size: SampleType,
     },
     InitialLoop {
         input: InstrId,
@@ -246,8 +245,7 @@ impl Instrument {
                 channels.id_map(|ch_id, frame| {
                     let mut voices = Vec::new();
                     let mut samplings = samplings.lock();
-                    let samplings =
-                        samplings.entry(ch_id.clone()).or_insert_with(Vec::new);
+                    let samplings = samplings.entry(ch_id.clone()).or_insert_with(Vec::new);
                     // Register controls from input frame
                     if let Frame::Controls(controls) = frame {
                         for &control in controls {
@@ -317,26 +315,16 @@ impl Instrument {
                 tempo,
                 frames,
                 last_frames,
-                start_i,
-                period,
+                size,
             } => {
                 let mut frames = frames.lock();
                 let input_channels = instruments.next_from(&*input, cache);
-                // Get input frames
-                let frame_is_some = input_channels
-                    .primary()
-                    .map(Frame::is_some)
-                    .unwrap_or(false);
-                // Set start_i if not set
-                if start_i.load().is_none() && frame_is_some {
-                    start_i.store(Some(instruments.i()));
-                    println!("Started recording {}", my_id);
-                }
-                let start_i = if let Some(i) = start_i.load() {
-                    i
-                } else {
-                    return Channels::default();
-                };
+                let LoopMaster {
+                    start_i, period, ..
+                } = instruments
+                    .loop_master
+                    .expect("logic error: Loop is running with no master set");
+                let period = (period as SampleType * *size) as u32;
 
                 // The index of the loop's current sample without adjusting for tempo changes
                 let raw_loop_i = instruments.i() - start_i;
@@ -344,12 +332,14 @@ impl Instrument {
                 let loop_i = adjust_i(raw_loop_i, *tempo, instruments.tempo);
 
                 if *recording {
-                    if raw_loop_i % *period == 0 {
-                        last_frames.lock().append(&mut *frames);
+                    if raw_loop_i % period == 0 {
+                        let mut last_frames = last_frames.lock();
+                        last_frames.clear();
+                        last_frames.append(&mut *frames);
                     }
                     // Record if recording and there is input
                     let frame = input_channels.primary().cloned().unwrap_or_default();
-                    let frame_i = loop_i % *period;
+                    let frame_i = loop_i % period;
                     if let Frame::Controls(controls) = frame {
                         frames.insert(frame_i, controls);
                     }
@@ -362,7 +352,7 @@ impl Instrument {
                     let controls: Vec<Control> = (loop_i
                         ..adjust_i(raw_loop_i + 1, *tempo, instruments.tempo))
                         .flat_map(|i| {
-                            if let Some(controls) = frames.get(&(i % *period)) {
+                            if let Some(controls) = frames.get(&(i % period)) {
                                 controls.clone()
                             } else {
                                 Vec::new()
@@ -372,7 +362,7 @@ impl Instrument {
                     if controls.is_empty() {
                         // If there were no controls found, simply output the loop's stored frame
                         frames
-                            .get(&(loop_i % *period))
+                            .get(&(loop_i % period))
                             .cloned()
                             .map(Frame::controls)
                             .unwrap_or(Frame::None)

@@ -11,7 +11,7 @@ use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
 
-use crate::{SampleType, Voice};
+use crate::{SampleType, Voice, SAMPLE_RATE};
 
 /// Data for an audio sample
 #[derive(Clone)]
@@ -64,12 +64,12 @@ impl Sample {
             samples,
         })
     }
-    pub fn samples(&self) -> &[Voice] {
-        &self.samples
+    pub fn voice(&self, index: u32) -> &Voice {
+        let adjusted = index as usize * self.sample_rate as usize / SAMPLE_RATE as usize;
+        &self.samples[adjusted as usize]
     }
-    #[allow(dead_code)]
-    pub fn sample_rate(&self) -> u32 {
-        self.sample_rate
+    pub fn len(&self) -> u32 {
+        (self.samples.len() as u64 * SAMPLE_RATE as u64 / self.sample_rate as u64) as u32
     }
 }
 

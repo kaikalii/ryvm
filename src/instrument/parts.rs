@@ -102,7 +102,7 @@ impl Balance {
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
     pub index: usize,
-    pub i: usize,
+    pub i: u32,
     pub velocity: SampleType,
 }
 

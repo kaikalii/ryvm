@@ -268,8 +268,8 @@ impl Instrument {
                         if let Some(res) = instruments.sample_bank.get(&samples[*index]).finished()
                         {
                             if let Ok(sample) = &*res {
-                                if *i < sample.samples().len() {
-                                    let voice = sample.samples()[*i] * *velocity;
+                                if *i < sample.len() {
+                                    let voice = *sample.voice(*i) * *velocity;
                                     voices.push((voice, Balance::default()));
                                     *i += 1;
                                 } else {

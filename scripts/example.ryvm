@@ -1,8 +1,5 @@
-midi init
 drums d
 drum -p kick.wav
 drum -p clap.wav
 drum -p hat.wav
 wave tri s
-mixer m s d
-output m

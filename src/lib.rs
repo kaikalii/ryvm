@@ -8,12 +8,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; use $m::*;)*);
 }
 
-mods!(app, channel, drum, envelope, instrument, midi, track, utility);
-
-#[cfg(feature = "keyboard")]
-mod keyboard;
-#[cfg(feature = "keyboard")]
-use keyboard::*;
+mods!(app, channel, device, drum, envelope, midi, parts, script, state, track, utility);
 
 use std::{iter::once, sync::mpsc, thread, time::Duration};
 
@@ -34,16 +29,15 @@ impl Ryvm {
         thread::spawn(move || {
             let sink = rodio::Sink::new(&device);
 
-            let instruments = Instruments::new();
+            let state = State::new();
 
-            sink.append(instruments.clone());
+            sink.append(state.clone());
 
             // Main loop
             'main_loop: loop {
                 // Read commands
                 if let Ok(text) = recv.try_recv() {
                     if text.trim().is_empty() {
-                        instruments.update(|instrs| instrs.stop_recording_all());
                         continue;
                     }
                     for (delay, args) in text.split(',').map(|text| {
@@ -54,7 +48,7 @@ impl Ryvm {
                         if let Ok(RyvmCommand::Quit) = &app {
                             break 'main_loop;
                         }
-                        instruments.update(|instrs| instrs.queue_command(delay, args, app));
+                        state.update(|state| state.queue_command(delay, args, app));
                     }
                 }
                 // Sleep

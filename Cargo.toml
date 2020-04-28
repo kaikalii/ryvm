@@ -17,7 +17,3 @@ midir = '*'
 send_wrapper = '*'
 crossbeam-utils = '*'
 rand = "*"
-
-[features]
-default = []
-keyboard = ['piston_window']

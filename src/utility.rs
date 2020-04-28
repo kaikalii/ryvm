@@ -10,9 +10,9 @@ use std::{
 use crossbeam_utils::atomic::AtomicCell;
 use find_folder::Search;
 
-pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
-    (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
-}
+// pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
+//     (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
+// }
 
 pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     let mut args = Vec::new();

@@ -2,13 +2,13 @@ use std::{convert::Infallible, fmt, path::PathBuf, str::FromStr};
 
 use structopt::StructOpt;
 
-use crate::{InstrId, WaveForm};
+use crate::WaveForm;
 
 /// An input type that can either be a static number or the
 /// id of an instrument from which to get a number
 #[derive(Debug, Clone)]
 pub enum DynInput {
-    Id(InstrId),
+    Id(String),
     Num(f32),
 }
 
@@ -26,7 +26,7 @@ impl FromStr for DynInput {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(s.parse::<f32>()
             .map(DynInput::Num)
-            .unwrap_or_else(|_| s.parse::<InstrId>().map(DynInput::Id).unwrap()))
+            .unwrap_or_else(|_| s.parse::<String>().map(DynInput::Id).unwrap()))
     }
 }
 
@@ -35,11 +35,6 @@ impl FromStr for DynInput {
 pub enum RyvmCommand {
     #[structopt(about = "Quit ryvm", alias = "exit")]
     Quit,
-    #[structopt(about = "Set the output instrument")]
-    Output {
-        #[structopt(index = 1, help = "The id of the new output instrument")]
-        name: InstrId,
-    },
     #[structopt(about = "Set the project's relative tempo")]
     Tempo {
         #[structopt(index = 1, help = "The new value for the relative tempo")]
@@ -50,12 +45,7 @@ pub enum RyvmCommand {
         #[structopt(index = 1, help = "The waveform to use")]
         waveform: WaveForm,
         #[structopt(index = 2, help = "The name of the synthesizer")]
-        name: InstrId,
-        #[structopt(
-            index = 3,
-            help = "The id of the instrument supplying the frequency for the wave"
-        )]
-        input: Option<InstrId>,
+        name: String,
         #[structopt(
             long,
             short,
@@ -72,27 +62,10 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "The synth's release")]
         release: Option<f32>,
     },
-    #[structopt(about = "Create a mixer")]
-    Mixer {
-        #[structopt(index = 1, help = "The name of the mixer")]
-        name: InstrId,
-        #[structopt(index = 2, help = "The mixer's inputs")]
-        inputs: Vec<InstrId>,
-    },
-    #[cfg(feature = "keyboard")]
-    #[structopt(about = "Use you computer kyeboard as a music keyboard")]
-    Keyboard {
-        #[structopt(index = 1, help = "The name of the keyboard interface")]
-        name: InstrId,
-    },
-    #[structopt(about = "Create a new midi instrument")]
-    Midi(MidiSubcommand),
     #[structopt(about = "Create a drum machine")]
     Drums {
         #[structopt(index = 1, help = "The name of the drum machine")]
-        name: InstrId,
-        #[structopt(index = 2, help = "The id of a midi input device")]
-        input: Option<InstrId>,
+        name: String,
     },
     #[structopt(about = "Modify a drum machine")]
     Drum {
@@ -100,7 +73,7 @@ pub enum RyvmCommand {
             index = 1,
             help = "The id of the drum machine. Defaults to last created/used."
         )]
-        machine_id: Option<InstrId>,
+        machine_id: Option<String>,
         #[structopt(
             index = 2,
             help = "The index of the drum to be edited. Defaults to next highest."
@@ -111,45 +84,10 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "Remove the specified drum", conflicts_with_all = &["path", "beat"])]
         remove: bool,
     },
-    #[structopt(about = "Create a loop")]
-    Loop {
-        #[structopt(index = 1, help = "The loop number")]
-        number: u8,
-        #[structopt(index = 2, help = "The instrument to be looped")]
-        input: InstrId,
-        #[structopt(
-            index = 3,
-            help = "The length of this loop compared to the established one"
-        )]
-        size: Option<f32>,
-    },
-    #[structopt(about = "Create a knob mapping")]
-    Knob {
-        #[structopt(index = 1, help = "")]
-        name: InstrId,
-        #[structopt(index = 2, help = "")]
-        number: u8,
-        #[structopt(index = 3, help = "")]
-        min: Option<f32>,
-        #[structopt(index = 4, help = "")]
-        max: Option<f32>,
-        #[structopt(long, short, help = "The id of the midi instrument to use")]
-        input: Option<InstrId>,
-    },
-    #[structopt(about = "Start (a) loop(s)")]
-    Start {
-        #[structopt(index = 1, required = true, help = "The loops to start")]
-        loops: Vec<u8>,
-    },
-    #[structopt(about = "Stop (a) loop(s)")]
-    Stop {
-        #[structopt(index = 1, required = true, help = "The loops to stop")]
-        loops: Vec<u8>,
-    },
     #[structopt(about = "Create a low-pass filter")]
     Filter {
         #[structopt(index = 1, help = "The signal being filtered")]
-        input: InstrId,
+        input: String,
         #[structopt(index = 2, help = "Defines filter shape")]
         value: DynInput,
     },
@@ -163,15 +101,10 @@ pub enum RyvmCommand {
     #[structopt(
         about = "Choose which keyboard instrument to be controlled by the actual keyboard"
     )]
-    #[structopt(about = "Set the active instrument to be controlled")]
-    Focus {
-        #[structopt(index = 1, help = "The id of the instrument")]
-        id: InstrId,
-    },
     #[structopt(about = "Start a new script")]
     Script {
         #[structopt(index = 1, help = "The name of the script")]
-        name: InstrId,
+        name: String,
         #[structopt(index = 2, help = "The arguments of the script")]
         args: Vec<String>,
     },
@@ -180,7 +113,7 @@ pub enum RyvmCommand {
     #[structopt(about = "Remove an instrument", alias = "remove")]
     Rm {
         #[structopt(index = 1, help = "The id of the instrument to be removed")]
-        id: InstrId,
+        id: String,
         #[structopt(
             long,
             short,
@@ -200,19 +133,10 @@ pub enum RyvmCommand {
         #[structopt(index = 2, help = "The arguments to pass to the script")]
         args: Vec<String>,
     },
-    Debug {
-        #[structopt(long, short)]
-        live: bool,
-    },
 }
 
 #[derive(Debug, StructOpt)]
 pub struct WaveCommand {
-    #[structopt(
-        index = 1,
-        help = "The id of the instrument supplying the frequency for the wave"
-    )]
-    pub input: Option<InstrId>,
     #[structopt(long, short, help = "Set the synth's octave relative to its input")]
     pub octave: Option<i8>,
     #[structopt(long, short, help = "Set the synth's attack")]
@@ -228,35 +152,9 @@ pub struct WaveCommand {
 }
 
 #[derive(Debug, StructOpt)]
-pub struct MixerCommand {
-    #[structopt(index = 1, help = "Add to the mixer's inputs")]
-    pub inputs: Vec<InstrId>,
-    #[structopt(long, short, help = "Set the volume of the specified inputs")]
-    pub volume: Option<f32>,
-    #[structopt(long, short, help = "Set the pan of the specified inputs")]
-    pub pan: Option<f32>,
-    #[structopt(long, short, help = "Remove the specified inputs instead")]
-    pub remove: bool,
-}
-
-#[derive(Debug, StructOpt)]
 pub struct FilterCommand {
     #[structopt(index = 1, help = "Defines filter shape")]
     pub value: DynInput,
-}
-
-#[derive(Debug, StructOpt)]
-pub enum MidiSubcommand {
-    #[structopt(about = "List the available midi ports")]
-    List,
-    #[structopt(about = "Create a new midi inistrument")]
-    Init {
-        #[structopt(
-            index = 1,
-            help = "The index of the midi port to use (run \"midi list\" to list ports)"
-        )]
-        port: Option<usize>,
-    },
 }
 
 #[derive(Debug, Default, StructOpt)]

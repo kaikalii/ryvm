@@ -77,53 +77,9 @@ impl FromStr for WaveForm {
     }
 }
 
-/// A balance wrapper for an `Instrument`
-#[derive(Debug, Clone, Copy)]
-pub struct Balance {
-    pub volume: f32,
-    pub pan: f32,
-}
-
-impl Default for Balance {
-    fn default() -> Self {
-        Balance {
-            volume: 1.0,
-            pan: 0.0,
-        }
-    }
-}
-
-impl Balance {
-    pub fn stereo_volume(self) -> (f32, f32) {
-        (
-            self.volume * (1.0 - self.pan.max(0.0)),
-            self.volume * (1.0 + self.pan.min(0.0)),
-        )
-    }
-    pub fn mixer_default() -> Self {
-        Balance {
-            volume: 0.5,
-            pan: 0.0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
     pub index: usize,
     pub i: u32,
     pub velocity: f32,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct LoopMaster {
-    pub id: u8,
-    pub start_i: u32,
-    pub period: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum FocusType {
-    Drum,
-    Keyboard,
 }

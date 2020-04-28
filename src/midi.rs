@@ -55,16 +55,16 @@ pub struct Midi {
 }
 
 impl Midi {
-    pub fn ports_list() -> Result<Vec<String>, String> {
-        let midi_in = MidiInput::new("").map_err(|e| e.to_string())?;
-        Ok((0..midi_in.port_count())
-            .map(|i| {
-                midi_in
-                    .port_name(i)
-                    .unwrap_or_else(|_| "<unknown>".to_string())
-            })
-            .collect())
-    }
+    // pub fn ports_list() -> Result<Vec<String>, String> {
+    //     let midi_in = MidiInput::new("").map_err(|e| e.to_string())?;
+    //     Ok((0..midi_in.port_count())
+    //         .map(|i| {
+    //             midi_in
+    //                 .port_name(i)
+    //                 .unwrap_or_else(|_| "<unknown>".to_string())
+    //         })
+    //         .collect())
+    // }
     pub fn new(name: &str, port: usize) -> Result<Midi, String> {
         let mut midi_in = MidiInput::new(name).map_err(|e| e.to_string())?;
         midi_in.ignore(Ignore::None);

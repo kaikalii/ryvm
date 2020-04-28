@@ -41,6 +41,7 @@ pub enum WaveForm {
     Square,
     Saw,
     Triangle,
+    Noise,
 }
 
 impl WaveForm {
@@ -51,6 +52,7 @@ impl WaveForm {
             WaveForm::Square => 1.0,
             WaveForm::Saw => 0.5,
             WaveForm::Triangle => 0.5,
+            WaveForm::Noise => 0.5,
         }
     }
 }
@@ -69,6 +71,7 @@ impl FromStr for WaveForm {
             "saw" => WaveForm::Saw,
             "triangle" | "tri" => WaveForm::Triangle,
             "sine" | "sin" => WaveForm::Sine,
+            "noise" => WaveForm::Noise,
             _ => return Err(format!("Unknown waveform {:?}", s)),
         })
     }

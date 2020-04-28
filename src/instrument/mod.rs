@@ -10,6 +10,8 @@ use std::{
     sync::Arc,
 };
 
+use rand::random;
+
 use crate::{
     adjust_i, mix, ChannelId, Channels, CloneCell, CloneLock, Control, DynInput, Enveloper, Frame,
     FrameCache, InstrId, Letter, Voice, ADSR,
@@ -146,6 +148,7 @@ impl Instrument {
                                 }
                                 WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
                                 WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
+                                WaveForm::Noise => random::<f32>() % 2.0 - 1.0,
                             } * WaveForm::MIN_ENERGY
                                 / form.energy()
                                 * amp;

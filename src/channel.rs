@@ -40,9 +40,9 @@ impl Channel {
     pub fn devices(&self) -> hash_map::Values<String, Device> {
         self.devices.values()
     }
-    pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
-        self.devices.values_mut()
-    }
+    // pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
+    //     self.devices.values_mut()
+    // }
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
     }
@@ -82,12 +82,12 @@ impl Channel {
                 if let Some(voice) = cache.voices.get(name) {
                     *voice
                 } else {
-                    let voice = device.next(self, state, cache);
+                    let voice = device.next(self, state, cache, name);
                     cache.voices.insert(name.into(), voice);
                     voice
                 }
             } else {
-                Voice::mono(0.0)
+                Voice::SILENT
             }
         }
     }
@@ -142,7 +142,9 @@ impl Add for Voice {
 
 impl fmt::Debug for Voice {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if (self.left - self.right).abs() < std::f32::EPSILON {
+        if self.is_silent() {
+            write!(f, "silent")
+        } else if (self.left - self.right).abs() < std::f32::EPSILON {
             write!(f, "{}", self.left)
         } else {
             write!(f, "({}, {})", self.left, self.right)

@@ -11,7 +11,6 @@ itertools = '*'
 structopt = { version = '*', default-features = false }
 piston_window = { version = '*', optional = true }
 outsource = { path = '../outsource' }
-tinymap = { path = '../tinymap' }
 find_folder = '*'
 midir = '*'
 send_wrapper = '*'

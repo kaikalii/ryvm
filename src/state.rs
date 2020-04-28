@@ -82,12 +82,6 @@ impl State {
     pub fn new() -> SourceLock<Self> {
         SourceLock::new(Self::default())
     }
-    pub fn frames_per_measure(&self) -> u32 {
-        (self.sample_rate as f32 / (self.tempo / 60.0) * 4.0) as u32
-    }
-    pub fn measure_i(&self) -> u32 {
-        self.i % self.frames_per_measure()
-    }
     pub fn set_tempo(&mut self, tempo: f32) {
         self.tempo = tempo;
     }
@@ -96,17 +90,48 @@ impl State {
             .entry(self.curr_channel)
             .or_insert_with(Channel::default)
     }
+    #[allow(dead_code)]
+    pub fn is_debug_frame(&self) -> bool {
+        if let Some(period) = self.loop_period {
+            self.i % (period / 10) == 0
+        } else {
+            self.i % (self.sample_rate / 5) == 0
+        }
+    }
+    pub fn insert_loop(&mut self, input: String, name: Option<String>, length: Option<f32>) {
+        let tempo = self.tempo;
+        let channel = self.channel();
+        let name = name.unwrap_or_else(|| {
+            let mut i = 1;
+            loop {
+                let possible = format!("l{}", i);
+                if channel.get(&possible).is_none() {
+                    break possible;
+                }
+                i += 1;
+            }
+        });
+        channel.insert_wrapper(input, name, |input| Device::Loop {
+            input,
+            start_i: CloneCell::new(None),
+            frames: CloneLock::new(Vec::new()),
+            tempo,
+            loop_state: LoopState::Recording,
+            length: length.unwrap_or(1.0),
+        });
+    }
     pub fn stop_recording(&mut self) {
         let mut loop_period = self.loop_period;
-        for device in self.channel().devices_mut() {
+        for (name, device) in self.channel().names_devices_mut() {
             if let Device::Loop {
                 loop_state, frames, ..
             } = device
             {
                 if let LoopState::Recording = loop_state {
                     loop_period.get_or_insert_with(|| frames.lock().len() as u32);
+                    *loop_state = LoopState::Playing;
+                    println!("Stopped recording {:?}", name);
                 }
-                *loop_state = LoopState::Playing;
             }
         }
         self.loop_period = self.loop_period.or(loop_period);
@@ -227,28 +252,7 @@ impl State {
                 input,
                 name,
                 length,
-            } => {
-                let tempo = self.tempo;
-                let channel = self.channel();
-                let name = name.unwrap_or_else(|| {
-                    let mut i = 0;
-                    loop {
-                        let possible = format!("loop-{}", i);
-                        if channel.get(&possible).is_none() {
-                            break possible;
-                        }
-                        i += 1;
-                    }
-                });
-                channel.insert_wrapper(input, name, |input| Device::Loop {
-                    input,
-                    start_i: CloneCell::new(None),
-                    frames: CloneLock::new(Vec::new()),
-                    tempo,
-                    loop_state: LoopState::Recording,
-                    length: length.unwrap_or(1.0),
-                });
-            }
+            } => self.insert_loop(input, name, length),
             RyvmCommand::Filter { input, value } => {
                 let channel = self.channel();
                 let mut i = 1;
@@ -486,11 +490,13 @@ impl Iterator for State {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         // Process commands
-        if self.measure_i() == 0 && self.sample_queue.is_none() {
-            let mut commands = Vec::new();
-            swap(&mut commands, &mut self.command_queue);
-            for (args, app) in commands {
-                self.process_command(args, app);
+        if let Some(period) = self.loop_period {
+            if self.i % period == 0 && self.sample_queue.is_none() {
+                let mut commands = Vec::new();
+                swap(&mut commands, &mut self.command_queue);
+                for (args, app) in commands {
+                    self.process_command(args, app);
+                }
             }
         }
         // Get next sample
@@ -512,6 +518,7 @@ impl Iterator for State {
                 for channel in self.channels.values() {
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
                     for name in outputs {
+                        cache.visited.clear();
                         voice += channel.next_from(&name, self, &mut cache) * 0.5;
                     }
                 }

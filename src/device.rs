@@ -60,7 +60,13 @@ pub enum LoopState {
 }
 
 impl Device {
-    pub fn next(&self, channel: &Channel, state: &State, cache: &mut FrameCache) -> Voice {
+    pub fn next(
+        &self,
+        channel: &Channel,
+        state: &State,
+        cache: &mut FrameCache,
+        #[allow(unused_variables)] my_name: &str,
+    ) -> Voice {
         match self {
             // Waves
             Device::Wave(wave) => {
@@ -176,6 +182,7 @@ impl Device {
                         return Voice::SILENT;
                     } else {
                         start_i.store(Some(state.i));
+                        println!("Started recording");
                     }
                 }
                 let start_i = start_i.load().unwrap();

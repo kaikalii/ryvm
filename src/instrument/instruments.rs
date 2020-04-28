@@ -482,6 +482,15 @@ impl Instruments {
                     }
                 }
             }
+            RyvmCommand::Knob {
+                name,
+                number,
+                min,
+                max,
+            } => {
+                let knob_instr = Instrument::Knob { control_id: number };
+                self.add(name, knob_instr);
+            }
             RyvmCommand::Drums { name, input } => {
                 let input = input.unwrap_or_else(InstrId::default_input_device);
                 self.add(

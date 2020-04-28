@@ -123,6 +123,17 @@ pub enum RyvmCommand {
         )]
         size: Option<f32>,
     },
+    #[structopt(about = "Create a knob mapping")]
+    Knob {
+        #[structopt(index = 1, help = "")]
+        name: InstrId,
+        #[structopt(index = 2, help = "")]
+        number: u8,
+        #[structopt(index = 3, help = "")]
+        min: Option<f32>,
+        #[structopt(index = 4, help = "")]
+        max: Option<f32>,
+    },
     #[structopt(about = "Start (a) loop(s)")]
     Start {
         #[structopt(index = 1, required = true, help = "The loops to start")]

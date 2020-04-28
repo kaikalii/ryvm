@@ -142,7 +142,7 @@ pub enum Control {
     NoteEnd(Letter, u8),
     EndAllNotes,
     PitchBend(f32),
-    Controller(u8, f32),
+    Controller(u8, u8),
     PadStart(Letter, u8, u8),
     PadEnd(Letter, u8),
 }

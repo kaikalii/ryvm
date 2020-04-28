@@ -32,7 +32,7 @@ pub fn decode_control(data: &[u8]) -> Option<Control> {
             let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
             Some(Control::PitchBend(pb))
         }
-        [CONTROLLER, n, i] => Some(Control::Controller(n, i as f32 / 0x7f as f32)),
+        [CONTROLLER, n, i] => Some(Control::Controller(n, i)),
         [PAD_START, n, v] => {
             let (letter, octave) = Letter::from_u8(n);
             Some(Control::PadStart(letter, octave, v))

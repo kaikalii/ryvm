@@ -44,6 +44,13 @@ pub enum Instrument {
         port: usize,
     },
     DrumMachine(Box<DrumMachine>),
+    Knob {
+        input: InstrId,
+        control_id: u8,
+        state: CloneCell<u8>,
+        min: f32,
+        max: f32,
+    },
     Loop {
         input: InstrId,
         recording: bool,
@@ -255,6 +262,31 @@ impl Instrument {
                 } else {
                     Channels::default()
                 }
+            }
+            // Knobs
+            Instrument::Knob {
+                input,
+                control_id,
+                state,
+                min,
+                max,
+            } => {
+                let input_channels = instruments.next_from(input, cache);
+                'frame_loop: for frame in input_channels.values() {
+                    if let Frame::Controls(controls) = frame {
+                        for control in controls {
+                            if let Control::Controller(id, val) = control {
+                                if id == control_id {
+                                    state.store(*val);
+                                    break 'frame_loop;
+                                }
+                            }
+                        }
+                    }
+                }
+                let range = max - min;
+                let output = state.load() as f32 / 0x7f as f32 * range + min;
+                (ChannelId::Control, Frame::from(Voice::mono(output))).into()
             }
             // Drum Machine
             Instrument::DrumMachine(drums) => {

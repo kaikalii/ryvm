@@ -193,6 +193,16 @@ impl Frame {
             Frame::Controls(controls)
         }
     }
+    pub fn is_some(&self) -> bool {
+        match self {
+            Frame::Voice(_) => true,
+            Frame::Controls(controls) => !controls.is_empty(),
+            Frame::None => false,
+        }
+    }
+    pub fn some(self) -> Option<Self> {
+        Some(self).filter(Frame::is_some)
+    }
 }
 
 impl From<Voice> for Frame {
@@ -244,6 +254,7 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
 pub enum ChannelId {
     Focus(bool, FocusType),
     Loop(bool, u8),
+    Control,
     Dummy,
 }
 
@@ -252,6 +263,7 @@ impl ChannelId {
         match self {
             ChannelId::Focus(validated, _) | ChannelId::Loop(validated, _) => validated,
             ChannelId::Dummy => false,
+            ChannelId::Control => true,
         }
     }
 }
@@ -278,13 +290,35 @@ impl Channels {
     where
         I: IntoIterator<Item = Control>,
     {
-        let (keyboard, drums): (Frame, Frame) =
-            iter.into_iter().partition(|control| match control {
-                Control::PadStart(..) | Control::PadEnd(..) => false,
-                _ => true,
-            });
-        once((ChannelId::Focus(false, FocusType::Keyboard), keyboard))
-            .chain(once((ChannelId::Focus(false, FocusType::Drum), drums)))
+        let (keyboard, others): (Vec<Control>, _) = iter.into_iter().partition(|control| {
+            matches!(
+                control,
+                Control::NoteStart(..)
+                    | Control::NoteEnd(..)
+                    | Control::PitchBend(..)
+                    | Control::EndAllNotes
+            )
+        });
+        let keyboard = Frame::controls(keyboard);
+        let (drums, controllers): (Frame, Frame) = others
+            .into_iter()
+            .partition(|control| matches!(control, Control::PadStart(..) | Control::PadEnd(..)));
+        keyboard
+            .some()
+            .into_iter()
+            .map(|frame| (ChannelId::Focus(false, FocusType::Keyboard), frame))
+            .chain(
+                drums
+                    .some()
+                    .into_iter()
+                    .map(|frame| (ChannelId::Focus(false, FocusType::Drum), frame)),
+            )
+            .chain(
+                controllers
+                    .some()
+                    .into_iter()
+                    .map(|frame| (ChannelId::Control, frame)),
+            )
             .collect()
     }
     pub fn iter(&self) -> tiny_map::Iter<ChannelId, Frame> {
@@ -333,7 +367,7 @@ impl Channels {
                                 .map(|foc| foc == instr_id)
                                 .unwrap_or(false)
                     }
-                    ChannelId::Dummy => {}
+                    ChannelId::Dummy | ChannelId::Control => {}
                 }
                 (ch_id, ch)
             })

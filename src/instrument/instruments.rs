@@ -187,7 +187,8 @@ impl Instruments {
         for input in self.input_devices_of(&input) {
             self._add_loop(number, input, size);
         }
-        self.loop_validators.insert(number, input);
+        self.loop_validators.insert(number, input.clone());
+        self.set_focus(input);
         // Update loops
         self.update_loops();
     }
@@ -244,7 +245,7 @@ impl Instruments {
                             let loop_channels = instr
                                 .next(cache, self, loop_id.clone())
                                 .into_iter()
-                                .map(|(_, channel)| (ChannelId::Loop(loop_i), channel));
+                                .map(|(_, channel)| (ChannelId::Loop(false, loop_i), channel));
                             channels.extend(loop_channels);
                         }
                     }
@@ -552,14 +553,7 @@ impl Instruments {
                 })
             }
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
-            RyvmCommand::Focus { id } => {
-                for input in self.input_devices_of(&id) {
-                    if let Some(Instrument::Midi { .. }) = self.get(&input) {
-                        self.default_midi = Some(input);
-                        break;
-                    }
-                }
-            }
+            RyvmCommand::Focus { id } => self.set_focus(id),
             RyvmCommand::Tree => {
                 let any_scripts = self
                     .map
@@ -680,6 +674,19 @@ impl Instruments {
             Ok(())
         } else {
             Err(format!("No instrument or command \"{}\"", name))
+        }
+    }
+    fn set_focus(&mut self, id: InstrId) {
+        if let Some(instr) = self.get(&id) {
+            match instr {
+                Instrument::Wave(_) => {
+                    self.focused.insert(FocusType::Keyboard, id);
+                }
+                Instrument::DrumMachine(_) => {
+                    self.focused.insert(FocusType::Drum, id);
+                }
+                _ => {}
+            }
         }
     }
     fn load_script(&mut self, name: &str, reload: bool) {
@@ -849,9 +856,9 @@ impl Iterator for Instruments {
                     //     println!();
                     // }
                     let voices: Vec<(Voice, Balance)> = channels
-                        .values()
-                        .filter(|ch| ch.validated)
-                        .map(|ch| (ch.frame.voice(), Balance::default()))
+                        .iter()
+                        .filter(|(id, _)| id.is_validated())
+                        .map(|(_, frame)| (frame.voice(), Balance::default()))
                         .collect();
                     let frame = mix(&voices);
                     self.sample_queue = Some(frame.right());

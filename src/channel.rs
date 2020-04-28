@@ -128,7 +128,7 @@ impl Mul<f32> for Voice {
 
 impl fmt::Debug for Voice {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.left == self.right {
+        if (self.left - self.right).abs() < std::f32::EPSILON {
             write!(f, "{}", self.left)
         } else {
             write!(f, "({}, {})", self.left, self.right)
@@ -193,12 +193,6 @@ impl Frame {
             Frame::Controls(controls)
         }
     }
-    pub fn unvalidated(self) -> Channel {
-        Channel {
-            frame: self,
-            validated: false,
-        }
-    }
 }
 
 impl From<Voice> for Frame {
@@ -246,29 +240,23 @@ pub fn mix(list: &[(Voice, Balance)]) -> Frame {
     Voice::stereo(left_sum, right_sum).into()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ChannelId {
-    Focus(FocusType),
-    Loop(u8),
+    Focus(bool, FocusType),
+    Loop(bool, u8),
     Dummy,
 }
 
-#[derive(Debug, Clone)]
-pub struct Channel {
-    pub frame: Frame,
-    pub validated: bool,
-}
-
-impl Channel {
-    pub fn with_frame(&self, frame: Frame) -> Self {
-        Channel {
-            frame,
-            validated: self.validated,
+impl ChannelId {
+    pub fn is_validated(self) -> bool {
+        match self {
+            ChannelId::Focus(validated, _) | ChannelId::Loop(validated, _) => validated,
+            ChannelId::Dummy => false,
         }
     }
 }
 
-type ChannelMapArray = [Inner<(ChannelId, Channel)>; 10];
+type ChannelMapArray = [Inner<(ChannelId, Frame)>; 10];
 
 #[derive(Debug, Clone)]
 pub struct Channels(TinyMap<ChannelMapArray>);
@@ -284,11 +272,7 @@ impl Channels {
         Channels::default()
     }
     pub fn end_all_notes() -> Self {
-        (
-            ChannelId::Dummy,
-            Frame::from(Control::EndAllNotes).unvalidated(),
-        )
-            .into()
+        (ChannelId::Dummy, Frame::from(Control::EndAllNotes)).into()
     }
     pub fn split_controls<I>(iter: I) -> Self
     where
@@ -299,56 +283,50 @@ impl Channels {
                 Control::PadStart(..) | Control::PadEnd(..) => false,
                 _ => true,
             });
-        once((
-            ChannelId::Focus(FocusType::Keyboard),
-            keyboard.unvalidated(),
-        ))
-        .chain(once((
-            ChannelId::Focus(FocusType::Drum),
-            drums.unvalidated(),
-        )))
-        .collect()
+        once((ChannelId::Focus(false, FocusType::Keyboard), keyboard))
+            .chain(once((ChannelId::Focus(false, FocusType::Drum), drums)))
+            .collect()
     }
-    pub fn iter(&self) -> tiny_map::Iter<ChannelId, Channel> {
+    pub fn iter(&self) -> tiny_map::Iter<ChannelId, Frame> {
         self.0.iter()
     }
-    pub fn keys(&self) -> tiny_map::Keys<ChannelId, Channel> {
-        self.0.keys()
-    }
-    pub fn values(&self) -> tiny_map::Values<ChannelId, Channel> {
+    // pub fn keys(&self) -> tiny_map::Keys<ChannelId, Frame> {
+    //     self.0.keys()
+    // }
+    pub fn values(&self) -> tiny_map::Values<ChannelId, Frame> {
         self.0.values()
     }
-    // pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, Channel> {
+    // pub fn values_mut(&mut self) -> tiny_map::ValuesMut<ChannelId, Frame> {
     //     self.0.values_mut()
     // }
     // pub fn entry(&mut self, id: ChannelId) -> tiny_map::Entry<ChannelMapArray> {
     //     self.0.entry(id)
     // }
-    // pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut Channel> {
+    // pub fn get_mut(&mut self, id: &ChannelId) -> Option<&mut Frame> {
     //     self.0.get_mut(id)
     // }
     pub fn id_map<F>(&self, mut f: F) -> Channels
     where
-        F: FnMut(&ChannelId, &Channel) -> Channel,
+        F: FnMut(&ChannelId, &Frame) -> Frame,
     {
         self.0
             .iter()
-            .map(|(id, value)| (id.clone(), f(id, value)))
+            .map(|(id, value)| (*id, f(id, value)))
             .collect()
     }
     pub fn validate(self, instr_id: &InstrId, instruments: &Instruments) -> Self {
         self.into_iter()
-            .map(|(ch_id, mut ch)| {
-                match &ch_id {
-                    ChannelId::Loop(num) => {
+            .map(|(mut ch_id, ch)| {
+                match &mut ch_id {
+                    ChannelId::Loop(validated, num) => {
                         let validator = instruments
                             .loop_validators
                             .get(num)
                             .expect("no validator for loop");
-                        ch.validated = ch.validated || validator == instr_id;
+                        *validated = *validated || validator == instr_id;
                     }
-                    ChannelId::Focus(focus) => {
-                        ch.validated = ch.validated
+                    ChannelId::Focus(validated, focus) => {
+                        *validated = *validated
                             || instruments
                                 .focused
                                 .get(focus)
@@ -363,8 +341,8 @@ impl Channels {
     }
 }
 
-impl From<(ChannelId, Channel)> for Channels {
-    fn from((id, channel): (ChannelId, Channel)) -> Self {
+impl From<(ChannelId, Frame)> for Channels {
+    fn from((id, channel): (ChannelId, Frame)) -> Self {
         Channels(once((id, channel)).collect())
     }
 }
@@ -378,27 +356,27 @@ where
     }
 }
 
-impl FromIterator<(ChannelId, Channel)> for Channels {
+impl FromIterator<(ChannelId, Frame)> for Channels {
     fn from_iter<I>(iter: I) -> Self
     where
-        I: IntoIterator<Item = (ChannelId, Channel)>,
+        I: IntoIterator<Item = (ChannelId, Frame)>,
     {
         Channels(TinyMap::from_iter(iter))
     }
 }
 
-impl Extend<(ChannelId, Channel)> for Channels {
+impl Extend<(ChannelId, Frame)> for Channels {
     fn extend<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = (ChannelId, Channel)>,
+        I: IntoIterator<Item = (ChannelId, Frame)>,
     {
         self.0.extend(iter)
     }
 }
 
 impl IntoIterator for Channels {
-    type Item = (ChannelId, Channel);
-    type IntoIter = tiny_map::IntoIter<ChannelId, Channel>;
+    type Item = (ChannelId, Frame);
+    type IntoIter = tiny_map::IntoIter<ChannelId, Frame>;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }

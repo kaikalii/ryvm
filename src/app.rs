@@ -152,7 +152,7 @@ pub enum RyvmCommand {
     )]
     #[structopt(about = "Set the active instrument to be controlled")]
     Focus {
-        #[structopt(index = 1, help = "The id instrument")]
+        #[structopt(index = 1, help = "The id of the instrument")]
         id: InstrId,
     },
     #[structopt(about = "Start a new script")]

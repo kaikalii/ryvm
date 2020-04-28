@@ -11,8 +11,8 @@ use std::{
 };
 
 use crate::{
-    adjust_i, mix, Channel, ChannelId, Channels, CloneCell, CloneLock, Control, DynInput,
-    Enveloper, Frame, FrameCache, InstrId, Letter, Voice, ADSR,
+    adjust_i, mix, ChannelId, Channels, CloneCell, CloneLock, Control, DynInput, Enveloper, Frame,
+    FrameCache, InstrId, Letter, Voice, ADSR,
 };
 
 #[derive(Debug, Clone)]
@@ -118,9 +118,8 @@ impl Instrument {
                     ..
                 } = &**wave;
                 let mut envelopers = envelopers.lock();
-                let res = instruments
-                    .next_from(&*input, cache)
-                    .id_map(|ch_id, input_channel| {
+                let res = instruments.next_from(&*input, cache).id_map(
+                    |ch_id: &ChannelId, input_channel| {
                         // Closure for building the wave
                         let build_wave = |freq: f32, amp: f32, i: &mut u32| {
                             if freq == 0.0 {
@@ -153,7 +152,7 @@ impl Instrument {
                             .or_insert_with(|| vec![0; *voices as usize]);
                         waves.resize(*voices as usize, 0);
                         // Match on input frame type to get a list of voice/balance pairs to mix
-                        let mix_inputs: Vec<(Voice, Balance)> = match &input_channel.frame {
+                        let mix_inputs: Vec<(Voice, Balance)> = match input_channel {
                             // For voices build the wave based on freqency and amplitude
                             Frame::Voice(voice) => once((voice.left, 1.0))
                                 .zip(waves)
@@ -187,8 +186,9 @@ impl Instrument {
                                 }
                             }
                         };
-                        input_channel.with_frame(mix(&mix_inputs))
-                    });
+                        mix(&mix_inputs)
+                    },
+                );
                 for enveloper in envelopers.values_mut() {
                     enveloper.progress(instruments.sample_rate, adsr.release);
                 }
@@ -209,19 +209,11 @@ impl Instrument {
                 input_channels
                     .into_iter()
                     .map(|(id, channels)| {
-                        let mut validated = false;
                         let mut voices = Vec::new();
-                        for (ch, bal) in channels {
-                            voices.push((ch.frame.voice(), bal));
-                            validated = validated || ch.validated;
+                        for (frame, bal) in channels {
+                            voices.push((frame.voice(), bal));
                         }
-                        (
-                            id,
-                            Channel {
-                                frame: mix(&voices),
-                                validated,
-                            },
-                        )
+                        (id, mix(&voices))
                     })
                     .collect()
             }
@@ -275,7 +267,7 @@ impl Instrument {
                     let mut samplings = drums.samplings.lock();
                     let samplings = samplings.entry(ch_id.clone()).or_insert_with(Vec::new);
                     // Register controls from input frame
-                    if let Frame::Controls(controls) = &channel.frame {
+                    if let Frame::Controls(controls) = &channel {
                         for &control in controls {
                             if let Control::PadStart(l, o, v) = control {
                                 let min_index = Letter::C.to_u8(3);
@@ -310,7 +302,7 @@ impl Instrument {
                             }
                         }
                     }
-                    channel.with_frame(mix(&voices))
+                    mix(&voices)
                 })
             }
             // Loops
@@ -320,7 +312,7 @@ impl Instrument {
                 start_i,
             } => {
                 for input_channel in instruments.next_from(&*input, cache).values() {
-                    if let Frame::Controls(controls) = &input_channel.frame {
+                    if let Frame::Controls(controls) = input_channel {
                         if start_i.load().is_none() {
                             start_i.store(Some(instruments.i()));
                             println!("Started recording {}", my_id)
@@ -368,7 +360,7 @@ impl Instrument {
                     // Record if recording and there is input
                     let frame_i = loop_i % period;
                     for channel in input_channels.values() {
-                        if let Frame::Controls(controls) = &channel.frame {
+                        if let Frame::Controls(controls) = channel {
                             frames.insert(frame_i, controls.clone());
                         }
                     }
@@ -398,7 +390,7 @@ impl Instrument {
                     } else {
                         Frame::Controls(controls)
                     };
-                    (ChannelId::Dummy, frame.unvalidated()).into()
+                    (ChannelId::Dummy, frame).into()
                 } else {
                     // The loop is silent if it is not playing
                     Channels::end_all_notes()
@@ -416,13 +408,11 @@ impl Instrument {
                 let input_channels = instruments.next_from(input, cache);
                 let mut avgs = avgs.lock();
                 // Apply the filter for each input channel
-                input_channels.id_map(|id, channel| {
-                    let avg = avgs
-                        .entry(id.clone())
-                        .or_insert_with(|| channel.frame.voice());
-                    avg.left = avg.left * (1.0 - avg_factor) + channel.frame.left() * avg_factor;
-                    avg.right = avg.right * (1.0 - avg_factor) + channel.frame.right() * avg_factor;
-                    channel.with_frame(Frame::from(*avg))
+                input_channels.id_map(|id, frame| {
+                    let avg = avgs.entry(id.clone()).or_insert_with(|| frame.voice());
+                    avg.left = avg.left * (1.0 - avg_factor) + frame.left() * avg_factor;
+                    avg.right = avg.right * (1.0 - avg_factor) + frame.right() * avg_factor;
+                    Frame::from(*avg)
                 })
             }
             // Script are not actual instruments, so they do not output frames

@@ -11,8 +11,8 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     device::Device, load_script, Channel, CloneCell, CloneLock, DrumMachine, Enveloper,
-    FilterCommand, FrameCache, Midi, RyvmApp, RyvmCommand, Sample, Script, SourceLock, Voice, Wave,
-    WaveCommand, ADSR,
+    FilterCommand, FrameCache, LoopState, Midi, RyvmApp, RyvmCommand, Sample, Script, SourceLock,
+    Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -37,8 +37,9 @@ pub struct State {
     curr_channel: u8,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
-    i: u32,
+    pub i: u32,
     last_drums: Option<String>,
+    pub loop_period: Option<u32>,
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     pub midi: Midi,
     new_script_stack: Vec<Script>,
@@ -57,6 +58,7 @@ impl Default for State {
             command_queue: Vec::new(),
             i: 0,
             last_drums: None,
+            loop_period: None,
             sample_bank: Outsourcer::default(),
             midi: Midi::new("midi", 0).unwrap(),
             new_script_stack: Vec::new(),
@@ -83,9 +85,6 @@ impl State {
     pub fn frames_per_measure(&self) -> u32 {
         (self.sample_rate as f32 / (self.tempo / 60.0) * 4.0) as u32
     }
-    // pub fn i(&self) -> u32 {
-    //     self.i
-    // }
     pub fn measure_i(&self) -> u32 {
         self.i % self.frames_per_measure()
     }
@@ -96,6 +95,21 @@ impl State {
         self.channels
             .entry(self.curr_channel)
             .or_insert_with(Channel::default)
+    }
+    pub fn stop_recording(&mut self) {
+        let mut loop_period = self.loop_period;
+        for device in self.channel().devices_mut() {
+            if let Device::Loop {
+                loop_state, frames, ..
+            } = device
+            {
+                if let LoopState::Recording = loop_state {
+                    loop_period.get_or_insert_with(|| frames.lock().len() as u32);
+                }
+                *loop_state = LoopState::Playing;
+            }
+        }
+        self.loop_period = self.loop_period.or(loop_period);
     }
     fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
         match app {
@@ -209,6 +223,32 @@ impl State {
                     }
                 }
             }
+            RyvmCommand::Loop {
+                input,
+                name,
+                length,
+            } => {
+                let tempo = self.tempo;
+                let channel = self.channel();
+                let name = name.unwrap_or_else(|| {
+                    let mut i = 0;
+                    loop {
+                        let possible = format!("loop-{}", i);
+                        if channel.get(&possible).is_none() {
+                            break possible;
+                        }
+                        i += 1;
+                    }
+                });
+                channel.insert_wrapper(input, name, |input| Device::Loop {
+                    input,
+                    start_i: CloneCell::new(None),
+                    frames: CloneLock::new(Vec::new()),
+                    tempo,
+                    loop_state: LoopState::Recording,
+                    length: length.unwrap_or(1.0),
+                });
+            }
             RyvmCommand::Filter { input, value } => {
                 let channel = self.channel();
                 let mut i = 1;
@@ -224,6 +264,24 @@ impl State {
                     value,
                     avg: CloneCell::new(Voice::SILENT),
                 })
+            }
+            RyvmCommand::Play { names } => {
+                for (name, device) in self.channel().names_devices_mut() {
+                    if let Device::Loop { loop_state, .. } = device {
+                        if names.contains(name) {
+                            *loop_state = LoopState::Playing;
+                        }
+                    }
+                }
+            }
+            RyvmCommand::Stop { names } => {
+                for (name, device) in self.channel().names_devices_mut() {
+                    if let Device::Loop { loop_state, .. } = device {
+                        if names.contains(name) {
+                            *loop_state = LoopState::Disabled;
+                        }
+                    }
+                }
             }
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
             RyvmCommand::Tree => {

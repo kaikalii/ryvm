@@ -38,6 +38,7 @@ impl Ryvm {
                 // Read commands
                 if let Ok(text) = recv.try_recv() {
                     if text.trim().is_empty() {
+                        state.update(State::stop_recording);
                         continue;
                     }
                     for (delay, args) in text.split(',').map(|text| {

@@ -173,6 +173,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "circular-queue"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b0aadaeed21c6fc5ff19687407640db71f9236e2eb6c66ec426b82497645c7a"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "clang-sys"
 version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1481,6 +1490,7 @@ dependencies = [
 name = "ryvm"
 version = "0.1.0"
 dependencies = [
+ "circular-queue",
  "crossbeam-utils",
  "find_folder",
  "itertools",

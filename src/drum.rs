@@ -13,6 +13,13 @@ use rodio::{Decoder, Source};
 
 use crate::Voice;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ActiveSampling {
+    pub index: usize,
+    pub i: u32,
+    pub velocity: f32,
+}
+
 /// Data for an audio sample
 #[derive(Clone)]
 pub struct Sample {

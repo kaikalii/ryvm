@@ -1,6 +1,6 @@
 use std::{
     collections::{hash_map, HashMap, HashSet},
-    fmt,
+    f32, fmt,
     ops::{Add, AddAssign, Mul},
 };
 
@@ -25,6 +25,9 @@ impl Channel {
     where
         F: FnOnce(String) -> Device,
     {
+        if self.get(&input).is_none() {
+            return;
+        }
         for device in self.devices.values_mut() {
             device.replace_input(input.clone(), id.clone());
         }
@@ -37,8 +40,14 @@ impl Channel {
     pub fn devices(&self) -> hash_map::Values<String, Device> {
         self.devices.values()
     }
+    pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
+        self.devices.values_mut()
+    }
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
+    }
+    pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
+        self.devices.iter_mut()
     }
     pub fn outputs(&self) -> impl Iterator<Item = &str> + '_ {
         self.device_names()
@@ -101,6 +110,9 @@ impl Voice {
     pub fn mono(both: f32) -> Self {
         Voice::stereo(both, both)
     }
+    pub fn is_silent(self) -> bool {
+        self.left.abs() < f32::EPSILON && self.right.abs() < f32::EPSILON
+    }
 }
 
 impl Mul<f32> for Voice {
@@ -148,7 +160,6 @@ pub enum Control {
     PadEnd(Letter, u8),
 }
 
-/// Cache for each frame
 pub struct FrameCache {
     pub voices: HashMap<String, Voice>,
     pub controls: Vec<Control>,

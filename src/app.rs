@@ -5,7 +5,7 @@ use structopt::StructOpt;
 use crate::WaveForm;
 
 /// An input type that can either be a static number or the
-/// id of an instrument from which to get a number
+/// name of an device from which to get a number
 #[derive(Debug, Clone)]
 pub enum DynInput {
     Id(String),
@@ -62,6 +62,7 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "The synth's release")]
         release: Option<f32>,
     },
+
     #[structopt(about = "Create a drum machine")]
     Drums {
         #[structopt(index = 1, help = "The name of the drum machine")]
@@ -71,7 +72,7 @@ pub enum RyvmCommand {
     Drum {
         #[structopt(
             index = 1,
-            help = "The id of the drum machine. Defaults to last created/used."
+            help = "The name of the drum machine. Defaults to last created/used."
         )]
         machine_id: Option<String>,
         #[structopt(
@@ -84,6 +85,19 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "Remove the specified drum", conflicts_with_all = &["path", "beat"])]
         remove: bool,
     },
+    #[structopt(about = "Start recording a loop")]
+    Loop {
+        #[structopt(index = 1, help = "The name of the device being looped")]
+        input: String,
+        #[structopt(index = 2, help = "The name of the loop")]
+        name: Option<String>,
+        #[structopt(
+            long,
+            short = "x",
+            help = "The length of the loop relative to the first one"
+        )]
+        length: Option<f32>,
+    },
     #[structopt(about = "Create a low-pass filter")]
     Filter {
         #[structopt(index = 1, help = "The signal being filtered")]
@@ -91,16 +105,24 @@ pub enum RyvmCommand {
         #[structopt(index = 2, help = "Defines filter shape")]
         value: DynInput,
     },
-    #[structopt(about = "List all instruments")]
+    #[structopt(about = "Start playing a loop")]
+    Play {
+        #[structopt(index = 1, required = true, help = "The names of the loops to play")]
+        names: Vec<String>,
+    },
+    #[structopt(about = "Start playing a loop")]
+    Stop {
+        #[structopt(index = 1, required = true, help = "The names of the loops to stop")]
+        names: Vec<String>,
+    },
+    #[structopt(about = "List all devices")]
     Ls {
         #[structopt(long, short, help = "Do not sort list")]
         unsorted: bool,
     },
-    #[structopt(about = "Print a tree of all output instruments")]
+    #[structopt(about = "Print a tree of all output devices")]
     Tree,
-    #[structopt(
-        about = "Choose which keyboard instrument to be controlled by the actual keyboard"
-    )]
+    #[structopt(about = "Choose which keyboard device to be controlled by the actual keyboard")]
     #[structopt(about = "Start a new script")]
     Script {
         #[structopt(index = 1, help = "The name of the script")]
@@ -110,14 +132,14 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "End a script")]
     End,
-    #[structopt(about = "Remove an instrument", alias = "remove")]
+    #[structopt(about = "Remove an device", alias = "remove")]
     Rm {
-        #[structopt(index = 1, help = "The id of the instrument to be removed")]
+        #[structopt(index = 1, help = "The name of the device to be removed")]
         id: String,
         #[structopt(
             long,
             short,
-            help = "Recursively remove all the instrument's unique inputs as well"
+            help = "Recursively remove all the device's unique inputs as well"
         )]
         recursive: bool,
     },

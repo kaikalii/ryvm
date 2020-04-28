@@ -76,10 +76,3 @@ impl FromStr for WaveForm {
         })
     }
 }
-
-#[derive(Debug, Clone, Copy)]
-pub struct ActiveSampling {
-    pub index: usize,
-    pub i: u32,
-    pub velocity: f32,
-}

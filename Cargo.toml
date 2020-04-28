@@ -17,3 +17,7 @@ midir = '*'
 send_wrapper = '*'
 crossbeam-utils = '*'
 rand = "*"
+circular-queue = "*"
+
+[profile.release]
+debug = true

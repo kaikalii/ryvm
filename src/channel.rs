@@ -193,16 +193,6 @@ impl Frame {
             Frame::Controls(controls)
         }
     }
-    pub fn is_some(&self) -> bool {
-        match self {
-            Frame::Voice(_) => true,
-            Frame::Controls(controls) => !controls.is_empty(),
-            Frame::None => false,
-        }
-    }
-    pub fn some(self) -> Option<Self> {
-        Some(self).filter(Frame::is_some)
-    }
 }
 
 impl From<Voice> for Frame {
@@ -303,23 +293,19 @@ impl Channels {
         let (drums, controllers): (Frame, Frame) = others
             .into_iter()
             .partition(|control| matches!(control, Control::PadStart(..) | Control::PadEnd(..)));
-        keyboard
-            .some()
-            .into_iter()
-            .map(|frame| (ChannelId::Focus(false, FocusType::Keyboard), frame))
-            .chain(
-                drums
-                    .some()
-                    .into_iter()
-                    .map(|frame| (ChannelId::Focus(false, FocusType::Drum), frame)),
-            )
-            .chain(
-                controllers
-                    .some()
-                    .into_iter()
-                    .map(|frame| (ChannelId::Control, frame)),
-            )
+        once((ChannelId::Focus(false, FocusType::Keyboard), keyboard))
+            .chain(once((ChannelId::Focus(false, FocusType::Drum), drums)))
+            .chain(once((ChannelId::Control, controllers)))
             .collect()
+    }
+    pub fn get_control(&self) -> Option<f32> {
+        self.0.get(&ChannelId::Control).and_then(|frame| {
+            if let Frame::Voice(voice) = frame {
+                Some(voice.left)
+            } else {
+                None
+            }
+        })
     }
     pub fn iter(&self) -> tiny_map::Iter<ChannelId, Frame> {
         self.0.iter()

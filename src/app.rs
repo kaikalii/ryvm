@@ -133,6 +133,8 @@ pub enum RyvmCommand {
         min: Option<f32>,
         #[structopt(index = 4, help = "")]
         max: Option<f32>,
+        #[structopt(long, short, help = "The id of the midi instrument to use")]
+        input: Option<InstrId>,
     },
     #[structopt(about = "Start (a) loop(s)")]
     Start {

@@ -487,8 +487,15 @@ impl Instruments {
                 number,
                 min,
                 max,
+                input,
             } => {
-                let knob_instr = Instrument::Knob { control_id: number };
+                let knob_instr = Instrument::Knob {
+                    control_id: number,
+                    input: input.unwrap_or_else(InstrId::default_input_device),
+                    min: min.unwrap_or(0.0),
+                    max: max.unwrap_or(1.0),
+                    state: CloneCell::new(0x40),
+                };
                 self.add(name, knob_instr);
             }
             RyvmCommand::Drums { name, input } => {

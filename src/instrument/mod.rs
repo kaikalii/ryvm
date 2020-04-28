@@ -433,7 +433,10 @@ impl Instrument {
                 // Determine the factor used to maintain the running average
                 let avg_factor = match value {
                     DynInput::Num(f) => *f,
-                    DynInput::Id(_) => unimplemented!(),
+                    DynInput::Id(id) => instruments
+                        .next_from(id, cache)
+                        .get_control()
+                        .unwrap_or(1.0),
                 }
                 .powf(2.0);
                 // Get the input channels
@@ -465,6 +468,7 @@ impl Instrument {
                 })
                 .collect(),
             Instrument::DrumMachine(drums) => vec![&drums.input],
+            Instrument::Knob { input, .. } => vec![input],
             _ => Vec::new(),
         }
     }

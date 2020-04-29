@@ -4,7 +4,7 @@ use rand::random;
 
 use crate::{
     adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, DynInput, Enveloper,
-    FrameCache, Letter, State, Voice, WaveForm, ADSR,
+    FrameCache, State, Voice, WaveForm, ADSR,
 };
 
 #[derive(Debug)]
@@ -69,6 +69,7 @@ impl Device {
     }
     pub fn next(
         &self,
+        channel_num: u8,
         channel: &Channel,
         state: &State,
         cache: &mut FrameCache,
@@ -91,7 +92,7 @@ impl Device {
                 waves.resize(*voices as usize, 0);
 
                 let mut enveloper = enveloper.lock();
-                enveloper.register(cache.controls.iter().copied());
+                enveloper.register(cache.controls_for_channel(channel_num));
                 let voice = enveloper
                     .states(state.sample_rate, octave.unwrap_or(0), *adsr)
                     .zip(&mut *waves)
@@ -129,16 +130,17 @@ impl Device {
             Device::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
-                for control in &cache.controls {
-                    if let Control::PadStart(l, o, v) = control {
-                        let min_index = Letter::C.to_u8(3);
-                        let index = (l.to_u8(*o).max(min_index) - min_index) as usize;
-                        if index < drums.samples.len() {
-                            samplings.push(ActiveSampling {
-                                index,
-                                i: 0,
-                                velocity: *v as f32 / 127.0,
-                            });
+                if channel_num == state.curr_channel {
+                    for control in cache.all_controls() {
+                        if let Control::PadStart(i, v) = control {
+                            let index = i as usize;
+                            if index < drums.samples.len() {
+                                samplings.push(ActiveSampling {
+                                    index,
+                                    i: 0,
+                                    velocity: v as f32 / 127.0,
+                                });
+                            }
                         }
                     }
                 }
@@ -164,11 +166,11 @@ impl Device {
                 // Determine the factor used to maintain the running average
                 let avg_factor = match value {
                     DynInput::Num(f) => *f,
-                    DynInput::Id(id) => channel.next_from(id, state, cache).left,
+                    DynInput::Id(id) => channel.next_from(channel_num, id, state, cache).left,
                 }
                 .powf(2.0);
                 // Get the input channels
-                let frame = channel.next_from(input, state, cache);
+                let frame = channel.next_from(channel_num, input, state, cache);
                 let left = avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;
                 let right = avg.load().right * (1.0 - avg_factor) + frame.right * avg_factor;
                 avg.store(Voice::stereo(left, right));
@@ -183,7 +185,7 @@ impl Device {
                 loop_state,
                 length,
             } => {
-                let input = channel.next_from(input, state, cache);
+                let input = channel.next_from(channel_num, input, state, cache);
                 if start_i.load().is_none() {
                     if input.is_silent() {
                         return Voice::SILENT;
@@ -239,6 +241,7 @@ impl Device {
         }
     }
     /// Replace any of this instrument's inputs that match the old id with the new one
+    #[allow(clippy::single_match)]
     pub fn replace_input(&mut self, old: String, new: String) {
         let replace = |id: &mut String| {
             if id == &old {

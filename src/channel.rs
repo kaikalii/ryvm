@@ -84,7 +84,13 @@ impl Channel {
             self.devices.remove(id);
         }
     }
-    pub fn next_from(&self, name: &str, state: &State, cache: &mut FrameCache) -> Voice {
+    pub fn next_from(
+        &self,
+        channel_num: u8,
+        name: &str,
+        state: &State,
+        cache: &mut FrameCache,
+    ) -> Voice {
         if cache.visited.contains(name) {
             // Avoid infinite loops
             Voice::mono(0.0)
@@ -94,7 +100,7 @@ impl Channel {
                 if let Some(voice) = cache.voices.get(name) {
                     *voice
                 } else {
-                    let voice = device.next(self, state, cache, name);
+                    let voice = device.next(channel_num, self, state, cache, name);
                     cache.voices.insert(name.into(), voice);
                     voice
                 }
@@ -107,6 +113,18 @@ impl Channel {
 
 pub struct FrameCache {
     pub voices: HashMap<String, Voice>,
-    pub controls: Vec<Control>,
+    pub controls: HashMap<u8, Vec<Control>>,
     pub visited: HashSet<String>,
+}
+
+impl FrameCache {
+    pub fn all_controls(&self) -> impl Iterator<Item = Control> + '_ {
+        self.controls.values().flat_map(|v| v.iter().copied())
+    }
+    pub fn controls_for_channel(&self, channel: u8) -> impl Iterator<Item = Control> + '_ {
+        self.controls
+            .get(&channel)
+            .into_iter()
+            .flat_map(|controls| controls.iter().copied())
+    }
 }

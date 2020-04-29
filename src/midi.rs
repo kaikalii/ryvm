@@ -1,4 +1,4 @@
-use std::{fmt, sync::Arc};
+use std::{collections::HashMap, fmt, iter::once, sync::Arc};
 
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
@@ -11,8 +11,8 @@ pub enum Control {
     NoteEnd(Letter, u8),
     PitchBend(f32),
     Controller(u8, u8),
-    PadStart(Letter, u8, u8),
-    PadEnd(Letter, u8),
+    PadStart(u8, u8),
+    PadEnd(u8),
 }
 
 const NOTE_START: u8 = 0x9;
@@ -22,43 +22,61 @@ const CONTROLLER: u8 = 0xB;
 
 impl Control {
     #[allow(clippy::unnecessary_cast)]
-    pub fn decode(data: &[u8]) -> Option<(u8, Control)> {
+    pub fn decode(data: &[u8], pad: Option<Pad>) -> Option<(u8, Vec<Control>)> {
         let status = data[0] / 0x10;
         let channel = data[0] % 0x10;
-        let d1 = data[1];
-        let d2 = data[2];
+        let d1 = data.get(1).copied().unwrap_or(0);
+        let d2 = data.get(2).copied().unwrap_or(0);
 
         Some((
             channel,
             match (status, d1, d2) {
                 (NOTE_START, n, v) => {
                     let (letter, octave) = Letter::from_u8(n);
-                    Control::NoteStart(letter, octave, v)
+                    once(Control::NoteStart(letter, octave, v))
+                        .chain(if let Some(pad) = pad {
+                            if pad.channel == channel && pad.start <= n {
+                                Some(Control::PadStart(n - pad.start, v))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        })
+                        .collect()
                 }
                 (NOTE_END, n, _) => {
                     let (letter, octave) = Letter::from_u8(n);
-                    Control::NoteEnd(letter, octave)
+                    once(Control::NoteEnd(letter, octave))
+                        .chain(if let Some(pad) = pad {
+                            if pad.channel == channel && pad.start <= n {
+                                Some(Control::PadEnd(n - pad.start))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        })
+                        .collect()
                 }
                 (PITCH_BEND, lsb, msb) => {
                     let pb_u16 = msb as u16 * 0x80 + lsb as u16;
                     let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
-                    Control::PitchBend(pb)
+                    vec![Control::PitchBend(pb)]
                 }
-                (CONTROLLER, n, i) => Control::Controller(n, i),
-                (PAD_START, n, v) => {
-                    let (letter, octave) = Letter::from_u8(n);
-                    Control::PadStart(letter, octave, v)
-                }
-                (PAD_END, n, _) => {
-                    let (letter, octave) = Letter::from_u8(n);
-                    Control::PadEnd(letter, octave)
-                }
+                (CONTROLLER, n, i) => vec![Control::Controller(n, i)],
                 _ => return None,
             },
         ))
     }
 }
 type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
+
+#[derive(Clone, Copy)]
+pub struct Pad {
+    pub channel: u8,
+    pub start: u8,
+}
 
 #[derive(Clone)]
 pub struct Midi {
@@ -90,7 +108,7 @@ impl Midi {
         }
         Ok(None)
     }
-    pub fn new(name: &str, port: usize, manual: bool) -> Result<Midi, String> {
+    pub fn new(name: &str, port: usize, manual: bool, pad: Option<Pad>) -> Result<Midi, String> {
         let mut midi_in = MidiInput::new(name).map_err(|e| e.to_string())?;
         midi_in.ignore(Ignore::None);
 
@@ -101,9 +119,11 @@ impl Midi {
             .connect(
                 port,
                 name,
-                |_, data, queue| {
-                    if let Some(control) = Control::decode(data) {
-                        queue.lock().push(control);
+                move |_, data, queue| {
+                    if let Some((channel, controls)) = Control::decode(data, pad) {
+                        for control in controls {
+                            queue.lock().push((channel, control));
+                        }
                     }
                 },
                 queue_clone,
@@ -117,8 +137,8 @@ impl Midi {
             manual,
         })
     }
-    pub fn controls(&self, current_channel: u8) -> impl Iterator<Item = Control> {
-        self.queue.lock().drain(..).collect::<Vec<_>>().into_iter()
+    pub fn controls(&self) -> HashMap<u8, Control> {
+        self.queue.lock().drain(..).collect()
     }
 }
 

@@ -33,23 +33,23 @@ impl Letter {
     pub fn freq(self, octave: u8) -> f32 {
         *NOTES.get(&(self, octave)).unwrap()
     }
-    pub fn to_u8(self, octave: u8) -> u8 {
-        octave * 12
-            + match self {
-                Letter::C => 0,
-                Letter::Csh | Letter::Db => 1,
-                Letter::D => 2,
-                Letter::Dsh | Letter::Eb => 3,
-                Letter::E => 4,
-                Letter::F => 5,
-                Letter::Fsh | Letter::Gb => 6,
-                Letter::G => 7,
-                Letter::Gsh | Letter::Ab => 8,
-                Letter::A => 9,
-                Letter::Ash | Letter::Bb => 10,
-                Letter::B => 11,
-            }
-    }
+    // pub fn to_u8(self, octave: u8) -> u8 {
+    //     (octave + 1) * 12
+    //         + match self {
+    //             Letter::C => 0,
+    //             Letter::Csh | Letter::Db => 1,
+    //             Letter::D => 2,
+    //             Letter::Dsh | Letter::Eb => 3,
+    //             Letter::E => 4,
+    //             Letter::F => 5,
+    //             Letter::Fsh | Letter::Gb => 6,
+    //             Letter::G => 7,
+    //             Letter::Gsh | Letter::Ab => 8,
+    //             Letter::A => 9,
+    //             Letter::Ash | Letter::Bb => 10,
+    //             Letter::B => 11,
+    //         }
+    // }
     pub fn from_u8(u: u8) -> (Letter, u8) {
         static LETTERS: &[Letter] = &[
             Letter::C,
@@ -65,7 +65,7 @@ impl Letter {
             Letter::Ash,
             Letter::B,
         ];
-        (LETTERS[(u % 12) as usize], u / 12)
+        (LETTERS[(u % 12) as usize], (u / 12).max(1) - 1)
     }
 }
 

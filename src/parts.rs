@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{CloneLock, Letter};
+use crate::CloneLock;
 
 /// A lock used primarily to allow the manipulation of a rodio::Source
 /// while it is already playing

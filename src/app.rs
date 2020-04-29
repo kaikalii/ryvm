@@ -179,12 +179,6 @@ pub struct FilterCommand {
     pub value: DynInput,
 }
 
-#[derive(Debug, Default, StructOpt)]
-pub struct RyvmApp {
-    #[structopt(short = "r", long, about = "List the available midi ports")]
-    pub sample_rate: Option<u32>,
-}
-
 #[derive(Debug, StructOpt)]
 pub enum MidiSubcommand {
     #[structopt(about = "List the available midi ports")]
@@ -199,5 +193,27 @@ pub enum MidiSubcommand {
             help = "The midi channel for this device will be controlled manually via the \"ch\" command"
         )]
         manual: bool,
+        #[structopt(
+            long,
+            short = "c",
+            // requires = "pad_start",
+            help = "The midi channel on which pad press/release messages are sent from the controller"
+        )]
+        pad_channel: Option<u8>,
+        #[structopt(
+            long,
+            short = "s",
+            // requires = "pad_channel",
+            help = "\
+            The index if the first note at which pad press/release messages are \
+            sent from the controller (C4 = 60)"
+        )]
+        pad_start: Option<u8>,
     },
+}
+
+#[derive(Debug, Default, StructOpt)]
+pub struct RyvmApp {
+    #[structopt(short = "r", long, about = "List the available midi ports")]
+    pub sample_rate: Option<u32>,
 }

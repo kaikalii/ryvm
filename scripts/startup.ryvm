@@ -1,1 +1,1 @@
-midi init
+midi init -c 9 -s 36

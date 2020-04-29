@@ -27,7 +27,13 @@ impl Ryvm {
         let (send, recv) = mpsc::channel::<String>();
 
         thread::spawn(move || {
-            let sink = rodio::Sink::new(&device);
+            let sink = match std::panic::catch_unwind(|| rodio::Sink::new(&device)) {
+                Ok(sink) => sink,
+                Err(_) => {
+                    println!("Unable to initialize audio device");
+                    std::process::exit(1);
+                }
+            };
 
             let state = State::new();
 

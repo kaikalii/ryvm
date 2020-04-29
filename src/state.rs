@@ -11,8 +11,8 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, RyvmApp, RyvmCommand, Sample, Script, SourceLock,
-    Voice, Wave, WaveCommand, ADSR,
+    FrameCache, LoopState, Midi, MidiSubcommand, Pad, RyvmApp, RyvmCommand, Sample, Script,
+    SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -33,8 +33,8 @@ impl JobDescription<PathBuf> for LoadSamples {
 pub struct State {
     pub sample_rate: u32,
     pub tempo: f32,
+    pub curr_channel: u8,
     sample_queue: Option<f32>,
-    curr_channel: u8,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
     pub i: u32,
@@ -199,7 +199,12 @@ impl State {
                 }
                 Err(e) => println!("{}", e),
             },
-            RyvmCommand::Midi(MidiSubcommand::Init { port, manual }) => {
+            RyvmCommand::Midi(MidiSubcommand::Init {
+                port,
+                manual,
+                pad_channel,
+                pad_start,
+            }) => {
                 let port = port.or_else(|| match Midi::first_device() {
                     Ok(p) => p,
                     Err(e) => {
@@ -208,7 +213,12 @@ impl State {
                     }
                 });
                 if let Some(port) = port {
-                    match Midi::new(&format!("midi{}", port), port) {
+                    let pad = if let (Some(channel), Some(start)) = (pad_channel, pad_start) {
+                        Some(Pad { channel, start })
+                    } else {
+                        None
+                    };
+                    match Midi::new(&format!("midi{}", port), port, manual, pad) {
                         Ok(midi) => {
                             self.midis.remove(&port);
                             self.midis.insert(port, midi);
@@ -537,18 +547,21 @@ impl Iterator for State {
             })
             .or_else(|| {
                 // Init cache
+                let mut controls = HashMap::new();
+                for (channel, control) in self.midis.values().flat_map(|midi| midi.controls()) {
+                    controls
+                        .entry(channel)
+                        .or_insert_with(Vec::new)
+                        .push(control);
+                }
                 let mut cache = FrameCache {
                     voices: HashMap::new(),
-                    controls: self
-                        .midis
-                        .values()
-                        .flat_map(|midi| midi.controls())
-                        .collect(),
+                    controls,
                     visited: HashSet::new(),
                 };
                 // Mix output voices
                 let mut voice = Voice::SILENT;
-                for channel in self.channels.values() {
+                for (&channel_num, channel) in self.channels.iter() {
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
                     let pass_thrus: HashSet<String> = outputs
                         .iter()
@@ -557,7 +570,7 @@ impl Iterator for State {
                         .collect();
                     for name in outputs.into_iter().chain(pass_thrus) {
                         cache.visited.clear();
-                        voice += channel.next_from(&name, self, &mut cache) * 0.5;
+                        voice += channel.next_from(channel_num, &name, self, &mut cache) * 0.5;
                     }
                 }
                 self.sample_queue = Some(voice.right);

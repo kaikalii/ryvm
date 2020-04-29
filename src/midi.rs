@@ -27,6 +27,9 @@ impl Control {
         let channel = data[0] % 0x10;
         let d1 = data.get(1).copied().unwrap_or(0);
         let d2 = data.get(2).copied().unwrap_or(0);
+        // if status != 15 {
+        //     println!("{}, {}, {}", status, d1, d2);
+        // }
 
         Some((
             channel,
@@ -137,13 +140,20 @@ impl Midi {
             manual,
         })
     }
-    pub fn controls(&self) -> HashMap<u8, Control> {
-        self.queue.lock().drain(..).collect()
+    pub fn controls(&self) -> HashMap<u8, Vec<Control>> {
+        let mut controls = HashMap::new();
+        for (channel, control) in self.queue.lock().drain(..) {
+            controls
+                .entry(channel)
+                .or_insert_with(Vec::new)
+                .push(control);
+        }
+        controls
     }
 }
 
 impl fmt::Debug for Midi {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "midi:{}", self.name)
+        write!(f, "{}", self.name)
     }
 }

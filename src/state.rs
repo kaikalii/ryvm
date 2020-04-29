@@ -548,11 +548,13 @@ impl Iterator for State {
             .or_else(|| {
                 // Init cache
                 let mut controls = HashMap::new();
-                for (channel, control) in self.midis.values().flat_map(|midi| midi.controls()) {
-                    controls
-                        .entry(channel)
-                        .or_insert_with(Vec::new)
-                        .push(control);
+                for midi in self.midis.values() {
+                    for (channel, ch_controls) in midi.controls() {
+                        controls
+                            .entry(channel)
+                            .or_insert_with(Vec::new)
+                            .extend(ch_controls);
+                    }
                 }
                 let mut cache = FrameCache {
                     voices: HashMap::new(),

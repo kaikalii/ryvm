@@ -54,6 +54,22 @@ impl Channel {
             .map(AsRef::as_ref)
             .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
     }
+    pub fn pass_thru_of<'a>(&'a self, name: &'a str) -> Option<&'a str> {
+        self._pass_thru_of(name, false)
+    }
+    pub fn _pass_thru_of<'a>(&'a self, name: &'a str, went_through: bool) -> Option<&'a str> {
+        if let Some(device) = self.get(name) {
+            if let Some(pass_thru) = device.pass_thru() {
+                self._pass_thru_of(pass_thru, true)
+            } else if went_through {
+                Some(name)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
     pub fn remove(&mut self, id: &str, recursive: bool) {
         if let Some(device) = self.get(id) {
             if recursive {

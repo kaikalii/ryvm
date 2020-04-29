@@ -60,6 +60,13 @@ pub enum LoopState {
 }
 
 impl Device {
+    pub fn pass_thru(&self) -> Option<&str> {
+        if let Device::Loop { input, .. } = self {
+            Some(input.as_str())
+        } else {
+            None
+        }
+    }
     pub fn next(
         &self,
         channel: &Channel,
@@ -193,28 +200,26 @@ impl Device {
                 let raw_loop_i = state.i - start_i;
                 let loop_i = adjust_i(raw_loop_i, *tempo, state.tempo);
 
-                input
-                    + match loop_state {
-                        LoopState::Recording => {
-                            if let Some(period) = period {
-                                let mut frames = frames.lock();
-                                frames.resize(period as usize, Voice::SILENT);
-                                frames[(loop_i % period) as usize] = input;
-                            } else {
-                                frames.lock().push(input);
-                            }
-                            Voice::SILENT
+                match loop_state {
+                    LoopState::Recording => {
+                        if let Some(period) = period {
+                            let mut frames = frames.lock();
+                            frames.resize(period as usize, Voice::SILENT);
+                            frames[(loop_i % period) as usize] = input;
+                        } else {
+                            frames.lock().push(input);
                         }
-                        LoopState::Playing => frames
-                            .lock()
-                            .get(
-                                (loop_i % period.expect("Loop is playing with no period set"))
-                                    as usize,
-                            )
-                            .copied()
-                            .unwrap_or(Voice::SILENT),
-                        LoopState::Disabled => Voice::SILENT,
+                        Voice::SILENT
                     }
+                    LoopState::Playing => frames
+                        .lock()
+                        .get(
+                            (loop_i % period.expect("Loop is playing with no period set")) as usize,
+                        )
+                        .copied()
+                        .unwrap_or(Voice::SILENT),
+                    LoopState::Disabled => Voice::SILENT,
+                }
             }
         }
     }

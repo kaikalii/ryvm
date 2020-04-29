@@ -550,9 +550,14 @@ impl Iterator for State {
                 let mut voice = Voice::SILENT;
                 for channel in self.channels.values() {
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
-                    for name in outputs {
+                    let pass_thrus: HashSet<String> = outputs
+                        .iter()
+                        .filter_map(|name| channel.pass_thru_of(name))
+                        .map(Into::into)
+                        .collect();
+                    for name in outputs.into_iter().chain(pass_thrus) {
                         cache.visited.clear();
-                        voice += channel.next_from(&name, self, &mut cache) * 0.3;
+                        voice += channel.next_from(&name, self, &mut cache) * 0.5;
                     }
                 }
                 self.sample_queue = Some(voice.right);

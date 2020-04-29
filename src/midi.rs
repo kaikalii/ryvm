@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, iter::once, sync::Arc};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
@@ -22,52 +22,39 @@ const CONTROLLER: u8 = 0xB;
 
 impl Control {
     #[allow(clippy::unnecessary_cast)]
-    pub fn decode(data: &[u8], pad: Option<Pad>) -> Option<(u8, Vec<Control>)> {
+    pub fn decode(data: &[u8], pad: Option<Pad>) -> Option<(u8, Control)> {
         let status = data[0] / 0x10;
         let channel = data[0] % 0x10;
         let d1 = data.get(1).copied().unwrap_or(0);
         let d2 = data.get(2).copied().unwrap_or(0);
-        // if status != 15 {
-        //     println!("{}, {}, {}", status, d1, d2);
-        // }
 
         Some((
             channel,
             match (status, d1, d2) {
                 (NOTE_START, n, v) => {
                     let (letter, octave) = Letter::from_u8(n);
-                    once(Control::NoteStart(letter, octave, v))
-                        .chain(if let Some(pad) = pad {
-                            if pad.channel == channel && pad.start <= n {
-                                Some(Control::PadStart(n - pad.start, v))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        })
-                        .collect()
+                    match pad {
+                        Some(pad) if pad.channel == channel && pad.start <= n => {
+                            Control::PadStart(n - pad.start, v)
+                        }
+                        _ => Control::NoteStart(letter, octave, v),
+                    }
                 }
                 (NOTE_END, n, _) => {
                     let (letter, octave) = Letter::from_u8(n);
-                    once(Control::NoteEnd(letter, octave))
-                        .chain(if let Some(pad) = pad {
-                            if pad.channel == channel && pad.start <= n {
-                                Some(Control::PadEnd(n - pad.start))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        })
-                        .collect()
+                    match pad {
+                        Some(pad) if pad.channel == channel && pad.start <= n => {
+                            Control::PadEnd(n - pad.start)
+                        }
+                        _ => Control::NoteEnd(letter, octave),
+                    }
                 }
                 (PITCH_BEND, lsb, msb) => {
                     let pb_u16 = msb as u16 * 0x80 + lsb as u16;
                     let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
-                    vec![Control::PitchBend(pb)]
+                    Control::PitchBend(pb)
                 }
-                (CONTROLLER, n, i) => vec![Control::Controller(n, i)],
+                (CONTROLLER, n, i) => Control::Controller(n, i),
                 _ => return None,
             },
         ))
@@ -123,10 +110,8 @@ impl Midi {
                 port,
                 name,
                 move |_, data, queue| {
-                    if let Some((channel, controls)) = Control::decode(data, pad) {
-                        for control in controls {
-                            queue.lock().push((channel, control));
-                        }
+                    if let Some((channel, control)) = Control::decode(data, pad) {
+                        queue.lock().push((channel, control));
                     }
                 },
                 queue_clone,

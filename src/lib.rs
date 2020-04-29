@@ -14,7 +14,7 @@ use std::{iter::once, sync::mpsc, thread, time::Duration};
 
 use structopt::StructOpt;
 
-pub use rodio::{default_output_device, output_devices, Device};
+pub use rodio::{default_output_device, output_devices};
 
 /// A Ryvm context
 pub struct Ryvm {
@@ -23,7 +23,7 @@ pub struct Ryvm {
 
 impl Ryvm {
     /// Create a new Ryvm context
-    pub fn new(device: Device) -> Self {
+    pub fn new(device: rodio::Device) -> Self {
         let (send, recv) = mpsc::channel::<String>();
 
         thread::spawn(move || {

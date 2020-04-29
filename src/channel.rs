@@ -4,7 +4,7 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use crate::{device::Device, Letter, State};
+use crate::{Device, Letter, State};
 
 #[derive(Debug, Default)]
 pub struct Channel {

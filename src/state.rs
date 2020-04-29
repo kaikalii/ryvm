@@ -10,8 +10,8 @@ use rodio::Source;
 use structopt::{clap, StructOpt};
 
 use crate::{
-    device::Device, load_script, Channel, CloneCell, CloneLock, DrumMachine, Enveloper,
-    FilterCommand, FrameCache, LoopState, Midi, RyvmApp, RyvmCommand, Sample, Script, SourceLock,
+    load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
+    FrameCache, LoopState, Midi, MidiSubcommand, RyvmApp, RyvmCommand, Sample, Script, SourceLock,
     Voice, Wave, WaveCommand, ADSR,
 };
 
@@ -41,7 +41,7 @@ pub struct State {
     last_drums: Option<String>,
     pub loop_period: Option<u32>,
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
-    pub midi: Midi,
+    pub midis: HashMap<usize, Midi>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
 }
@@ -60,7 +60,7 @@ impl Default for State {
             last_drums: None,
             loop_period: None,
             sample_bank: Outsourcer::default(),
-            midi: Midi::new("midi", 0).unwrap(),
+            midis: HashMap::new(),
             new_script_stack: Vec::new(),
             scripts: HashMap::new(),
         };
@@ -191,6 +191,35 @@ impl State {
         match command {
             RyvmCommand::Quit => {}
             RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
+            RyvmCommand::Midi(MidiSubcommand::List) => match Midi::ports_list() {
+                Ok(list) => {
+                    for (i, name) in list.into_iter().enumerate() {
+                        println!("{}. {}", i, name);
+                    }
+                }
+                Err(e) => println!("{}", e),
+            },
+            RyvmCommand::Midi(MidiSubcommand::Init { port }) => {
+                let port = port.or_else(|| match Midi::first_device() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        println!("{}", e);
+                        None
+                    }
+                });
+                if let Some(port) = port {
+                    if !self.midis.contains_key(&port) {
+                        match Midi::new(&format!("midi{}", port), port) {
+                            Ok(midi) => {
+                                self.midis.insert(port, midi);
+                            }
+                            Err(e) => println!("{}", e),
+                        }
+                    }
+                } else {
+                    println!("No available port")
+                }
+            }
             RyvmCommand::Wave {
                 waveform,
                 name,
@@ -510,7 +539,11 @@ impl Iterator for State {
                 // Init cache
                 let mut cache = FrameCache {
                     voices: HashMap::new(),
-                    controls: self.midi.controls().collect(),
+                    controls: self
+                        .midis
+                        .values()
+                        .flat_map(|midi| midi.controls())
+                        .collect(),
                     visited: HashSet::new(),
                 };
                 // Mix output voices
@@ -519,7 +552,7 @@ impl Iterator for State {
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
                     for name in outputs {
                         cache.visited.clear();
-                        voice += channel.next_from(&name, self, &mut cache) * 0.5;
+                        voice += channel.next_from(&name, self, &mut cache) * 0.3;
                     }
                 }
                 self.sample_queue = Some(voice.right);

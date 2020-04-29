@@ -3,7 +3,7 @@ use std::io::{stdin, BufRead};
 use ryvm::Ryvm;
 
 fn main() {
-    let device = rodio::default_output_device().unwrap();
+    let device = rodio::default_output_device().expect("Unable to get default audio output device");
 
     let ryvm = Ryvm::new(device);
 

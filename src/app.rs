@@ -155,6 +155,7 @@ pub enum RyvmCommand {
         #[structopt(index = 2, help = "The arguments to pass to the script")]
         args: Vec<String>,
     },
+    Midi(MidiSubcommand),
 }
 
 #[derive(Debug, StructOpt)]
@@ -183,4 +184,12 @@ pub struct FilterCommand {
 pub struct RyvmApp {
     #[structopt(short = "r", long, about = "List the available midi ports")]
     pub sample_rate: Option<u32>,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum MidiSubcommand {
+    #[structopt(about = "List the available midi ports")]
+    List,
+    #[structopt(about = "Initialize a new midi device")]
+    Init { port: Option<usize> },
 }

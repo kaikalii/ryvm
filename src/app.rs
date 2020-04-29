@@ -37,14 +37,14 @@ pub enum RyvmCommand {
     Quit,
     #[structopt(about = "Set the project's relative tempo")]
     Tempo {
-        #[structopt(index = 1, help = "The new value for the relative tempo")]
+        #[structopt(help = "The new value for the relative tempo")]
         tempo: f32,
     },
     #[structopt(about = "Create a wave synthesizer")]
     Wave {
-        #[structopt(index = 1, help = "The waveform to use")]
+        #[structopt(help = "The waveform to use")]
         waveform: WaveForm,
-        #[structopt(index = 2, help = "The name of the synthesizer")]
+        #[structopt(help = "The name of the synthesizer")]
         name: String,
         #[structopt(
             long,
@@ -65,20 +65,14 @@ pub enum RyvmCommand {
 
     #[structopt(about = "Create a drum machine")]
     Drums {
-        #[structopt(index = 1, help = "The name of the drum machine")]
+        #[structopt(help = "The name of the drum machine")]
         name: String,
     },
     #[structopt(about = "Modify a drum machine")]
     Drum {
-        #[structopt(
-            index = 1,
-            help = "The name of the drum machine. Defaults to last created/used."
-        )]
+        #[structopt(help = "The name of the drum machine. Defaults to last created/used.")]
         machine_id: Option<String>,
-        #[structopt(
-            index = 2,
-            help = "The index of the drum to be edited. Defaults to next highest."
-        )]
+        #[structopt(help = "The index of the drum to be edited. Defaults to next highest.")]
         index: Option<usize>,
         #[structopt(long, short, help = "Path to the sound file")]
         path: Option<PathBuf>,
@@ -87,9 +81,9 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Start recording a loop")]
     Loop {
-        #[structopt(index = 1, help = "The name of the device being looped")]
+        #[structopt(help = "The name of the device being looped")]
         input: String,
-        #[structopt(index = 2, help = "The name of the loop")]
+        #[structopt(help = "The name of the loop")]
         name: Option<String>,
         #[structopt(
             long,
@@ -100,19 +94,19 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Create a low-pass filter")]
     Filter {
-        #[structopt(index = 1, help = "The signal being filtered")]
+        #[structopt(help = "The signal being filtered")]
         input: String,
-        #[structopt(index = 2, help = "Defines filter shape")]
+        #[structopt(help = "Defines filter shape")]
         value: DynInput,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
-        #[structopt(index = 1, required = true, help = "The names of the loops to play")]
+        #[structopt(required = true, help = "The names of the loops to play")]
         names: Vec<String>,
     },
     #[structopt(about = "Start playing a loop")]
     Stop {
-        #[structopt(index = 1, required = true, help = "The names of the loops to stop")]
+        #[structopt(required = true, help = "The names of the loops to stop")]
         names: Vec<String>,
     },
     #[structopt(about = "List all devices")]
@@ -125,16 +119,16 @@ pub enum RyvmCommand {
     #[structopt(about = "Choose which keyboard device to be controlled by the actual keyboard")]
     #[structopt(about = "Start a new script")]
     Script {
-        #[structopt(index = 1, help = "The name of the script")]
+        #[structopt(help = "The name of the script")]
         name: String,
-        #[structopt(index = 2, help = "The arguments of the script")]
+        #[structopt(help = "The arguments of the script")]
         args: Vec<String>,
     },
     #[structopt(about = "End a script")]
     End,
     #[structopt(about = "Remove an device", alias = "remove")]
     Rm {
-        #[structopt(index = 1, help = "The name of the device to be removed")]
+        #[structopt(help = "The name of the device to be removed")]
         id: String,
         #[structopt(
             long,
@@ -145,17 +139,22 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Load a script")]
     Load {
-        #[structopt(index = 1, help = "The name of the script to load")]
+        #[structopt(help = "The name of the script to load")]
         name: String,
     },
     #[structopt(about = "Run a script, loading it first if necessary")]
     Run {
-        #[structopt(index = 1, help = "The name of the script to run")]
+        #[structopt(help = "The name of the script to run")]
         name: String,
-        #[structopt(index = 2, help = "The arguments to pass to the script")]
+        #[structopt(help = "The arguments to pass to the script")]
         args: Vec<String>,
     },
     Midi(MidiSubcommand),
+    #[structopt(about = "Set the current channel for manual-controlled devices")]
+    Ch {
+        #[structopt(help = "The channel to set")]
+        channel: u8,
+    },
 }
 
 #[derive(Debug, StructOpt)]
@@ -176,7 +175,7 @@ pub struct WaveCommand {
 
 #[derive(Debug, StructOpt)]
 pub struct FilterCommand {
-    #[structopt(index = 1, help = "Defines filter shape")]
+    #[structopt(help = "Defines filter shape")]
     pub value: DynInput,
 }
 
@@ -191,5 +190,14 @@ pub enum MidiSubcommand {
     #[structopt(about = "List the available midi ports")]
     List,
     #[structopt(about = "Initialize a new midi device")]
-    Init { port: Option<usize> },
+    Init {
+        #[structopt(help = "The midi port to use. Defaults to the first avaiable non-thru port")]
+        port: Option<usize>,
+        #[structopt(
+            long,
+            short,
+            help = "The midi channel for this device will be controlled manually via the \"ch\" command"
+        )]
+        manual: bool,
+    },
 }

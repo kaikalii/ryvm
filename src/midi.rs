@@ -3,55 +3,69 @@ use std::{fmt, sync::Arc};
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
 
-use crate::{CloneLock, Control, Letter};
+use crate::{CloneLock, Letter};
 
-const NOTE_START: u8 = 0x90;
-const NOTE_END: u8 = 0x80;
-const PITCH_BEND: u8 = 0xE0;
-const CONTROLLER: u8 = 0xB0;
-const PAD_START: u8 = 0x99;
-const PAD_END: u8 = 0x89;
-
-#[allow(clippy::unnecessary_cast)]
-pub fn decode_control(data: &[u8]) -> Option<Control> {
-    let mut padded = [0; 3];
-    for (i, &b) in data.iter().enumerate() {
-        padded[i] = b;
-    }
-    match padded {
-        [NOTE_START, n, v] => {
-            let (letter, octave) = Letter::from_u8(n);
-            Some(Control::NoteStart(letter, octave, v))
-        }
-        [NOTE_END, n, _] => {
-            let (letter, octave) = Letter::from_u8(n);
-            Some(Control::NoteEnd(letter, octave))
-        }
-        [PITCH_BEND, lsb, msb] => {
-            let pb_u16 = msb as u16 * 0x80 + lsb as u16;
-            let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
-            Some(Control::PitchBend(pb))
-        }
-        [CONTROLLER, n, i] => Some(Control::Controller(n, i)),
-        [PAD_START, n, v] => {
-            let (letter, octave) = Letter::from_u8(n);
-            Some(Control::PadStart(letter, octave, v))
-        }
-        [PAD_END, n, _] => {
-            let (letter, octave) = Letter::from_u8(n);
-            Some(Control::PadEnd(letter, octave))
-        }
-        _ => None,
-    }
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Control {
+    NoteStart(Letter, u8, u8),
+    NoteEnd(Letter, u8),
+    PitchBend(f32),
+    Controller(u8, u8),
+    PadStart(Letter, u8, u8),
+    PadEnd(Letter, u8),
 }
 
-type ControlQueue = Arc<CloneLock<Vec<Control>>>;
+const NOTE_START: u8 = 0x9;
+const NOTE_END: u8 = 0x8;
+const PITCH_BEND: u8 = 0xE;
+const CONTROLLER: u8 = 0xB;
+
+impl Control {
+    #[allow(clippy::unnecessary_cast)]
+    pub fn decode(data: &[u8]) -> Option<(u8, Control)> {
+        let status = data[0] / 0x10;
+        let channel = data[0] % 0x10;
+        let d1 = data[1];
+        let d2 = data[2];
+
+        Some((
+            channel,
+            match (status, d1, d2) {
+                (NOTE_START, n, v) => {
+                    let (letter, octave) = Letter::from_u8(n);
+                    Control::NoteStart(letter, octave, v)
+                }
+                (NOTE_END, n, _) => {
+                    let (letter, octave) = Letter::from_u8(n);
+                    Control::NoteEnd(letter, octave)
+                }
+                (PITCH_BEND, lsb, msb) => {
+                    let pb_u16 = msb as u16 * 0x80 + lsb as u16;
+                    let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
+                    Control::PitchBend(pb)
+                }
+                (CONTROLLER, n, i) => Control::Controller(n, i),
+                (PAD_START, n, v) => {
+                    let (letter, octave) = Letter::from_u8(n);
+                    Control::PadStart(letter, octave, v)
+                }
+                (PAD_END, n, _) => {
+                    let (letter, octave) = Letter::from_u8(n);
+                    Control::PadEnd(letter, octave)
+                }
+                _ => return None,
+            },
+        ))
+    }
+}
+type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
 
 #[derive(Clone)]
 pub struct Midi {
     name: String,
     conn: Arc<SendWrapper<MidiInputConnection<ControlQueue>>>,
     queue: ControlQueue,
+    manual: bool,
 }
 
 impl Midi {
@@ -76,7 +90,7 @@ impl Midi {
         }
         Ok(None)
     }
-    pub fn new(name: &str, port: usize) -> Result<Midi, String> {
+    pub fn new(name: &str, port: usize, manual: bool) -> Result<Midi, String> {
         let mut midi_in = MidiInput::new(name).map_err(|e| e.to_string())?;
         midi_in.ignore(Ignore::None);
 
@@ -88,7 +102,7 @@ impl Midi {
                 port,
                 name,
                 |_, data, queue| {
-                    if let Some(control) = decode_control(data) {
+                    if let Some(control) = Control::decode(data) {
                         queue.lock().push(control);
                     }
                 },
@@ -100,9 +114,10 @@ impl Midi {
             name: name.into(),
             conn: Arc::new(SendWrapper::new(conn)),
             queue,
+            manual,
         })
     }
-    pub fn controls(&self) -> impl Iterator<Item = Control> {
+    pub fn controls(&self, current_channel: u8) -> impl Iterator<Item = Control> {
         self.queue.lock().drain(..).collect::<Vec<_>>().into_iter()
     }
 }

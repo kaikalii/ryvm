@@ -199,7 +199,7 @@ impl State {
                 }
                 Err(e) => println!("{}", e),
             },
-            RyvmCommand::Midi(MidiSubcommand::Init { port }) => {
+            RyvmCommand::Midi(MidiSubcommand::Init { port, manual }) => {
                 let port = port.or_else(|| match Midi::first_device() {
                     Ok(p) => p,
                     Err(e) => {
@@ -208,13 +208,12 @@ impl State {
                     }
                 });
                 if let Some(port) = port {
-                    if !self.midis.contains_key(&port) {
-                        match Midi::new(&format!("midi{}", port), port) {
-                            Ok(midi) => {
-                                self.midis.insert(port, midi);
-                            }
-                            Err(e) => println!("{}", e),
+                    match Midi::new(&format!("midi{}", port), port) {
+                        Ok(midi) => {
+                            self.midis.remove(&port);
+                            self.midis.insert(port, midi);
                         }
+                        Err(e) => println!("{}", e),
                     }
                 } else {
                     println!("No available port")
@@ -326,7 +325,7 @@ impl State {
                 }
                 let outputs: Vec<String> = self.channel().outputs().map(Into::into).collect();
                 if !outputs.is_empty() {
-                    println!("~~~ Devices ~~~");
+                    println!("~~~~~ Devices ~~~~~");
                 }
                 for output in outputs {
                     self.print_tree(&output, 0);
@@ -352,6 +351,7 @@ impl State {
                     println!("{}", e)
                 }
             }
+            RyvmCommand::Ch { channel } => self.curr_channel = channel,
         }
     }
     fn process_instr_command(&mut self, name: String, args: Vec<String>) -> Result<(), String> {

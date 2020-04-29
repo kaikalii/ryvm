@@ -122,19 +122,29 @@ impl State {
     }
     pub fn stop_recording(&mut self) {
         let mut loop_period = self.loop_period;
+        let mut loops_to_delete: Vec<String> = Vec::new();
         for (name, device) in self.channel().names_devices_mut() {
             if let Device::Loop {
                 loop_state, frames, ..
             } = device
             {
                 if let LoopState::Recording = loop_state {
-                    loop_period.get_or_insert_with(|| frames.lock().len() as u32);
-                    *loop_state = LoopState::Playing;
-                    println!("Stopped recording {:?}", name);
+                    let len = frames.lock().len() as u32;
+                    if len > 0 {
+                        loop_period.get_or_insert(len);
+                        *loop_state = LoopState::Playing;
+                        println!("Finished recording {:?}", name);
+                    } else {
+                        loops_to_delete.push(name.clone());
+                        println!("Cancelled recording {:?}", name)
+                    }
                 }
             }
         }
         self.loop_period = self.loop_period.or(loop_period);
+        for name in loops_to_delete {
+            self.channel().remove(&name, false)
+        }
     }
     fn process_command(&mut self, args: Vec<String>, app: clap::Result<RyvmCommand>) {
         match app {
@@ -190,7 +200,10 @@ impl State {
     fn process_ryvm_command(&mut self, command: RyvmCommand) {
         match command {
             RyvmCommand::Quit => {}
-            RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
+            RyvmCommand::Tempo { tempo } => {
+                self.set_tempo(tempo);
+                println!("Tempo set to {}x", tempo);
+            }
             RyvmCommand::Midi(MidiSubcommand::List) => match Midi::ports_list() {
                 Ok(list) => {
                     for (i, name) in list.into_iter().enumerate() {
@@ -220,7 +233,11 @@ impl State {
                     };
                     match Midi::new(&format!("midi{}", port), port, manual, pad) {
                         Ok(midi) => {
-                            self.midis.remove(&port);
+                            if self.midis.remove(&port).is_some() {
+                                println!("Reinitialized midi {}", port);
+                            } else {
+                                println!("Initialized midi {}", port);
+                            }
                             self.midis.insert(port, midi);
                         }
                         Err(e) => println!("{}", e),
@@ -252,6 +269,7 @@ impl State {
                     voices: 10,
                     waves: CloneLock::new(Vec::new()),
                 }));
+                println!("Added wave {:?} to channel {}", name, self.curr_channel);
                 self.channel().insert(name, instr);
             }
             RyvmCommand::Drums { name } => {
@@ -262,6 +280,7 @@ impl State {
                         samplings: CloneLock::new(Vec::new()),
                     })),
                 );
+                println!("Added drums {:?} to channel {}", name, self.curr_channel);
                 self.last_drums = Some(name);
             }
             RyvmCommand::Drum {
@@ -462,19 +481,19 @@ impl State {
             let parsed = RyvmCommand::from_iter_safe(&resolved_command);
             resolved_commands.push((delay, resolved_command, parsed))
         }
-        let mut depth = 0;
+        // let mut depth = 0;
         for (delay, args, parsed) in resolved_commands {
-            if let Some("end") = args.get(1).map(|s| s.as_str()) {
-                depth -= 1;
-            }
-            print!("> {}", (0..depth).map(|_| "  ").collect::<String>());
-            for arg in args.iter().skip(1) {
-                print!("{} ", arg);
-            }
-            println!();
-            if let Some("script") = args.get(1).map(|s| s.as_str()) {
-                depth += 1;
-            }
+            // if let Some("end") = args.get(1).map(|s| s.as_str()) {
+            //     depth -= 1;
+            // }
+            // print!("> {}", (0..depth).map(|_| "  ").collect::<String>());
+            // for arg in args.iter().skip(1) {
+            //     print!("{} ", arg);
+            // }
+            // println!();
+            // if let Some("script") = args.get(1).map(|s| s.as_str()) {
+            //     depth += 1;
+            // }
             self.queue_command(delay, args, parsed);
         }
         Ok(())

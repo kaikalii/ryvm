@@ -8,16 +8,16 @@ pub struct Channel {
 }
 
 impl Channel {
-    pub fn get(&self, id: &str) -> Option<&Device> {
-        self.devices.get(id)
+    pub fn get(&self, name: &str) -> Option<&Device> {
+        self.devices.get(name)
     }
-    pub fn get_mut(&mut self, id: &str) -> Option<&mut Device> {
-        self.devices.get_mut(id)
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Device> {
+        self.devices.get_mut(name)
     }
-    pub fn insert(&mut self, id: String, device: Device) {
-        self.devices.insert(id, device);
+    pub fn insert(&mut self, name: String, device: Device) {
+        self.devices.insert(name, device);
     }
-    pub fn insert_wrapper<F>(&mut self, input: String, id: String, build_device: F)
+    pub fn insert_wrapper<F>(&mut self, input: String, name: String, build_device: F)
     where
         F: FnOnce(String) -> Device,
     {
@@ -25,10 +25,10 @@ impl Channel {
             return;
         }
         for device in self.devices.values_mut() {
-            device.replace_input(input.clone(), id.clone());
+            device.replace_input(input.clone(), name.clone());
         }
         let new_device = build_device(input);
-        self.insert(id, new_device);
+        self.insert(name, new_device);
     }
     pub fn device_names(&self) -> hash_map::Keys<String, Device> {
         self.devices.keys()
@@ -66,22 +66,22 @@ impl Channel {
             None
         }
     }
-    pub fn remove(&mut self, id: &str, recursive: bool) {
-        if let Some(device) = self.get(id) {
+    pub fn remove(&mut self, name: &str, recursive: bool) {
+        if let Some(device) = self.get(name) {
             if recursive {
                 let inputs: Vec<String> = device.inputs().into_iter().map(Into::into).collect();
                 for input in inputs {
                     if !self
                         .devices
                         .iter()
-                        .filter(|(i, _)| i != &id)
+                        .filter(|(i, _)| i != &name)
                         .any(|(_, device)| device.inputs().contains(&&*input))
                     {
                         self.remove(&input, recursive);
                     }
                 }
             }
-            self.devices.remove(id);
+            self.devices.remove(name);
         }
     }
     pub fn next_from(
@@ -91,17 +91,18 @@ impl Channel {
         state: &State,
         cache: &mut FrameCache,
     ) -> Voice {
-        if cache.visited.contains(name) {
+        let full_name = (channel_num, name.to_string());
+        if cache.visited.contains(&full_name) {
             // Avoid infinite loops
             Voice::mono(0.0)
         } else {
-            cache.visited.insert(name.into());
+            cache.visited.insert(full_name.clone());
             if let Some(device) = self.get(name) {
-                if let Some(voice) = cache.voices.get(name) {
+                if let Some(voice) = cache.voices.get(&full_name) {
                     *voice
                 } else {
                     let voice = device.next(channel_num, self, state, cache, name);
-                    cache.voices.insert(name.into(), voice);
+                    cache.voices.insert(full_name, voice);
                     voice
                 }
             } else {
@@ -112,9 +113,9 @@ impl Channel {
 }
 
 pub struct FrameCache {
-    pub voices: HashMap<String, Voice>,
+    pub voices: HashMap<(u8, String), Voice>,
     pub controls: HashMap<u8, Vec<Control>>,
-    pub visited: HashSet<String>,
+    pub visited: HashSet<(u8, String)>,
 }
 
 impl FrameCache {

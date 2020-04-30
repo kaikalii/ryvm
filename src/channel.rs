@@ -120,7 +120,7 @@ impl Channel {
 
 pub struct FrameCache {
     pub voices: HashMap<(u8, String), Voice>,
-    pub controls: HashMap<u8, Vec<Control>>,
+    pub controls: HashMap<(usize, u8), Vec<Control>>,
     pub visited: HashSet<(u8, String)>,
 }
 
@@ -128,9 +128,15 @@ impl FrameCache {
     pub fn all_controls(&self) -> impl Iterator<Item = Control> + '_ {
         self.controls.values().flat_map(|v| v.iter().copied())
     }
-    pub fn controls_for_channel(&self, channel: u8) -> impl Iterator<Item = Control> + '_ {
+    pub fn channel_controls(&self, channel: u8) -> impl Iterator<Item = Control> + '_ {
         self.controls
-            .get(&channel)
+            .iter()
+            .filter(move |((_, ch), _)| ch == &channel)
+            .flat_map(|(_, controls)| controls.iter().copied())
+    }
+    pub fn controls(&self, port: usize, channel: u8) -> impl Iterator<Item = Control> + '_ {
+        self.controls
+            .get(&(port, channel))
             .into_iter()
             .flat_map(|controls| controls.iter().copied())
     }

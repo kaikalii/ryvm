@@ -1,10 +1,10 @@
-use std::{f32::consts::PI, iter::once, path::PathBuf};
+use std::{f32::consts::PI, path::PathBuf};
 
 use rand::random;
 
 use crate::{
-    adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, DynInput, Enveloper,
-    FrameCache, State, Voice, WaveForm, ADSR,
+    adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, ControlId, DynInput,
+    Enveloper, FrameCache, OrString, State, Voice, WaveForm, ADSR,
 };
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub enum Device {
     DrumMachine(Box<DrumMachine>),
     Filter {
         input: String,
-        value: DynInput<f32, String>,
+        value: DynInput<f32, ControlId>,
         avg: CloneCell<Voice>,
     },
     Loop {
@@ -94,7 +94,7 @@ impl Device {
                 waves.resize(*voices as usize, 0);
 
                 let mut enveloper = enveloper.lock();
-                enveloper.register(cache.controls_for_channel(channel_num));
+                enveloper.register(cache.channel_controls(channel_num));
                 let voice = enveloper
                     .states(
                         state.sample_rate,
@@ -173,7 +173,42 @@ impl Device {
                 // Determine the factor used to maintain the running average
                 let avg_factor = match value {
                     DynInput::First(f) => *f,
-                    DynInput::Second(id) => channel.next_from(channel_num, id, state, cache).left,
+                    DynInput::Second(ControlId {
+                        controller,
+                        control,
+                    }) => {
+                        let port = match controller {
+                            Some(controller) => match controller {
+                                OrString::First(port) => Some(*port),
+                                OrString::Second(name) => state.resolve_controller_name(name),
+                            },
+                            None => state.default_midi,
+                        };
+                        if let Some((port, midi)) =
+                            port.and_then(|port| state.midis.get(&port).map(|midi| (port, midi)))
+                        {
+                            let control = match control {
+                                OrString::First(con) => Some(*con),
+                                OrString::Second(name) => midi.resolve_control_name(name),
+                            };
+                            if let Some(control) = control {
+                                cache
+                                    .controls(port, channel_num)
+                                    .filter_map(|con| match con {
+                                        Control::Controller(con, val) if con == control => {
+                                            Some(val as f32 / 127.0)
+                                        }
+                                        _ => None,
+                                    })
+                                    .last()
+                                    .unwrap_or(1.0)
+                            } else {
+                                1.0
+                            }
+                        } else {
+                            1.0
+                        }
+                    }
                 }
                 .powf(2.0);
                 // Get the input channels
@@ -235,14 +270,7 @@ impl Device {
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&str> {
         match self {
-            Device::Filter { input, value, .. } => once(input)
-                .chain(if let DynInput::Second(id) = value {
-                    Some(id)
-                } else {
-                    None
-                })
-                .map(AsRef::as_ref)
-                .collect(),
+            Device::Filter { input, .. } => vec![input],
             Device::Loop { input, .. } => vec![input.as_str()],
             _ => Vec::new(),
         }

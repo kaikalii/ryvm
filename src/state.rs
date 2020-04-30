@@ -11,7 +11,7 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, NumOrString, Pad, RyvmApp, RyvmCommand, Sample,
+    FrameCache, LoopState, Midi, MidiSubcommand, OrString, PadBounds, RyvmApp, RyvmCommand, Sample,
     Script, SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
@@ -43,7 +43,7 @@ pub struct State {
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     pub midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
-    default_midi: Option<usize>,
+    pub default_midi: Option<usize>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
 }
@@ -112,10 +112,10 @@ impl State {
     pub fn resolve_controller_name(&self, name: &str) -> Option<usize> {
         self.midi_names.get(name).copied()
     }
-    pub fn get_controller(&self, controller_id: &NumOrString<usize>) -> Option<&Midi> {
+    pub fn get_controller(&self, controller_id: &OrString<usize>) -> Option<&Midi> {
         match controller_id {
-            NumOrString::First(port) => self.midis.get(port),
-            NumOrString::Second(name) => self
+            OrString::First(port) => self.midis.get(port),
+            OrString::Second(name) => self
                 .midi_names
                 .get(name)
                 .and_then(|port| self.midis.get(port)),
@@ -252,11 +252,11 @@ impl State {
                 });
                 if let Some(port) = port {
                     let pad = if let (Some(channel), Some(start)) = (pad_channel, pad_start) {
-                        Some(Pad { channel, start })
+                        Some(PadBounds { channel, start })
                     } else {
                         None
                     };
-                    match Midi::new(&format!("midi{}", port), port, manual, pad) {
+                    match Midi::new(port, name.clone(), manual, pad, HashMap::new()) {
                         Ok(midi) => {
                             if self.midis.remove(&port).is_some() {
                                 println!("Reinitialized midi {}", port);
@@ -631,10 +631,10 @@ impl Iterator for State {
             .or_else(|| {
                 // Init cache
                 let mut controls = HashMap::new();
-                for midi in self.midis.values() {
+                for (port, midi) in self.midis.iter() {
                     for (channel, ch_controls) in midi.controls() {
                         controls
-                            .entry(channel)
+                            .entry((*port, channel))
                             .or_insert_with(Vec::new)
                             .extend(ch_controls);
                     }

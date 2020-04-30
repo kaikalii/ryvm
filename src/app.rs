@@ -42,22 +42,22 @@ where
     }
 }
 
-pub type NumOrString<N> = DynInput<N, String>;
+pub type OrString<N> = DynInput<N, String>;
 
 /// An input specifying a control input on a controller
 #[derive(Debug, Clone)]
-pub struct ControlIdInput {
+pub struct ControlId {
     /// Either the port number or assigned name of a controller.
     ///
     /// These names are resolves by the `State`
-    pub controller: Option<NumOrString<usize>>,
+    pub controller: Option<OrString<usize>>,
     /// Either the number of a control or its assigned name
     ///
     /// These names are resolved by the controller
-    pub control: NumOrString<u8>,
+    pub control: OrString<u8>,
 }
 
-impl fmt::Display for ControlIdInput {
+impl fmt::Display for ControlId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.controller {
             Some(DynInput::First(port)) => write!(f, "{}-", port)?,
@@ -71,7 +71,7 @@ impl fmt::Display for ControlIdInput {
     }
 }
 
-impl FromStr for ControlIdInput {
+impl FromStr for ControlId {
     type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.split('-');
@@ -79,14 +79,14 @@ impl FromStr for ControlIdInput {
         let second = parts.next().filter(|s| !s.is_empty());
         let (controller, control) = match (first, second) {
             (Some(a), Some(b)) => (
-                Some(a.parse::<NumOrString<usize>>()?),
-                b.parse::<NumOrString<u8>>()?,
+                Some(a.parse::<OrString<usize>>()?),
+                b.parse::<OrString<u8>>()?,
             ),
-            (Some(a), None) => (None, a.parse::<NumOrString<u8>>()?),
-            (None, Some(b)) => (None, b.parse::<NumOrString<u8>>()?),
+            (Some(a), None) => (None, a.parse::<OrString<u8>>()?),
+            (None, Some(b)) => (None, b.parse::<OrString<u8>>()?),
             (None, None) => (None, DynInput::Second(String::new())),
         };
-        Ok(ControlIdInput {
+        Ok(ControlId {
             controller,
             control,
         })
@@ -162,7 +162,7 @@ pub enum RyvmCommand {
         #[structopt(help = "The signal being filtered")]
         input: String,
         #[structopt(help = "Defines filter shape")]
-        value: DynInput<f32, String>,
+        value: DynInput<f32, ControlId>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
@@ -253,7 +253,7 @@ pub struct WaveCommand {
 #[derive(Debug, StructOpt)]
 pub struct FilterCommand {
     #[structopt(help = "Defines filter shape")]
-    pub value: DynInput<f32, String>,
+    pub value: DynInput<f32, ControlId>,
 }
 
 #[derive(Debug, StructOpt)]

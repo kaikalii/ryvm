@@ -79,7 +79,7 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "Remove the specified drum", conflicts_with_all = &["path", "beat"])]
         remove: bool,
     },
-    #[structopt(about = "Start recording a loop")]
+    #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
     Loop {
         #[structopt(help = "The name of the device being looped")]
         input: String,
@@ -104,10 +104,19 @@ pub enum RyvmCommand {
         #[structopt(required = true, help = "The names of the loops to play")]
         names: Vec<String>,
     },
-    #[structopt(about = "Start playing a loop")]
+    #[structopt(about = "Stop playing a loop")]
     Stop {
-        #[structopt(required = true, help = "The names of the loops to stop")]
+        #[structopt(help = "The names of the loops to stop")]
         names: Vec<String>,
+        #[structopt(long, conflicts_with = "names", help = "Stop all loops")]
+        all: bool,
+        #[structopt(
+            long,
+            short,
+            conflicts_with = "names",
+            help = "Stop all loops and delete them"
+        )]
+        reset: bool,
     },
     #[structopt(about = "List all devices")]
     Ls {

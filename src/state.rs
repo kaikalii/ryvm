@@ -197,6 +197,7 @@ impl State {
             }
         }
     }
+    #[allow(clippy::cognitive_complexity)]
     fn process_ryvm_command(&mut self, command: RyvmCommand) {
         match command {
             RyvmCommand::Quit => {}
@@ -335,11 +336,28 @@ impl State {
                     }
                 }
             }
-            RyvmCommand::Stop { names } => {
-                for (name, device) in self.channel().names_devices_mut() {
-                    if let Device::Loop { loop_state, .. } = device {
-                        if names.contains(name) {
-                            *loop_state = LoopState::Disabled;
+            RyvmCommand::Stop { names, all, reset } => {
+                if reset {
+                    for channel in self.channels.values_mut() {
+                        channel.retain(|_, device| !matches!(device, Device::Loop{..}));
+                    }
+                    self.loop_period = None;
+                } else if all {
+                    for channel in self.channels.values_mut() {
+                        for (name, device) in channel.names_devices_mut() {
+                            if let Device::Loop { loop_state, .. } = device {
+                                if names.contains(name) {
+                                    *loop_state = LoopState::Disabled;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    for (name, device) in self.channel().names_devices_mut() {
+                        if let Device::Loop { loop_state, .. } = device {
+                            if names.contains(name) {
+                                *loop_state = LoopState::Disabled;
+                            }
                         }
                     }
                 }
@@ -372,6 +390,14 @@ impl State {
             }
             RyvmCommand::Rm { id, recursive } => {
                 self.channel().remove(&id, recursive);
+                fn channel_loops(channel: &Channel) -> impl Iterator<Item = &Device> {
+                    channel
+                        .devices()
+                        .filter(|device| matches!(device, Device::Loop {..}))
+                }
+                if self.channels.values().flat_map(channel_loops).count() == 0 {
+                    self.loop_period = None;
+                }
             }
             RyvmCommand::Load { name } => self.load_script(&name, true),
             RyvmCommand::Run { name, args } => {

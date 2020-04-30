@@ -1,22 +1,29 @@
+[dependencies]
+circular-queue = '0.2.4'
+crossbeam-utils = '0.7.2'
+find_folder = '0.3.0'
+itertools = '0.9.0'
+midir = '0.5.0'
+once_cell = '1.3.1'
+rand = '0.7.3'
+rodio = '0.11.0'
+send_wrapper = '0.4.0'
+
+[dependencies.outsource]
+path = '../outsource'
+
+[dependencies.piston_window]
+optional = true
+version = '0.108.0'
+
+[dependencies.structopt]
+default-features = false
+version = '0.3.14'
+
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'
 name = 'ryvm'
 version = '0.1.0'
-
-[dependencies]
-rodio = '*'
-once_cell = '*'
-itertools = '*'
-structopt = { version = '*', default-features = false }
-piston_window = { version = '*', optional = true }
-outsource = { path = '../outsource' }
-find_folder = '*'
-midir = '*'
-send_wrapper = '*'
-crossbeam-utils = '*'
-rand = "*"
-circular-queue = "*"
-
 [profile.release]
 debug = true

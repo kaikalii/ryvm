@@ -50,6 +50,12 @@ impl Channel {
             .map(AsRef::as_ref)
             .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
     }
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&String, &mut Device) -> bool,
+    {
+        self.devices.retain(f)
+    }
     pub fn pass_thru_of<'a>(&'a self, name: &'a str) -> Option<&'a str> {
         self._pass_thru_of(name, false)
     }

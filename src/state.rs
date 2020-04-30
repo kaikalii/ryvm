@@ -262,11 +262,13 @@ impl State {
                 decay,
                 sustain,
                 release,
+                bend,
             } => {
                 let default_adsr = ADSR::default();
                 let instr = Device::Wave(Box::new(Wave {
                     form: waveform,
                     octave,
+                    pitch_bend_range: bend.unwrap_or(12.0),
                     adsr: ADSR {
                         attack: attack.unwrap_or(default_adsr.attack),
                         decay: decay.unwrap_or(default_adsr.decay),
@@ -442,6 +444,9 @@ impl State {
                     }
                     if let Some(wf) = com.form {
                         wave.form = wf;
+                    }
+                    if let Some(bend) = com.bend {
+                        wave.pitch_bend_range = bend;
                     }
                 }
                 Device::Filter { value, .. } => {

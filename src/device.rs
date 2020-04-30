@@ -32,6 +32,7 @@ pub struct Wave {
     pub voices: u32,
     pub(crate) waves: CloneLock<Vec<u32>>,
     pub octave: Option<i8>,
+    pub pitch_bend_range: f32,
     pub adsr: ADSR,
     pub(crate) enveloper: CloneLock<Enveloper>,
 }
@@ -82,6 +83,7 @@ impl Device {
                     form,
                     voices,
                     octave,
+                    pitch_bend_range,
                     adsr,
                     waves,
                     enveloper,
@@ -94,7 +96,12 @@ impl Device {
                 let mut enveloper = enveloper.lock();
                 enveloper.register(cache.controls_for_channel(channel_num));
                 let voice = enveloper
-                    .states(state.sample_rate, octave.unwrap_or(0), *adsr)
+                    .states(
+                        state.sample_rate,
+                        octave.unwrap_or(0),
+                        *pitch_bend_range,
+                        *adsr,
+                    )
                     .zip(&mut *waves)
                     .map(|((freq, amp), i)| {
                         if freq == 0.0 {

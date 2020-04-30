@@ -80,6 +80,7 @@ impl Enveloper {
         &self,
         sample_rate: u32,
         base_octave: i8,
+        bend_range: f32,
         adsr: ADSR,
     ) -> impl Iterator<Item = (f32, f32)> + '_ {
         self.states
@@ -114,7 +115,7 @@ impl Enveloper {
                 if amplitude > 0.0 {
                     Some((
                         letter.freq((*octave as i16 + base_octave as i16).max(0) as u8)
-                            * 2f32.powf(self.pitch_bend),
+                            * 2f32.powf(self.pitch_bend * bend_range / 12.0),
                         amplitude,
                     ))
                 } else {

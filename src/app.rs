@@ -61,6 +61,8 @@ pub enum RyvmCommand {
         sustain: Option<f32>,
         #[structopt(long, short, help = "The synth's release")]
         release: Option<f32>,
+        #[structopt(long, short, help = "The synth's pitch bend range")]
+        bend: Option<f32>,
     },
 
     #[structopt(about = "Create a drum machine")]
@@ -181,6 +183,8 @@ pub struct WaveCommand {
     pub release: Option<f32>,
     #[structopt(long, short, help = "Set the synth's waveform")]
     pub form: Option<WaveForm>,
+    #[structopt(long, short, help = "Set the synth's pitch bend range")]
+    pub bend: Option<f32>,
 }
 
 #[derive(Debug, StructOpt)]

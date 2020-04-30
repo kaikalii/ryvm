@@ -11,8 +11,8 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, Pad, RyvmApp, RyvmCommand, Sample, Script,
-    SourceLock, Voice, Wave, WaveCommand, ADSR,
+    FrameCache, LoopState, Midi, MidiSubcommand, NumOrString, Pad, RyvmApp, RyvmCommand, Sample,
+    Script, SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -42,6 +42,8 @@ pub struct State {
     pub loop_period: Option<u32>,
     pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
     pub midis: HashMap<usize, Midi>,
+    midi_names: HashMap<String, usize>,
+    default_midi: Option<usize>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
 }
@@ -61,6 +63,8 @@ impl Default for State {
             loop_period: None,
             sample_bank: Outsourcer::default(),
             midis: HashMap::new(),
+            midi_names: HashMap::new(),
+            default_midi: None,
             new_script_stack: Vec::new(),
             scripts: HashMap::new(),
         };
@@ -103,6 +107,18 @@ impl State {
             self.i % (period / 10) == 0
         } else {
             self.i % (self.sample_rate / 5) == 0
+        }
+    }
+    pub fn resolve_controller_name(&self, name: &str) -> Option<usize> {
+        self.midi_names.get(name).copied()
+    }
+    pub fn get_controller(&self, controller_id: &NumOrString<usize>) -> Option<&Midi> {
+        match controller_id {
+            NumOrString::First(port) => self.midis.get(port),
+            NumOrString::Second(name) => self
+                .midi_names
+                .get(name)
+                .and_then(|port| self.midis.get(port)),
         }
     }
     pub fn insert_loop(&mut self, input: String, name: Option<String>, length: Option<f32>) {
@@ -222,6 +238,7 @@ impl State {
             },
             RyvmCommand::Midi(MidiSubcommand::Init {
                 port,
+                name,
                 manual,
                 pad_channel,
                 pad_start,
@@ -247,6 +264,9 @@ impl State {
                                 println!("Initialized midi {}", port);
                             }
                             self.midis.insert(port, midi);
+                            if let Some(name) = name {
+                                self.midi_names.insert(name, port);
+                            }
                         }
                         Err(e) => println!("{}", e),
                     }

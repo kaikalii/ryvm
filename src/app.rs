@@ -42,15 +42,22 @@ where
     }
 }
 
-pub type U8OrString = DynInput<u8, String>;
+pub type NumOrString<N> = DynInput<N, String>;
 
+/// An input specifying a control input on a controller
 #[derive(Debug, Clone)]
-pub struct ControlId {
-    pub controller: Option<U8OrString>,
-    pub control: U8OrString,
+pub struct ControlIdInput {
+    /// Either the port number or assigned name of a controller.
+    ///
+    /// These names are resolves by the `State`
+    pub controller: Option<NumOrString<usize>>,
+    /// Either the number of a control or its assigned name
+    ///
+    /// These names are resolved by the controller
+    pub control: NumOrString<u8>,
 }
 
-impl fmt::Display for ControlId {
+impl fmt::Display for ControlIdInput {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.controller {
             Some(DynInput::First(port)) => write!(f, "{}-", port)?,
@@ -64,19 +71,22 @@ impl fmt::Display for ControlId {
     }
 }
 
-impl FromStr for ControlId {
+impl FromStr for ControlIdInput {
     type Err = std::convert::Infallible;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = s.split('-');
         let first = parts.next().filter(|s| !s.is_empty());
         let second = parts.next().filter(|s| !s.is_empty());
         let (controller, control) = match (first, second) {
-            (Some(a), Some(b)) => (Some(a.parse::<U8OrString>()?), b.parse::<U8OrString>()?),
-            (Some(a), None) => (None, a.parse::<U8OrString>()?),
-            (None, Some(b)) => (None, b.parse::<U8OrString>()?),
+            (Some(a), Some(b)) => (
+                Some(a.parse::<NumOrString<usize>>()?),
+                b.parse::<NumOrString<u8>>()?,
+            ),
+            (Some(a), None) => (None, a.parse::<NumOrString<u8>>()?),
+            (None, Some(b)) => (None, b.parse::<NumOrString<u8>>()?),
             (None, None) => (None, DynInput::Second(String::new())),
         };
-        Ok(ControlId {
+        Ok(ControlIdInput {
             controller,
             control,
         })
@@ -254,6 +264,8 @@ pub enum MidiSubcommand {
     Init {
         #[structopt(help = "The midi port to use. Defaults to the first avaiable non-thru port")]
         port: Option<usize>,
+        #[structopt(long, short, help = "The name of the midi device")]
+        name: Option<String>,
         #[structopt(
             long,
             short,

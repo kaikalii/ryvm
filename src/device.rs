@@ -13,7 +13,7 @@ pub enum Device {
     DrumMachine(Box<DrumMachine>),
     Filter {
         input: String,
-        value: DynInput,
+        value: DynInput<f32, String>,
         avg: CloneCell<Voice>,
     },
     Loop {
@@ -172,8 +172,8 @@ impl Device {
             Device::Filter { input, value, avg } => {
                 // Determine the factor used to maintain the running average
                 let avg_factor = match value {
-                    DynInput::Num(f) => *f,
-                    DynInput::Id(id) => channel.next_from(channel_num, id, state, cache).left,
+                    DynInput::First(f) => *f,
+                    DynInput::Second(id) => channel.next_from(channel_num, id, state, cache).left,
                 }
                 .powf(2.0);
                 // Get the input channels
@@ -236,7 +236,7 @@ impl Device {
     pub fn inputs(&self) -> Vec<&str> {
         match self {
             Device::Filter { input, value, .. } => once(input)
-                .chain(if let DynInput::Id(id) = value {
+                .chain(if let DynInput::Second(id) = value {
                     Some(id)
                 } else {
                     None

@@ -1,32 +1,85 @@
-use std::{convert::Infallible, fmt, path::PathBuf, str::FromStr};
+use std::{fmt, path::PathBuf, str::FromStr};
 
 use structopt::StructOpt;
 
 use crate::WaveForm;
 
-/// An input type that can either be a static number or the
-/// name of an device from which to get a number
+/// An input type that first tries one type of input,
+/// then the other
 #[derive(Debug, Clone)]
-pub enum DynInput {
-    Id(String),
-    Num(f32),
+pub enum DynInput<A, B> {
+    First(A),
+    Second(B),
 }
 
-impl fmt::Display for DynInput {
+impl<A, B> fmt::Display for DynInput<A, B>
+where
+    A: fmt::Display,
+    B: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            DynInput::Id(id) => write!(f, "{}", id),
-            DynInput::Num(n) => write!(f, "{}", n),
+            DynInput::First(a) => write!(f, "{}", a),
+            DynInput::Second(b) => write!(f, "{}", b),
         }
     }
 }
 
-impl FromStr for DynInput {
-    type Err = Infallible;
+impl<A, B> FromStr for DynInput<A, B>
+where
+    A: FromStr,
+    B: FromStr,
+{
+    type Err = B::Err;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.parse::<f32>()
-            .map(DynInput::Num)
-            .unwrap_or_else(|_| s.parse::<String>().map(DynInput::Id).unwrap()))
+        match s.parse::<A>() {
+            Ok(a) => Ok(DynInput::First(a)),
+            Err(_) => match s.parse::<B>() {
+                Ok(b) => Ok(DynInput::Second(b)),
+                Err(e) => Err(e),
+            },
+        }
+    }
+}
+
+pub type U8OrString = DynInput<u8, String>;
+
+#[derive(Debug, Clone)]
+pub struct ControlId {
+    pub controller: Option<U8OrString>,
+    pub control: U8OrString,
+}
+
+impl fmt::Display for ControlId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.controller {
+            Some(DynInput::First(port)) => write!(f, "{}-", port)?,
+            Some(DynInput::Second(name)) => write!(f, "{}-", name)?,
+            None => {}
+        }
+        match &self.control {
+            DynInput::First(control) => write!(f, "{}", control),
+            DynInput::Second(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+impl FromStr for ControlId {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('-');
+        let first = parts.next().filter(|s| !s.is_empty());
+        let second = parts.next().filter(|s| !s.is_empty());
+        let (controller, control) = match (first, second) {
+            (Some(a), Some(b)) => (Some(a.parse::<U8OrString>()?), b.parse::<U8OrString>()?),
+            (Some(a), None) => (None, a.parse::<U8OrString>()?),
+            (None, Some(b)) => (None, b.parse::<U8OrString>()?),
+            (None, None) => (None, DynInput::Second(String::new())),
+        };
+        Ok(ControlId {
+            controller,
+            control,
+        })
     }
 }
 
@@ -99,7 +152,7 @@ pub enum RyvmCommand {
         #[structopt(help = "The signal being filtered")]
         input: String,
         #[structopt(help = "Defines filter shape")]
-        value: DynInput,
+        value: DynInput<f32, String>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
@@ -190,7 +243,7 @@ pub struct WaveCommand {
 #[derive(Debug, StructOpt)]
 pub struct FilterCommand {
     #[structopt(help = "Defines filter shape")]
-    pub value: DynInput,
+    pub value: DynInput<f32, String>,
 }
 
 #[derive(Debug, StructOpt)]

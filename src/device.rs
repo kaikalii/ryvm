@@ -130,7 +130,7 @@ impl Device {
             Device::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
-                if channel_num == state.curr_channel {
+                if channel_num == state.curr_channel() {
                     for control in cache.all_controls() {
                         if let Control::PadStart(i, v) = control {
                             let index = i as usize;

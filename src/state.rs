@@ -33,7 +33,7 @@ impl JobDescription<PathBuf> for LoadSamples {
 pub struct State {
     pub sample_rate: u32,
     pub tempo: f32,
-    pub curr_channel: u8,
+    curr_channel: u8,
     sample_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
@@ -84,6 +84,13 @@ impl State {
     }
     pub fn set_tempo(&mut self, tempo: f32) {
         self.tempo = tempo;
+    }
+    pub fn curr_channel(&self) -> u8 {
+        self.curr_channel
+    }
+    pub fn set_curr_channel(&mut self, ch: u8) {
+        self.curr_channel = ch;
+        println!("Channel {}", ch);
     }
     pub fn channel(&mut self) -> &mut Channel {
         self.channels
@@ -406,12 +413,15 @@ impl State {
                     println!("{}", e)
                 }
             }
-            RyvmCommand::Ch { channel } => self.curr_channel = channel,
+            RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
         }
     }
     fn process_instr_command(&mut self, name: String, args: Vec<String>) -> Result<(), String> {
         let args = &args[1..];
-        if let Some(device) = self.channel().get_mut(&name) {
+        if let (true, Ok(ch)) = (args.len() == 1, name.parse::<u8>()) {
+            self.set_curr_channel(ch);
+            Ok(())
+        } else if let Some(device) = self.channel().get_mut(&name) {
             match device {
                 Device::Wave(wave) => {
                     let com = WaveCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
@@ -448,7 +458,10 @@ impl State {
             }
             Ok(())
         } else {
-            Err(format!("No instrument or command \"{}\"", name))
+            Err(format!(
+                "No device, script, channel, or command \"{}\"",
+                name
+            ))
         }
     }
     fn load_script(&mut self, name: &str, reload: bool) {

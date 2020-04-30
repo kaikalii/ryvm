@@ -159,7 +159,8 @@ pub enum RyvmCommand {
         args: Vec<String>,
     },
     Midi(MidiSubcommand),
-    #[structopt(about = "Set the current channel for manual-controlled devices")]
+    #[structopt(about = "Set the current channel for manual-controlled devices \
+    (Simply typing the number without this command will have the same effect)")]
     Ch {
         #[structopt(help = "The channel to set")]
         channel: u8,

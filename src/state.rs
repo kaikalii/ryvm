@@ -11,7 +11,7 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, PadBounds, RyvmApp, RyvmCommand, Sample, Script,
+    FrameCache, LoopState, Midi, MidiSubcommand, PadBounds, RyvmApp, RyvmCommand, Sample,
     SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
@@ -477,6 +477,16 @@ impl State {
             ))
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Script {
+    pub name: String,
+    pub arguments: Vec<String>,
+    pub unresolved_commands: Vec<(bool, Vec<String>)>,
+}
+
+impl State {
     fn load_script(&mut self, name: &str, reload: bool) {
         if self.scripts.get(name).is_none() || reload {
             if let Some((arguments, unresolved_commands)) = load_script(&name) {

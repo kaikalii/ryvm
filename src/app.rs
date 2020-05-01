@@ -44,6 +44,55 @@ where
 
 pub type OrString<N> = DynInput<N, String>;
 
+/// An input specifying a control input on a controller
+#[derive(Debug, Clone)]
+pub struct ControlId {
+    /// Either the port number or assigned name of a controller.
+    ///
+    /// These names are resolves by the `State`
+    pub controller: Option<OrString<usize>>,
+    /// Either the number of a control or its assigned name
+    ///
+    /// These names are resolved by the controller
+    pub control: OrString<u8>,
+}
+
+impl fmt::Display for ControlId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.controller {
+            Some(DynInput::First(port)) => write!(f, "{}-", port)?,
+            Some(DynInput::Second(name)) => write!(f, "{}-", name)?,
+            None => {}
+        }
+        match &self.control {
+            DynInput::First(control) => write!(f, "{}", control),
+            DynInput::Second(name) => write!(f, "{}", name),
+        }
+    }
+}
+
+impl FromStr for ControlId {
+    type Err = std::convert::Infallible;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut parts = s.split('-');
+        let first = parts.next().filter(|s| !s.is_empty());
+        let second = parts.next().filter(|s| !s.is_empty());
+        let (controller, control) = match (first, second) {
+            (Some(a), Some(b)) => (
+                Some(a.parse::<OrString<usize>>()?),
+                b.parse::<OrString<u8>>()?,
+            ),
+            (Some(a), None) => (None, a.parse::<OrString<u8>>()?),
+            (None, Some(b)) => (None, b.parse::<OrString<u8>>()?),
+            (None, None) => (None, DynInput::Second(String::new())),
+        };
+        Ok(ControlId {
+            controller,
+            control,
+        })
+    }
+}
+
 /// A Ryvm CLI command
 #[derive(Debug, StructOpt)]
 pub enum RyvmCommand {
@@ -183,8 +232,16 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Create a control mapping")]
     Map {
-        control: OrString<u8>,
+        #[structopt(help = "The control to map")]
+        control: ControlId,
+        #[structopt(help = "The command to execute")]
         command: String,
+        #[structopt(
+            long,
+            short,
+            help = "Don't require a specific channel to execute this mapping"
+        )]
+        global: bool,
     },
 }
 

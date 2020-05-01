@@ -69,7 +69,7 @@ impl Enveloper {
                     }
                 }
                 Control::PitchBend(pb) => self.pitch_bend = pb,
-                Control::Controller(..) => {}
+                Control::Control(..) => {}
                 Control::PadStart(..) => {}
                 Control::PadEnd(..) => {}
             }

@@ -10,7 +10,7 @@ pub enum Control {
     NoteStart(Letter, u8, u8),
     NoteEnd(Letter, u8),
     PitchBend(f32),
-    Controller(u8, u8),
+    Control(u8, u8),
     PadStart(u8, u8),
     PadEnd(u8),
 }
@@ -52,7 +52,7 @@ impl Control {
                 let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
                 Control::PitchBend(pb)
             }
-            (CONTROLLER, n, i) => Control::Controller(n, i),
+            (CONTROLLER, n, i) => Control::Control(n, i),
             _ => return None,
         };
 

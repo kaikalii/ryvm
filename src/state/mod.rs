@@ -13,9 +13,9 @@ use rodio::Source;
 use structopt::{clap, StructOpt};
 
 use crate::{
-    load_script, parse_commands, Channel, CloneCell, CloneLock, Control, Device, DrumMachine,
-    Enveloper, FilterCommand, FrameCache, LoopState, Midi, MidiSubcommand, OrString, PadBounds,
-    RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
+    load_script, parse_commands, Channel, CloneCell, CloneLock, Control, ControlId, Device,
+    DrumMachine, Enveloper, FilterCommand, FrameCache, LoopState, Midi, MidiSubcommand, OrString,
+    PadBounds, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -30,6 +30,18 @@ impl JobDescription<PathBuf> for LoadSamples {
         }
         res
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Mapping {
+    pub port: usize,
+    pub channel: u8,
+    pub control: u8,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GlobalMapping {
+    pub port: usize,
+    pub control: u8,
 }
 
 #[derive(Debug)]
@@ -49,7 +61,8 @@ pub struct State {
     pub default_midi: Option<usize>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
-    mappings: HashMap<u8, String>,
+    mappings: HashMap<Mapping, String>,
+    global_mappings: HashMap<GlobalMapping, String>,
 }
 
 impl Default for State {
@@ -72,6 +85,7 @@ impl Default for State {
             new_script_stack: Vec::new(),
             scripts: HashMap::new(),
             mappings: HashMap::new(),
+            global_mappings: HashMap::new(),
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -260,6 +274,9 @@ impl State {
                             if let Some(name) = name {
                                 self.midi_names.insert(name, port);
                             }
+                            if self.default_midi.is_none() {
+                                self.default_midi = Some(port);
+                            }
                         }
                         Err(e) => println!("{}", e),
                     }
@@ -337,7 +354,7 @@ impl State {
                 let channel = self.channel();
                 let mut i = 1;
                 let filter_name = loop {
-                    let possible = format!("filter-{}", i);
+                    let possible = format!("filter{}", i);
                     if channel.get(&possible).is_none() {
                         break possible;
                     }
@@ -429,12 +446,51 @@ impl State {
                 }
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
-            RyvmCommand::Map { control, command } => {
+            RyvmCommand::Map {
+                control:
+                    ControlId {
+                        controller,
+                        control,
+                    },
+                command,
+                global,
+            } => {
+                let port = match controller {
+                    Some(OrString::First(port)) => port,
+                    Some(OrString::Second(name)) => {
+                        if let Some(port) = self.midi_names.get(&name).copied() {
+                            port
+                        } else {
+                            println!("Unknown midi device {:?}", name);
+                            return;
+                        }
+                    }
+                    None => {
+                        if let Some(port) = self.default_midi {
+                            port
+                        } else {
+                            println!("No default midi device");
+                            return;
+                        }
+                    }
+                };
                 let control = match control {
                     OrString::First(con) => con,
                     OrString::Second(_) => todo!(),
                 };
-                self.mappings.insert(control, command);
+                if global {
+                    self.global_mappings
+                        .insert(GlobalMapping { port, control }, command);
+                } else {
+                    self.mappings.insert(
+                        Mapping {
+                            port,
+                            channel: self.curr_channel,
+                            control,
+                        },
+                        command,
+                    );
+                }
             }
         }
     }
@@ -569,19 +625,36 @@ impl Iterator for State {
                 // Init cache
                 let mut controls = HashMap::new();
                 let mut mappings = Vec::new();
-                for (port, midi) in self.midis.iter() {
+                // Get controls from midis
+                for (&port, midi) in self.midis.iter() {
                     for (channel, control) in midi.controls() {
-                        if let Control::Controller(index, value) = control {
-                            if let Some(command) = self.mappings.get(&index).cloned() {
+                        // Check for Control::Control
+                        if let Control::Control(control, value) = control {
+                            // Collect mappings and global mappings
+                            let mapping = Mapping {
+                                port,
+                                channel: self.curr_channel,
+                                control,
+                            };
+                            if let Some(command) = self.mappings.get(&mapping).cloned() {
+                                mappings.push((value, command));
+                            }
+                            if let Some(command) = self
+                                .global_mappings
+                                .get(&GlobalMapping { port, control })
+                                .cloned()
+                            {
                                 mappings.push((value, command));
                             }
                         }
+                        // Collect control
                         controls
-                            .entry((*port, channel))
+                            .entry((port, channel))
                             .or_insert_with(Vec::new)
                             .push(control);
                     }
                 }
+                // Execute mappings
                 for (value, command) in mappings {
                     self.run_mapping(value, command);
                 }
@@ -590,7 +663,7 @@ impl Iterator for State {
                     controls,
                     visited: HashSet::new(),
                 };
-                // Mix output voices
+                // Mix output voices for each channel
                 let mut voice = Voice::SILENT;
                 for (&channel_num, channel) in self.channels.iter() {
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();

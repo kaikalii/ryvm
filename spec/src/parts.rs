@@ -65,6 +65,12 @@ impl<T> From<Optional<T>> for Option<T> {
 }
 
 impl<T> Optional<T> {
+    pub fn or(self, default: T) -> T {
+        match self {
+            Supplied(val) => val,
+            Omitted => default,
+        }
+    }
     pub(crate) fn is_omitted(&self) -> bool {
         matches!(self, Omitted)
     }

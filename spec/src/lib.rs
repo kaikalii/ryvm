@@ -9,7 +9,7 @@ use serde_derive::{Deserialize, Serialize};
 #[serde(rename_all = "kebab-case")]
 pub enum Spec {
     Wave {
-        waveform: WaveForm,
+        form: WaveForm,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         octave: Optional<i8>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
@@ -32,9 +32,9 @@ pub enum Spec {
         input: String,
         value: DynamicValue,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        volume: Optional<f32>,
+        volume: Optional<DynamicValue>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        pan: Optional<f32>,
+        pan: Optional<DynamicValue>,
     },
 }
 

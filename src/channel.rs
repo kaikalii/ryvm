@@ -11,24 +11,8 @@ impl Channel {
     pub fn get(&self, name: &str) -> Option<&Device> {
         self.devices.get(name)
     }
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut Device> {
-        self.devices.get_mut(name)
-    }
-    pub fn insert(&mut self, name: String, device: Device) {
-        self.devices.insert(name, device);
-    }
-    pub fn insert_wrapper<F>(&mut self, input: String, name: String, build_device: F)
-    where
-        F: FnOnce(String) -> Device,
-    {
-        if self.get(&input).is_none() {
-            return;
-        }
-        for device in self.devices.values_mut() {
-            device.replace_input(input.clone(), name.clone());
-        }
-        let new_device = build_device(input);
-        self.insert(name, new_device);
+    pub fn entry(&mut self, name: String) -> hash_map::Entry<String, Device> {
+        self.devices.entry(name)
     }
     pub fn device_names(&self) -> hash_map::Keys<String, Device> {
         self.devices.keys()

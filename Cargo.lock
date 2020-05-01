@@ -1520,6 +1520,8 @@ dependencies = [
  "piston_window",
  "rand",
  "rodio",
+ "ron",
+ "ryvm_spec",
  "send_wrapper",
  "structopt",
 ]

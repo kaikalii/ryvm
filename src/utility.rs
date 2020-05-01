@@ -1,14 +1,11 @@
 use std::{
-    env::{current_dir, current_exe},
     fmt,
     iter::once,
     ops::{Deref, DerefMut},
-    path::PathBuf,
     sync::{Mutex, MutexGuard},
 };
 
 use crossbeam_utils::atomic::AtomicCell;
-use find_folder::Search;
 
 pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
     (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
@@ -66,42 +63,6 @@ pub fn parse_args(s: &str) -> (bool, Vec<String>) {
         insert_arg!();
     }
     (delay, args)
-}
-
-pub type DelayedCommands = (bool, Vec<String>);
-
-pub fn load_script(name: &str) -> Option<(Vec<String>, Vec<DelayedCommands>)> {
-    let folder = "scripts";
-    let search = Search::KidsThenParents(2, 1);
-    let scripts_path = search
-        .of(current_dir().ok()?)
-        .for_folder(&folder)
-        .or_else(|_| search.of(current_exe()?).for_folder(&folder))
-        .ok()?;
-    let script_path = scripts_path.join(PathBuf::from(name).with_extension("ryvm"));
-    let script_str = std::fs::read_to_string(script_path).ok()?;
-    let lines = script_str.lines().filter(|line| !line.trim().is_empty());
-    let mut script_args = Vec::new();
-    let mut commands = Vec::new();
-    for line in lines {
-        let mut is_args = false;
-        let line = if line.starts_with(':') {
-            is_args = true;
-            &line[1..]
-        } else {
-            line
-        };
-        let (delay, args) = parse_args(line);
-        if is_args {
-            script_args = args;
-        } else {
-            commands.push((
-                delay,
-                once("ryvm".to_string()).chain(args).collect::<Vec<_>>(),
-            ));
-        }
-    }
-    Some((script_args, commands))
 }
 
 #[derive(Debug, Default)]

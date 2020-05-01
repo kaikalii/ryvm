@@ -1,8 +1,6 @@
-use std::{fmt, path::PathBuf, str::FromStr};
+use std::{fmt, str::FromStr};
 
 use structopt::StructOpt;
-
-use crate::WaveForm;
 
 /// An input type that first tries one type of input,
 /// then the other
@@ -98,52 +96,6 @@ impl FromStr for ControlId {
 pub enum RyvmCommand {
     #[structopt(about = "Quit ryvm", alias = "exit")]
     Quit,
-    #[structopt(about = "Set the project's relative tempo")]
-    Tempo {
-        #[structopt(help = "The new value for the relative tempo")]
-        tempo: f32,
-    },
-    #[structopt(about = "Create a wave synthesizer")]
-    Wave {
-        #[structopt(help = "The waveform to use")]
-        waveform: WaveForm,
-        #[structopt(help = "The name of the synthesizer")]
-        name: Option<String>,
-        #[structopt(
-            long,
-            short,
-            allow_hyphen_values = true,
-            help = "The synth's octave relative to its input"
-        )]
-        octave: Option<i8>,
-        #[structopt(long, short, help = "The synth's attack")]
-        attack: Option<f32>,
-        #[structopt(long, short, help = "The synth's decay")]
-        decay: Option<f32>,
-        #[structopt(long, short, help = "The synth's sustain")]
-        sustain: Option<f32>,
-        #[structopt(long, short, help = "The synth's release")]
-        release: Option<f32>,
-        #[structopt(long, short, help = "The synth's pitch bend range")]
-        bend: Option<f32>,
-    },
-
-    #[structopt(about = "Create a drum machine")]
-    Drums {
-        #[structopt(help = "The name of the drum machine")]
-        name: Option<String>,
-    },
-    #[structopt(about = "Modify a drum machine")]
-    Drum {
-        #[structopt(help = "The name of the drum machine. Defaults to last created/used.")]
-        machine_id: Option<String>,
-        #[structopt(help = "The index of the drum to be edited. Defaults to next highest.")]
-        index: Option<usize>,
-        #[structopt(long, short, help = "Path to the sound file")]
-        path: Option<PathBuf>,
-        #[structopt(long, short, help = "Remove the specified drum", conflicts_with_all = &["path", "beat"])]
-        remove: bool,
-    },
     #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
     Loop {
         #[structopt(help = "The name of the loop")]
@@ -154,22 +106,6 @@ pub enum RyvmCommand {
             help = "The length of the loop relative to the first one"
         )]
         length: Option<f32>,
-    },
-    #[structopt(about = "Create a low-pass filter")]
-    Filter {
-        #[structopt(help = "The device being filtered")]
-        input: String,
-        #[structopt(help = "Defines filter shape")]
-        value: Option<f32>,
-    },
-    #[structopt(about = "Create a new balancer to modify a device's volume and pan")]
-    Balance {
-        #[structopt(help = "The device being balanced")]
-        input: String,
-        #[structopt(long, short, help = "The volume (0 to 1)")]
-        volume: Option<f32>,
-        #[structopt(long, short, allow_hyphen_values = true, help = "The pan (-1 to 1)")]
-        pan: Option<f32>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
@@ -198,15 +134,6 @@ pub enum RyvmCommand {
     #[structopt(about = "Print a tree of all output devices")]
     Tree,
     #[structopt(about = "Choose which keyboard device to be controlled by the actual keyboard")]
-    #[structopt(about = "Start a new script")]
-    Script {
-        #[structopt(help = "The name of the script")]
-        name: String,
-        #[structopt(help = "The arguments of the script")]
-        args: Vec<String>,
-    },
-    #[structopt(about = "End a script")]
-    End,
     #[structopt(about = "Remove an device", alias = "remove")]
     Rm {
         #[structopt(help = "The name of the device to be removed")]
@@ -218,18 +145,6 @@ pub enum RyvmCommand {
         )]
         recursive: bool,
     },
-    #[structopt(about = "Load a script")]
-    Load {
-        #[structopt(help = "The name of the script to load")]
-        name: String,
-    },
-    #[structopt(about = "Run a script, loading it first if necessary")]
-    Run {
-        #[structopt(help = "The name of the script to run")]
-        name: String,
-        #[structopt(help = "The arguments to pass to the script")]
-        args: Vec<String>,
-    },
     Midi(MidiSubcommand),
     #[structopt(about = "Set the current channel for manual-controlled devices \
     (Simply typing the number without this command will have the same effect)")]
@@ -237,70 +152,13 @@ pub enum RyvmCommand {
         #[structopt(help = "The channel to set")]
         channel: u8,
     },
-    #[structopt(about = "Create a control mapping")]
-    Map {
-        #[structopt(help = "The control to map")]
-        control: ControlId,
-        #[structopt(help = "The command to execute")]
-        command: String,
-        #[structopt(
-            long,
-            short,
-            help = "Don't require a specific channel to execute this mapping"
-        )]
-        global: bool,
-        #[structopt(
-            long,
-            short = "a",
-            allow_hyphen_values = true,
-            help = "The lower bound of the mapping values"
-        )]
-        min: Option<f32>,
-        #[structopt(
-            long,
-            short = "b",
-            allow_hyphen_values = true,
-            help = "The uppoer bound of the mapping values"
-        )]
-        max: Option<f32>,
+    #[structopt(about = "Load a spec file")]
+    Load {
+        #[structopt(help = "The name of the spec")]
+        name: String,
+        #[structopt(help = "The channel to load into")]
+        channel: Option<u8>,
     },
-}
-
-#[derive(Debug, StructOpt)]
-pub struct WaveCommand {
-    #[structopt(long, short, help = "Set the synth's octave relative to its input")]
-    pub octave: Option<i8>,
-    #[structopt(long, short, help = "Set the synth's attack")]
-    pub attack: Option<f32>,
-    #[structopt(long, short, help = "Set the synth's decay")]
-    pub decay: Option<f32>,
-    #[structopt(long, short, help = "Set the synth's sustain")]
-    pub sustain: Option<f32>,
-    #[structopt(long, short, help = "Set the synth's release")]
-    pub release: Option<f32>,
-    #[structopt(long, short, help = "Set the synth's waveform")]
-    pub form: Option<WaveForm>,
-    #[structopt(long, short, help = "Set the synth's pitch bend range")]
-    pub bend: Option<f32>,
-}
-
-#[derive(Debug, StructOpt)]
-pub struct FilterCommand {
-    #[structopt(help = "Defines filter shape")]
-    pub value: f32,
-}
-
-#[derive(Debug, StructOpt)]
-pub struct BalanceCommand {
-    #[structopt(long, short, help = "Set the volume (0 to 1)")]
-    pub volume: Option<f32>,
-    #[structopt(
-        long,
-        short,
-        allow_hyphen_values = true,
-        help = "Set the pan (-1 to 1)"
-    )]
-    pub pan: Option<f32>,
 }
 
 #[derive(Debug, StructOpt)]

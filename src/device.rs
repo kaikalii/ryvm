@@ -1,10 +1,11 @@
 use std::{f32::consts::PI, path::PathBuf};
 
 use rand::random;
+use ryvm_spec::WaveForm;
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State, Voice,
-    WaveForm, ADSR,
+    ADSR,
 };
 
 #[derive(Debug)]
@@ -40,17 +41,24 @@ pub struct DrumMachine {
     pub(crate) samplings: CloneLock<Vec<ActiveSampling>>,
 }
 
-impl DrumMachine {
-    pub fn samples_len(&self) -> usize {
-        self.samples.len()
-    }
-    pub fn set_path(&mut self, index: usize, path: PathBuf) {
-        self.samples.resize(index + 1, PathBuf::new());
-        self.samples[index] = path;
-    }
-}
-
 impl Device {
+    pub fn default_wave(form: WaveForm) -> Self {
+        Device::Wave(Box::new(Wave {
+            form,
+            octave: None,
+            pitch_bend_range: 12.0,
+            adsr: ADSR::default(),
+            enveloper: CloneLock::new(Enveloper::default()),
+            voices: 10,
+            waves: CloneLock::new(Vec::new()),
+        }))
+    }
+    pub fn default_drum_machine() -> Self {
+        Device::DrumMachine(Box::new(DrumMachine {
+            samples: Vec::new(),
+            samplings: CloneLock::new(Vec::new()),
+        }))
+    }
     pub fn next(
         &self,
         channel_num: u8,
@@ -105,9 +113,7 @@ impl Device {
                             WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
                             WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
                             WaveForm::Noise => random::<f32>() % 2.0 - 1.0,
-                        } * WaveForm::MIN_ENERGY
-                            / form.energy()
-                            * amp;
+                        } * amp;
                         *i = (*i + 1) % spc as u32;
                         Voice::mono(s)
                     })
@@ -179,19 +185,6 @@ impl Device {
         match self {
             Device::Filter { input, .. } | Device::Balance { input, .. } => vec![input],
             _ => Vec::new(),
-        }
-    }
-    /// Replace any of this instrument's inputs that match the old id with the new one
-    #[allow(clippy::single_match)]
-    pub fn replace_input(&mut self, old: String, new: String) {
-        let replace = |id: &mut String| {
-            if id == &old {
-                *id = new.clone();
-            }
-        };
-        match self {
-            Device::Filter { input, .. } => replace(input),
-            _ => {}
         }
     }
 }

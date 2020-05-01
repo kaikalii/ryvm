@@ -45,11 +45,13 @@ impl Ryvm {
                 if let Ok(text) = recv.try_recv() {
                     if let Some(commands) = parse_commands(&text) {
                         for (delay, args) in commands {
-                            let app = RyvmCommand::from_iter_safe(&args);
-                            if let Ok(RyvmCommand::Quit) = &app {
-                                break 'main_loop;
+                            match RyvmCommand::from_iter_safe(&args) {
+                                Ok(RyvmCommand::Quit) => break 'main_loop,
+                                Ok(command) => {
+                                    state.update(|state| state.queue_command(delay, command))
+                                }
+                                Err(e) => println!("{}", e),
                             }
-                            state.update(|state| state.queue_command(delay, args, app));
                         }
                     } else {
                         state.update(State::stop_recording);

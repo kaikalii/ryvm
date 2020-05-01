@@ -1,0 +1,17 @@
+[
+    drums([
+        "kick.wav",
+        "clap.wav",
+    ]),
+    filter(
+        input: "drums",
+        value: static(1),
+    ),
+    filter(
+        input: "drums",
+        value: control(
+            channel: 0,
+            number: 28,
+        ),
+    ),
+]

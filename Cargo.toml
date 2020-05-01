@@ -25,5 +25,9 @@ authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'
 name = 'ryvm'
 version = '0.1.0'
+
 [profile.release]
 debug = true
+
+[workspace]
+members = ['spec']

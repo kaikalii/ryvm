@@ -1,0 +1,4 @@
+wave sq s
+balance s
+map 27 "bal1 -v"
+map 28 "bal1 -p" -a -1 -b 1

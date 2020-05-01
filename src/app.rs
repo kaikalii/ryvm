@@ -157,10 +157,19 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Create a low-pass filter")]
     Filter {
-        #[structopt(help = "The signal being filtered")]
+        #[structopt(help = "The device being filtered")]
         input: String,
         #[structopt(help = "Defines filter shape")]
         value: Option<f32>,
+    },
+    #[structopt(about = "Create a new balancer to modify a device's volume and pan")]
+    Balance {
+        #[structopt(help = "The device being balanced")]
+        input: String,
+        #[structopt(long, short, help = "The volume (0 to 1)")]
+        volume: Option<f32>,
+        #[structopt(long, short, allow_hyphen_values = true, help = "The pan (-1 to 1)")]
+        pan: Option<f32>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
@@ -240,6 +249,20 @@ pub enum RyvmCommand {
             help = "Don't require a specific channel to execute this mapping"
         )]
         global: bool,
+        #[structopt(
+            long,
+            short = "a",
+            allow_hyphen_values = true,
+            help = "The lower bound of the mapping values"
+        )]
+        min: Option<f32>,
+        #[structopt(
+            long,
+            short = "b",
+            allow_hyphen_values = true,
+            help = "The uppoer bound of the mapping values"
+        )]
+        max: Option<f32>,
     },
 }
 
@@ -265,6 +288,19 @@ pub struct WaveCommand {
 pub struct FilterCommand {
     #[structopt(help = "Defines filter shape")]
     pub value: f32,
+}
+
+#[derive(Debug, StructOpt)]
+pub struct BalanceCommand {
+    #[structopt(long, short, help = "Set the volume (0 to 1)")]
+    pub volume: Option<f32>,
+    #[structopt(
+        long,
+        short,
+        allow_hyphen_values = true,
+        help = "Set the pan (-1 to 1)"
+    )]
+    pub pan: Option<f32>,
 }
 
 #[derive(Debug, StructOpt)]

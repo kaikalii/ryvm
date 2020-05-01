@@ -64,7 +64,7 @@ impl WaveForm {
 
 impl fmt::Display for WaveForm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", format!("{:?}", self))
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
     }
 }
 
@@ -110,6 +110,16 @@ impl Mul<f32> for Voice {
         Voice {
             left: self.left * m,
             right: self.right * m,
+        }
+    }
+}
+
+impl Mul for Voice {
+    type Output = Self;
+    fn mul(self, other: Self) -> Self::Output {
+        Voice {
+            left: self.left * other.left,
+            right: self.right * other.right,
         }
     }
 }

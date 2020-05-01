@@ -16,6 +16,11 @@ pub enum Device {
         value: f32,
         avg: CloneCell<Voice>,
     },
+    Balance {
+        input: String,
+        pan: f32,
+        volume: f32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -157,12 +162,22 @@ impl Device {
                 avg.store(Voice::stereo(left, right));
                 avg.load()
             }
+            // Balance
+            Device::Balance { input, pan, volume } => {
+                let frame = channel.next_from(channel_num, input, state, cache);
+                let pan = Voice::stereo(
+                    (1.0 + *pan).min(1.0).max(0.0),
+                    (1.0 - *pan).min(1.0).max(0.0),
+                );
+                let volume = volume.min(1.0).max(-1.0);
+                frame * pan * volume
+            }
         }
     }
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&str> {
         match self {
-            Device::Filter { input, .. } => vec![input],
+            Device::Filter { input, .. } | Device::Balance { input, .. } => vec![input],
             _ => Vec::new(),
         }
     }

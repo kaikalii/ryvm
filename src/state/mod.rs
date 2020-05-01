@@ -14,9 +14,10 @@ use rodio::Source;
 use structopt::{clap, StructOpt};
 
 use crate::{
-    load_script, parse_commands, Channel, CloneCell, CloneLock, Control, ControlId, Device,
-    DrumMachine, Enveloper, FilterCommand, FrameCache, Loop, LoopState, Midi, MidiSubcommand,
-    OrString, PadBounds, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
+    load_script, parse_commands, BalanceCommand, Channel, CloneCell, CloneLock, Control, ControlId,
+    Device, DrumMachine, Enveloper, FilterCommand, FrameCache, Loop, LoopState, Midi,
+    MidiSubcommand, OrString, PadBounds, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave,
+    WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -45,6 +46,24 @@ pub struct GlobalMapping {
     pub control: u8,
 }
 
+#[derive(Debug, Clone)]
+pub struct MappingItem {
+    pub command: String,
+    pub min: Option<f32>,
+    pub max: Option<f32>,
+}
+
+impl MappingItem {
+    pub fn bounds(&self) -> (f32, f32) {
+        match (self.min, self.max) {
+            (Some(a), Some(b)) => (a, b),
+            (Some(a), None) => (a, a + 1.0),
+            (None, Some(b)) => (b - 1.0, b),
+            (None, None) => (0.0, 1.0),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct State {
     pub sample_rate: u32,
@@ -62,8 +81,8 @@ pub struct State {
     pub default_midi: Option<usize>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
-    mappings: HashMap<Mapping, String>,
-    global_mappings: HashMap<GlobalMapping, String>,
+    mappings: HashMap<Mapping, MappingItem>,
+    global_mappings: HashMap<GlobalMapping, MappingItem>,
     loops: HashMap<String, Loop>,
 }
 
@@ -227,10 +246,7 @@ impl State {
     fn process_ryvm_command(&mut self, command: RyvmCommand) {
         match command {
             RyvmCommand::Quit => {}
-            RyvmCommand::Tempo { tempo } => {
-                self.set_tempo(tempo);
-                println!("Tempo set to {}x", tempo);
-            }
+            RyvmCommand::Tempo { tempo } => self.set_tempo(tempo),
             RyvmCommand::Midi(MidiSubcommand::List) => match Midi::ports_list() {
                 Ok(list) => {
                     for (i, name) in list.into_iter().enumerate() {
@@ -345,13 +361,24 @@ impl State {
             }
             RyvmCommand::Loop { name, length } => self.insert_loop(name, length),
             RyvmCommand::Filter { input, value } => {
-                let filter_name = self.find_new_name("filter");
-                let channel = self.channel();
-                channel.insert_wrapper(input, filter_name, |input| Device::Filter {
-                    input,
-                    value: value.unwrap_or(1.0),
-                    avg: CloneCell::new(Voice::SILENT),
-                })
+                let name = self.find_new_name("filter");
+                self.channel()
+                    .insert_wrapper(input, name.clone(), |input| Device::Filter {
+                        input,
+                        value: value.unwrap_or(1.0),
+                        avg: CloneCell::new(Voice::SILENT),
+                    });
+                println!("Added filter {:?} to channel {}", name, self.curr_channel);
+            }
+            RyvmCommand::Balance { input, volume, pan } => {
+                let name = self.find_new_name("bal");
+                self.channel()
+                    .insert_wrapper(input, name.clone(), |input| Device::Balance {
+                        input,
+                        volume: volume.unwrap_or(1.0),
+                        pan: pan.unwrap_or(0.0),
+                    });
+                println!("Added balance {:?} to channel {}", name, self.curr_channel);
             }
             RyvmCommand::Play { names } => {
                 for (name, lup) in self.loops.iter_mut() {
@@ -422,6 +449,8 @@ impl State {
                     },
                 command,
                 global,
+                min,
+                max,
             } => {
                 let port = match controller {
                     Some(OrString::First(port)) => port,
@@ -447,8 +476,10 @@ impl State {
                     OrString::Second(_) => todo!(),
                 };
                 if global {
-                    self.global_mappings
-                        .insert(GlobalMapping { port, control }, command);
+                    self.global_mappings.insert(
+                        GlobalMapping { port, control },
+                        MappingItem { command, min, max },
+                    );
                 } else {
                     self.mappings.insert(
                         Mapping {
@@ -456,7 +487,7 @@ impl State {
                             channel: self.curr_channel,
                             control,
                         },
-                        command,
+                        MappingItem { command, min, max },
                     );
                 }
             }
@@ -496,6 +527,15 @@ impl State {
                 Device::Filter { value, .. } => {
                     let com = FilterCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
                     *value = com.value;
+                }
+                Device::Balance { volume, pan, .. } => {
+                    let com = BalanceCommand::from_iter_safe(args).map_err(|e| e.to_string())?;
+                    if let Some(vol) = com.volume {
+                        *volume = vol;
+                    }
+                    if let Some(p) = com.pan {
+                        *pan = p;
+                    }
                 }
                 _ => {
                     if let Some(script) = self.scripts.get(&name).cloned() {
@@ -557,10 +597,11 @@ impl State {
             println!();
         }
     }
-    fn run_mapping(&mut self, value: u8, mut command: String) {
-        let f = value as f32 / 127.0;
-        command.push_str(&format!(" {}", f));
-        if let Some(commands) = parse_commands(&command) {
+    fn run_mapping(&mut self, value: u8, mut item: MappingItem) {
+        let (min, max) = item.bounds();
+        let f = value as f32 / 127.0 * (max - min) + min;
+        item.command.push_str(&format!(" {}", f));
+        if let Some(commands) = parse_commands(&item.command) {
             for (delay, args) in commands {
                 let app = RyvmCommand::from_iter_safe(&args);
                 self.queue_command(delay, args, app);

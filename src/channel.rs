@@ -42,36 +42,20 @@ impl Channel {
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
     }
-    pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
-        self.devices.iter_mut()
-    }
+    // pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
+    //     self.devices.iter_mut()
+    // }
     pub fn outputs(&self) -> impl Iterator<Item = &str> + '_ {
         self.device_names()
             .map(AsRef::as_ref)
             .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
     }
-    pub fn retain<F>(&mut self, f: F)
-    where
-        F: FnMut(&String, &mut Device) -> bool,
-    {
-        self.devices.retain(f)
-    }
-    pub fn pass_thru_of<'a>(&'a self, name: &'a str) -> Option<&'a str> {
-        self._pass_thru_of(name, false)
-    }
-    fn _pass_thru_of<'a>(&'a self, name: &'a str, went_through: bool) -> Option<&'a str> {
-        if let Some(device) = self.get(name) {
-            if let Some(pass_thru) = device.pass_thru() {
-                self._pass_thru_of(pass_thru, true)
-            } else if went_through {
-                Some(name)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
+    // pub fn retain<F>(&mut self, f: F)
+    // where
+    //     F: FnMut(&String, &mut Device) -> bool,
+    // {
+    //     self.devices.retain(f)
+    // }
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(device) = self.get(name) {
             if recursive {
@@ -122,6 +106,7 @@ pub struct FrameCache {
     pub voices: HashMap<(u8, String), Voice>,
     pub controls: HashMap<(usize, u8), Vec<Control>>,
     pub visited: HashSet<(u8, String)>,
+    pub from_loop: bool,
 }
 
 impl FrameCache {

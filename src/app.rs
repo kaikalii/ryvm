@@ -146,8 +146,6 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
     Loop {
-        #[structopt(help = "The name of the device being looped")]
-        input: String,
         #[structopt(help = "The name of the loop")]
         name: Option<String>,
         #[structopt(
@@ -162,7 +160,7 @@ pub enum RyvmCommand {
         #[structopt(help = "The signal being filtered")]
         input: String,
         #[structopt(help = "Defines filter shape")]
-        value: f32,
+        value: Option<f32>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {

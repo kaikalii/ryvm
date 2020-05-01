@@ -3,8 +3,8 @@ use std::{f32::consts::PI, path::PathBuf};
 use rand::random;
 
 use crate::{
-    adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State,
-    Voice, WaveForm, ADSR,
+    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State, Voice,
+    WaveForm, ADSR,
 };
 
 #[derive(Debug)]
@@ -15,14 +15,6 @@ pub enum Device {
         input: String,
         value: f32,
         avg: CloneCell<Voice>,
-    },
-    Loop {
-        input: String,
-        start_i: CloneCell<Option<u32>>,
-        frames: CloneLock<Vec<Voice>>,
-        tempo: f32,
-        length: f32,
-        loop_state: LoopState,
     },
 }
 
@@ -53,21 +45,7 @@ impl DrumMachine {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoopState {
-    Recording,
-    Playing,
-    Disabled,
-}
-
 impl Device {
-    pub fn pass_thru(&self) -> Option<&str> {
-        if let Device::Loop { input, .. } = self {
-            Some(input.as_str())
-        } else {
-            None
-        }
-    }
     pub fn next(
         &self,
         channel_num: u8,
@@ -137,7 +115,7 @@ impl Device {
             Device::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
-                if channel_num == state.curr_channel() {
+                if channel_num == state.curr_channel() || cache.from_loop {
                     for control in cache.all_controls() {
                         if let Control::PadStart(i, v) = control {
                             let index = i as usize;
@@ -179,60 +157,12 @@ impl Device {
                 avg.store(Voice::stereo(left, right));
                 avg.load()
             }
-            // Loops
-            Device::Loop {
-                input,
-                start_i,
-                frames,
-                tempo,
-                loop_state,
-                length,
-            } => {
-                let input = channel.next_from(channel_num, input, state, cache);
-                if start_i.load().is_none() {
-                    if input.is_silent() {
-                        return Voice::SILENT;
-                    } else {
-                        start_i.store(Some(state.i));
-                        println!("Started recording");
-                    }
-                }
-                let start_i = start_i.load().unwrap();
-                let period = state
-                    .loop_period
-                    .map(|p| (p as f32 * *length).round() as u32);
-
-                let raw_loop_i = state.i - start_i;
-                let loop_i = adjust_i(raw_loop_i, *tempo, state.tempo);
-
-                match loop_state {
-                    LoopState::Recording => {
-                        if let Some(period) = period {
-                            let mut frames = frames.lock();
-                            frames.resize(period as usize, Voice::SILENT);
-                            frames[(loop_i % period) as usize] = input;
-                        } else {
-                            frames.lock().push(input);
-                        }
-                        Voice::SILENT
-                    }
-                    LoopState::Playing => frames
-                        .lock()
-                        .get(
-                            (loop_i % period.expect("Loop is playing with no period set")) as usize,
-                        )
-                        .copied()
-                        .unwrap_or(Voice::SILENT),
-                    LoopState::Disabled => Voice::SILENT,
-                }
-            }
         }
     }
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&str> {
         match self {
             Device::Filter { input, .. } => vec![input],
-            Device::Loop { input, .. } => vec![input.as_str()],
             _ => Vec::new(),
         }
     }

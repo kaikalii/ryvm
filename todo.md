@@ -1,4 +1,4 @@
 # TODO
 
-- Knobs and Buttons
+- Button mappings
 - Audio input

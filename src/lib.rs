@@ -8,7 +8,7 @@ macro_rules! mods {
     ($($m:ident),*) => ($(mod $m; use $m::*;)*);
 }
 
-mods!(app, channel, device, drum, envelope, midi, parts, state, track, utility);
+mods!(app, channel, device, drum, envelope, r#loop, midi, parts, state, track, utility);
 
 use std::{sync::mpsc, thread, time::Duration};
 

@@ -3,6 +3,7 @@ use script::*;
 
 use std::{
     collections::{HashMap, HashSet},
+    iter::once,
     mem::{discriminant, swap},
     path::PathBuf,
 };
@@ -14,8 +15,8 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, parse_commands, Channel, CloneCell, CloneLock, Control, ControlId, Device,
-    DrumMachine, Enveloper, FilterCommand, FrameCache, LoopState, Midi, MidiSubcommand, OrString,
-    PadBounds, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
+    DrumMachine, Enveloper, FilterCommand, FrameCache, Loop, LoopState, Midi, MidiSubcommand,
+    OrString, PadBounds, RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -49,7 +50,7 @@ pub struct State {
     pub sample_rate: u32,
     pub tempo: f32,
     curr_channel: u8,
-    sample_queue: Option<f32>,
+    frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<(Vec<String>, clap::Result<RyvmCommand>)>,
     pub i: u32,
@@ -63,6 +64,7 @@ pub struct State {
     scripts: HashMap<String, Script>,
     mappings: HashMap<Mapping, String>,
     global_mappings: HashMap<GlobalMapping, String>,
+    loops: HashMap<String, Loop>,
 }
 
 impl Default for State {
@@ -71,7 +73,7 @@ impl Default for State {
         let mut instruments = State {
             sample_rate: app.sample_rate.unwrap_or(44100),
             tempo: 1.0,
-            sample_queue: None,
+            frame_queue: None,
             curr_channel: 0,
             channels: HashMap::new(),
             command_queue: Vec::new(),
@@ -86,6 +88,7 @@ impl Default for State {
             scripts: HashMap::new(),
             mappings: HashMap::new(),
             global_mappings: HashMap::new(),
+            loops: HashMap::new(),
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -128,46 +131,33 @@ impl State {
             self.i % (self.sample_rate / 5) == 0
         }
     }
-    pub fn insert_loop(&mut self, input: String, name: Option<String>, length: Option<f32>) {
-        let tempo = self.tempo;
-        let channel = self.channel();
+    pub fn insert_loop(&mut self, name: Option<String>, length: Option<f32>) {
         let name = name.unwrap_or_else(|| {
             let mut i = 1;
             loop {
                 let possible = format!("l{}", i);
-                if channel.get(&possible).is_none() {
+                if self.loops.get(&possible).is_none() {
                     break possible;
                 }
                 i += 1;
             }
         });
-        channel.insert_wrapper(input, name, |input| Device::Loop {
-            input,
-            start_i: CloneCell::new(None),
-            frames: CloneLock::new(Vec::new()),
-            tempo,
-            loop_state: LoopState::Recording,
-            length: length.unwrap_or(1.0),
-        });
+        self.loops
+            .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
     }
     pub fn stop_recording(&mut self) {
         let mut loop_period = self.loop_period;
         let mut loops_to_delete: Vec<String> = Vec::new();
-        for (name, device) in self.channel().names_devices_mut() {
-            if let Device::Loop {
-                loop_state, frames, ..
-            } = device
-            {
-                if let LoopState::Recording = loop_state {
-                    let len = frames.lock().len() as u32;
-                    if len > 0 {
-                        loop_period.get_or_insert(len);
-                        *loop_state = LoopState::Playing;
-                        println!("Finished recording {:?}", name);
-                    } else {
-                        loops_to_delete.push(name.clone());
-                        println!("Cancelled recording {:?}", name)
-                    }
+        for (name, lup) in self.loops.iter_mut() {
+            if let LoopState::Recording = lup.loop_state {
+                let len = lup.controls.lock().len() as u32;
+                if len > 0 {
+                    loop_period.get_or_insert(len);
+                    lup.loop_state = LoopState::Playing;
+                    println!("Finished recording {:?}", name);
+                } else {
+                    loops_to_delete.push(name.clone());
+                    println!("Cancelled recording {:?}", name)
                 }
             }
         }
@@ -345,11 +335,7 @@ impl State {
                     }
                 }
             }
-            RyvmCommand::Loop {
-                input,
-                name,
-                length,
-            } => self.insert_loop(input, name, length),
+            RyvmCommand::Loop { name, length } => self.insert_loop(name, length),
             RyvmCommand::Filter { input, value } => {
                 let channel = self.channel();
                 let mut i = 1;
@@ -362,41 +348,29 @@ impl State {
                 };
                 channel.insert_wrapper(input, filter_name, |input| Device::Filter {
                     input,
-                    value,
+                    value: value.unwrap_or(1.0),
                     avg: CloneCell::new(Voice::SILENT),
                 })
             }
             RyvmCommand::Play { names } => {
-                for (name, device) in self.channel().names_devices_mut() {
-                    if let Device::Loop { loop_state, .. } = device {
-                        if names.contains(name) {
-                            *loop_state = LoopState::Playing;
-                        }
+                for (name, lup) in self.loops.iter_mut() {
+                    if names.contains(name) {
+                        lup.loop_state = LoopState::Playing;
                     }
                 }
             }
             RyvmCommand::Stop { names, all, reset } => {
                 if reset {
-                    for channel in self.channels.values_mut() {
-                        channel.retain(|_, device| !matches!(device, Device::Loop{..}));
-                    }
+                    self.loops.clear();
                     self.loop_period = None;
                 } else if all {
-                    for channel in self.channels.values_mut() {
-                        for (name, device) in channel.names_devices_mut() {
-                            if let Device::Loop { loop_state, .. } = device {
-                                if names.contains(name) {
-                                    *loop_state = LoopState::Disabled;
-                                }
-                            }
-                        }
+                    for lup in self.loops.values_mut() {
+                        lup.loop_state = LoopState::Disabled;
                     }
                 } else {
-                    for (name, device) in self.channel().names_devices_mut() {
-                        if let Device::Loop { loop_state, .. } = device {
-                            if names.contains(name) {
-                                *loop_state = LoopState::Disabled;
-                            }
+                    for (name, lup) in self.loops.iter_mut() {
+                        if names.contains(name) {
+                            lup.loop_state = LoopState::Disabled;
                         }
                     }
                 }
@@ -429,14 +403,7 @@ impl State {
             }
             RyvmCommand::Rm { id, recursive } => {
                 self.channel().remove(&id, recursive);
-                fn channel_loops(channel: &Channel) -> impl Iterator<Item = &Device> {
-                    channel
-                        .devices()
-                        .filter(|device| matches!(device, Device::Loop {..}))
-                }
-                if self.channels.values().flat_map(channel_loops).count() == 0 {
-                    self.loop_period = None;
-                }
+                self.loops.remove(&id);
             }
             RyvmCommand::Load { name } => self.load_script(&name, true),
             RyvmCommand::Run { name, args } => {
@@ -606,7 +573,7 @@ impl Iterator for State {
     fn next(&mut self) -> Option<Self::Item> {
         // Process commands
         if let Some(period) = self.loop_period {
-            if self.i % period == 0 && self.sample_queue.is_none() {
+            if self.i % period == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
                 swap(&mut commands, &mut self.command_queue);
                 for (args, app) in commands {
@@ -614,72 +581,87 @@ impl Iterator for State {
                 }
             }
         }
-        // Get next sample
-        self.sample_queue
-            .take()
-            .map(|samp| {
-                self.i += 1;
-                samp
-            })
-            .or_else(|| {
-                // Init cache
-                let mut controls = HashMap::new();
-                let mut mappings = Vec::new();
-                // Get controls from midis
-                for (&port, midi) in self.midis.iter() {
-                    for (channel, control) in midi.controls() {
-                        // Check for Control::Control
-                        if let Control::Control(control, value) = control {
-                            // Collect mappings and global mappings
-                            let mapping = Mapping {
-                                port,
-                                channel: self.curr_channel,
-                                control,
-                            };
-                            if let Some(command) = self.mappings.get(&mapping).cloned() {
-                                mappings.push((value, command));
-                            }
-                            if let Some(command) = self
-                                .global_mappings
-                                .get(&GlobalMapping { port, control })
-                                .cloned()
-                            {
-                                mappings.push((value, command));
-                            }
+        // Get next frame
+        // Try the queue
+        if let Some(voice) = self.frame_queue.take() {
+            self.i += 1;
+            return Some(voice);
+        }
+        // Calculate next frame
+        // Map of port-channel pairs to control lists
+        let mut controls = HashMap::new();
+        // Get controls from midis
+        for (&port, midi) in self.midis.iter() {
+            for (channel, control) in midi.controls() {
+                // Collect control
+                controls
+                    .entry((port, channel))
+                    .or_insert_with(Vec::new)
+                    .push(control);
+            }
+        }
+        // Record loops
+        for lup in self.loops.values_mut() {
+            if lup.loop_state == LoopState::Recording {
+                lup.record(controls.clone(), self.i, self.tempo, self.loop_period);
+            }
+        }
+        let mut voice = Voice::SILENT;
+        let loop_controls: Vec<_> = self
+            .loops
+            .values()
+            .filter_map(|lup| lup.controls(self.i, self.tempo, self.loop_period))
+            .collect();
+        // Iterator through the main controls as well as all playing loop controls
+        for (i, controls) in once(controls).chain(loop_controls).enumerate() {
+            // List of invoked mappings
+            let mut mappings = Vec::new();
+            // Init cache
+            let mut cache = FrameCache {
+                voices: HashMap::new(),
+                controls,
+                visited: HashSet::new(),
+                from_loop: i != 0,
+            };
+            for (&(port, _), controls) in &cache.controls {
+                for &control in controls {
+                    // Check for Control::Control
+                    if let Control::Control(control, value) = control {
+                        // Collect mappings
+                        let mapping = Mapping {
+                            port,
+                            channel: self.curr_channel,
+                            control,
+                        };
+                        if let Some(command) = self.mappings.get(&mapping).cloned() {
+                            mappings.push((value, command));
                         }
-                        // Collect control
-                        controls
-                            .entry((port, channel))
-                            .or_insert_with(Vec::new)
-                            .push(control);
+                        // Collect global mappings
+                        if let Some(command) = self
+                            .global_mappings
+                            .get(&GlobalMapping { port, control })
+                            .cloned()
+                        {
+                            mappings.push((value, command));
+                        }
                     }
                 }
-                // Execute mappings
-                for (value, command) in mappings {
-                    self.run_mapping(value, command);
+            }
+            // Execute mappings
+            for (value, command) in mappings {
+                self.run_mapping(value, command);
+            }
+            // Mix output voices for each channel
+            for (&channel_num, channel) in self.channels.iter() {
+                let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
+                for name in outputs {
+                    cache.visited.clear();
+                    voice += channel.next_from(channel_num, &name, self, &mut cache) * 0.5;
                 }
-                let mut cache = FrameCache {
-                    voices: HashMap::new(),
-                    controls,
-                    visited: HashSet::new(),
-                };
-                // Mix output voices for each channel
-                let mut voice = Voice::SILENT;
-                for (&channel_num, channel) in self.channels.iter() {
-                    let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
-                    let pass_thrus: HashSet<String> = outputs
-                        .iter()
-                        .filter_map(|name| channel.pass_thru_of(name))
-                        .map(Into::into)
-                        .collect();
-                    for name in outputs.into_iter().chain(pass_thrus) {
-                        cache.visited.clear();
-                        voice += channel.next_from(channel_num, &name, self, &mut cache) * 0.5;
-                    }
-                }
-                self.sample_queue = Some(voice.right);
-                Some(voice.left)
-            })
+            }
+        }
+        self.frame_queue = Some(voice.right);
+        Some(voice.left)
     }
 }
 

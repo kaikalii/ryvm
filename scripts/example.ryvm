@@ -2,4 +2,7 @@ drums d
 drum -p kick.wav
 drum -p clap.wav
 drum -p hat.wav
-wave tri s
+wave sq s
+filter s
+balance s -v 0.7
+map 1 filter1

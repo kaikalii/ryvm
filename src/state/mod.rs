@@ -166,7 +166,16 @@ impl State {
         }
     }
     pub fn insert_loop(&mut self, name: Option<String>, length: Option<f32>) {
-        let name = name.unwrap_or_else(|| self.find_new_name("l"));
+        let name = name.unwrap_or_else(|| {
+            let mut i = 1;
+            loop {
+                let possible = format!("l{}", i);
+                if !self.loops.contains_key(&possible) {
+                    break possible;
+                }
+                i += 1;
+            }
+        });
         self.loops
             .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
     }

@@ -108,7 +108,7 @@ pub enum RyvmCommand {
         #[structopt(help = "The waveform to use")]
         waveform: WaveForm,
         #[structopt(help = "The name of the synthesizer")]
-        name: String,
+        name: Option<String>,
         #[structopt(
             long,
             short,
@@ -131,7 +131,7 @@ pub enum RyvmCommand {
     #[structopt(about = "Create a drum machine")]
     Drums {
         #[structopt(help = "The name of the drum machine")]
-        name: String,
+        name: Option<String>,
     },
     #[structopt(about = "Modify a drum machine")]
     Drum {

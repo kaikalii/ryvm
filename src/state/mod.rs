@@ -70,7 +70,7 @@ pub struct State {
 impl Default for State {
     fn default() -> Self {
         let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
-        let mut instruments = State {
+        let mut state = State {
             sample_rate: app.sample_rate.unwrap_or(44100),
             tempo: 1.0,
             frame_queue: None,
@@ -94,13 +94,13 @@ impl Default for State {
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
             let command_args = &["startup".to_string()];
             if let Err(e) =
-                instruments.run_script(command_args, "startup", script_args, unresolved_commands)
+                state.run_script(command_args, "startup", script_args, unresolved_commands)
             {
                 println!("{}", e);
             }
         }
 
-        instruments
+        state
     }
 }
 
@@ -131,17 +131,23 @@ impl State {
             self.i % (self.sample_rate / 5) == 0
         }
     }
-    pub fn insert_loop(&mut self, name: Option<String>, length: Option<f32>) {
-        let name = name.unwrap_or_else(|| {
-            let mut i = 1;
-            loop {
-                let possible = format!("l{}", i);
-                if self.loops.get(&possible).is_none() {
-                    break possible;
-                }
-                i += 1;
+    pub fn find_new_name(&self, base: &str) -> String {
+        let mut i = 1;
+        let channel = self.channels.get(&self.curr_channel);
+        loop {
+            let possible = format!("{}{}", base, i);
+            if channel
+                .as_ref()
+                .map(|channel| channel.get(&possible).is_none())
+                .unwrap_or(true)
+            {
+                break possible;
             }
-        });
+            i += 1;
+        }
+    }
+    pub fn insert_loop(&mut self, name: Option<String>, length: Option<f32>) {
+        let name = name.unwrap_or_else(|| self.find_new_name("l"));
         self.loops
             .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
     }
@@ -284,6 +290,7 @@ impl State {
                 release,
                 bend,
             } => {
+                let name = name.unwrap_or_else(|| self.find_new_name(&format!("{}", waveform)));
                 let default_adsr = ADSR::default();
                 let instr = Device::Wave(Box::new(Wave {
                     form: waveform,
@@ -303,6 +310,7 @@ impl State {
                 self.channel().insert(name, instr);
             }
             RyvmCommand::Drums { name } => {
+                let name = name.unwrap_or_else(|| self.find_new_name("drums"));
                 self.channel().insert(
                     name.clone(),
                     Device::DrumMachine(Box::new(DrumMachine {
@@ -337,15 +345,8 @@ impl State {
             }
             RyvmCommand::Loop { name, length } => self.insert_loop(name, length),
             RyvmCommand::Filter { input, value } => {
+                let filter_name = self.find_new_name("filter");
                 let channel = self.channel();
-                let mut i = 1;
-                let filter_name = loop {
-                    let possible = format!("filter{}", i);
-                    if channel.get(&possible).is_none() {
-                        break possible;
-                    }
-                    i += 1;
-                };
                 channel.insert_wrapper(input, filter_name, |input| Device::Filter {
                     input,
                     value: value.unwrap_or(1.0),

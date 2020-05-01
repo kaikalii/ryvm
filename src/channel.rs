@@ -134,10 +134,4 @@ impl FrameCache {
             .filter(move |((_, ch), _)| ch == &channel)
             .flat_map(|(_, controls)| controls.iter().copied())
     }
-    pub fn controls(&self, port: usize, channel: u8) -> impl Iterator<Item = Control> + '_ {
-        self.controls
-            .get(&(port, channel))
-            .into_iter()
-            .flat_map(|controls| controls.iter().copied())
-    }
 }

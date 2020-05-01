@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use midir::{Ignore, MidiInput, MidiInputConnection};
 use send_wrapper::SendWrapper;
@@ -74,7 +74,6 @@ pub struct Midi {
     conn: Arc<SendWrapper<MidiInputConnection<ControlQueue>>>,
     queue: ControlQueue,
     manual: bool,
-    control_names: HashMap<String, u8>,
 }
 
 impl Midi {
@@ -104,7 +103,6 @@ impl Midi {
         name: Option<String>,
         manual: bool,
         pad: Option<PadBounds>,
-        control_names: HashMap<String, u8>,
     ) -> Result<Midi, String> {
         let client_name = name.clone().unwrap_or_else(|| format!("midi{}", port));
         let mut midi_in = MidiInput::new(&client_name).map_err(|e| e.to_string())?;
@@ -132,21 +130,10 @@ impl Midi {
             conn: Arc::new(SendWrapper::new(conn)),
             queue,
             manual,
-            control_names,
         })
     }
-    pub fn controls(&self) -> HashMap<u8, Vec<Control>> {
-        let mut controls = HashMap::new();
-        for (channel, control) in self.queue.lock().drain(..) {
-            controls
-                .entry(channel)
-                .or_insert_with(Vec::new)
-                .push(control);
-        }
-        controls
-    }
-    pub fn resolve_control_name(&self, name: &str) -> Option<u8> {
-        self.control_names.get(name).copied()
+    pub fn controls(&self) -> impl Iterator<Item = (u8, Control)> {
+        self.queue.lock().drain(..).collect::<Vec<_>>().into_iter()
     }
 }
 

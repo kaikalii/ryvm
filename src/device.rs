@@ -3,8 +3,8 @@ use std::{f32::consts::PI, path::PathBuf};
 use rand::random;
 
 use crate::{
-    adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, ControlId, DynInput,
-    Enveloper, FrameCache, OrString, State, Voice, WaveForm, ADSR,
+    adjust_i, ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State,
+    Voice, WaveForm, ADSR,
 };
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub enum Device {
     DrumMachine(Box<DrumMachine>),
     Filter {
         input: String,
-        value: DynInput<f32, ControlId>,
+        value: f32,
         avg: CloneCell<Voice>,
     },
     Loop {
@@ -171,46 +171,7 @@ impl Device {
             // Filters
             Device::Filter { input, value, avg } => {
                 // Determine the factor used to maintain the running average
-                let avg_factor = match value {
-                    DynInput::First(f) => *f,
-                    DynInput::Second(ControlId {
-                        controller,
-                        control,
-                    }) => {
-                        let port = match controller {
-                            Some(controller) => match controller {
-                                OrString::First(port) => Some(*port),
-                                OrString::Second(name) => state.resolve_controller_name(name),
-                            },
-                            None => state.default_midi,
-                        };
-                        if let Some((port, midi)) =
-                            port.and_then(|port| state.midis.get(&port).map(|midi| (port, midi)))
-                        {
-                            let control = match control {
-                                OrString::First(con) => Some(*con),
-                                OrString::Second(name) => midi.resolve_control_name(name),
-                            };
-                            if let Some(control) = control {
-                                cache
-                                    .controls(port, channel_num)
-                                    .filter_map(|con| match con {
-                                        Control::Controller(con, val) if con == control => {
-                                            Some(val as f32 / 127.0)
-                                        }
-                                        _ => None,
-                                    })
-                                    .last()
-                                    .unwrap_or(1.0)
-                            } else {
-                                1.0
-                            }
-                        } else {
-                            1.0
-                        }
-                    }
-                }
-                .powf(2.0);
+                let avg_factor = value.powf(2.0);
                 // Get the input channels
                 let frame = channel.next_from(channel_num, input, state, cache);
                 let left = avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;

@@ -11,8 +11,8 @@ use structopt::{clap, StructOpt};
 
 use crate::{
     load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, OrString, PadBounds, RyvmApp, RyvmCommand, Sample,
-    Script, SourceLock, Voice, Wave, WaveCommand, ADSR,
+    FrameCache, LoopState, Midi, MidiSubcommand, PadBounds, RyvmApp, RyvmCommand, Sample, Script,
+    SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -107,18 +107,6 @@ impl State {
             self.i % (period / 10) == 0
         } else {
             self.i % (self.sample_rate / 5) == 0
-        }
-    }
-    pub fn resolve_controller_name(&self, name: &str) -> Option<usize> {
-        self.midi_names.get(name).copied()
-    }
-    pub fn get_controller(&self, controller_id: &OrString<usize>) -> Option<&Midi> {
-        match controller_id {
-            OrString::First(port) => self.midis.get(port),
-            OrString::Second(name) => self
-                .midi_names
-                .get(name)
-                .and_then(|port| self.midis.get(port)),
         }
     }
     pub fn insert_loop(&mut self, input: String, name: Option<String>, length: Option<f32>) {
@@ -256,7 +244,7 @@ impl State {
                     } else {
                         None
                     };
-                    match Midi::new(port, name.clone(), manual, pad, HashMap::new()) {
+                    match Midi::new(port, name.clone(), manual, pad) {
                         Ok(midi) => {
                             if self.midis.remove(&port).is_some() {
                                 println!("Reinitialized midi {}", port);
@@ -632,11 +620,11 @@ impl Iterator for State {
                 // Init cache
                 let mut controls = HashMap::new();
                 for (port, midi) in self.midis.iter() {
-                    for (channel, ch_controls) in midi.controls() {
+                    for (channel, control) in midi.controls() {
                         controls
                             .entry((*port, channel))
                             .or_insert_with(Vec::new)
-                            .extend(ch_controls);
+                            .push(control);
                     }
                 }
                 let mut cache = FrameCache {

@@ -13,9 +13,9 @@ use rodio::Source;
 use structopt::{clap, StructOpt};
 
 use crate::{
-    load_script, Channel, CloneCell, CloneLock, Device, DrumMachine, Enveloper, FilterCommand,
-    FrameCache, LoopState, Midi, MidiSubcommand, PadBounds, RyvmApp, RyvmCommand, Sample,
-    SourceLock, Voice, Wave, WaveCommand, ADSR,
+    load_script, parse_commands, Channel, CloneCell, CloneLock, Control, Device, DrumMachine,
+    Enveloper, FilterCommand, FrameCache, LoopState, Midi, MidiSubcommand, OrString, PadBounds,
+    RyvmApp, RyvmCommand, Sample, SourceLock, Voice, Wave, WaveCommand, ADSR,
 };
 
 #[derive(Default)]
@@ -49,6 +49,7 @@ pub struct State {
     pub default_midi: Option<usize>,
     new_script_stack: Vec<Script>,
     scripts: HashMap<String, Script>,
+    mappings: HashMap<u8, String>,
 }
 
 impl Default for State {
@@ -70,6 +71,7 @@ impl Default for State {
             default_midi: None,
             new_script_stack: Vec::new(),
             scripts: HashMap::new(),
+            mappings: HashMap::new(),
         };
 
         if let Some((script_args, unresolved_commands)) = load_script("startup.ryvm") {
@@ -427,6 +429,13 @@ impl State {
                 }
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
+            RyvmCommand::Map { control, command } => {
+                let control = match control {
+                    OrString::First(con) => con,
+                    OrString::Second(_) => todo!(),
+                };
+                self.mappings.insert(control, command);
+            }
         }
     }
     fn process_instr_command(&mut self, name: String, args: Vec<String>) -> Result<(), String> {
@@ -524,6 +533,16 @@ impl State {
             println!();
         }
     }
+    fn run_mapping(&mut self, value: u8, mut command: String) {
+        let f = value as f32 / 127.0;
+        command.push_str(&format!(" {}", f));
+        if let Some(commands) = parse_commands(&command) {
+            for (delay, args) in commands {
+                let app = RyvmCommand::from_iter_safe(&args);
+                self.queue_command(delay, args, app);
+            }
+        }
+    }
 }
 
 impl Iterator for State {
@@ -549,13 +568,22 @@ impl Iterator for State {
             .or_else(|| {
                 // Init cache
                 let mut controls = HashMap::new();
+                let mut mappings = Vec::new();
                 for (port, midi) in self.midis.iter() {
                     for (channel, control) in midi.controls() {
+                        if let Control::Controller(index, value) = control {
+                            if let Some(command) = self.mappings.get(&index).cloned() {
+                                mappings.push((value, command));
+                            }
+                        }
                         controls
                             .entry((*port, channel))
                             .or_insert_with(Vec::new)
                             .push(control);
                     }
+                }
+                for (value, command) in mappings {
+                    self.run_mapping(value, command);
                 }
                 let mut cache = FrameCache {
                     voices: HashMap::new(),

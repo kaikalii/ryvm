@@ -42,6 +42,8 @@ where
     }
 }
 
+pub type OrString<N> = DynInput<N, String>;
+
 /// A Ryvm CLI command
 #[derive(Debug, StructOpt)]
 pub enum RyvmCommand {
@@ -178,6 +180,11 @@ pub enum RyvmCommand {
     Ch {
         #[structopt(help = "The channel to set")]
         channel: u8,
+    },
+    #[structopt(about = "Create a control mapping")]
+    Map {
+        control: OrString<u8>,
+        command: String,
     },
 }
 

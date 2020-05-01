@@ -14,6 +14,21 @@ pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
     (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
 }
 
+pub fn parse_commands(text: &str) -> Option<Vec<(bool, Vec<String>)>> {
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(
+            text.split(',')
+                .map(|text| {
+                    let (delay, parsed) = parse_args(text.trim());
+                    (delay, once("ryvm".into()).chain(parsed).collect::<Vec<_>>())
+                })
+                .collect(),
+        )
+    }
+}
+
 pub fn parse_args(s: &str) -> (bool, Vec<String>) {
     let mut args = Vec::new();
     let mut in_quotes = false;

@@ -10,7 +10,7 @@ macro_rules! mods {
 
 mods!(app, channel, device, drum, envelope, midi, parts, state, track, utility);
 
-use std::{iter::once, sync::mpsc, thread, time::Duration};
+use std::{sync::mpsc, thread, time::Duration};
 
 use structopt::StructOpt;
 
@@ -43,19 +43,17 @@ impl Ryvm {
             'main_loop: loop {
                 // Read commands
                 if let Ok(text) = recv.try_recv() {
-                    if text.trim().is_empty() {
+                    if let Some(commands) = parse_commands(&text) {
+                        for (delay, args) in commands {
+                            let app = RyvmCommand::from_iter_safe(&args);
+                            if let Ok(RyvmCommand::Quit) = &app {
+                                break 'main_loop;
+                            }
+                            state.update(|state| state.queue_command(delay, args, app));
+                        }
+                    } else {
                         state.update(State::stop_recording);
                         continue;
-                    }
-                    for (delay, args) in text.split(',').map(|text| {
-                        let (delay, parsed) = parse_args(text.trim());
-                        (delay, once("ryvm".into()).chain(parsed).collect::<Vec<_>>())
-                    }) {
-                        let app = RyvmCommand::from_iter_safe(&args);
-                        if let Ok(RyvmCommand::Quit) = &app {
-                            break 'main_loop;
-                        }
-                        state.update(|state| state.queue_command(delay, args, app));
                     }
                 }
                 // Sleep

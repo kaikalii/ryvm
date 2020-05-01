@@ -65,12 +65,13 @@ type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
 pub struct PadBounds {
     pub channel: u8,
     pub start: u8,
+    pub end: u8,
 }
 
 #[derive(Clone)]
 pub struct Midi {
     port: usize,
-    name: Option<String>,
+    name: String,
     conn: Arc<SendWrapper<MidiInputConnection<ControlQueue>>>,
     queue: ControlQueue,
     manual: bool,
@@ -99,13 +100,12 @@ impl Midi {
         Ok(None)
     }
     pub fn new(
+        name: String,
         port: usize,
-        name: Option<String>,
         manual: bool,
         pad: Option<PadBounds>,
     ) -> Result<Midi, String> {
-        let client_name = name.clone().unwrap_or_else(|| format!("midi{}", port));
-        let mut midi_in = MidiInput::new(&client_name).map_err(|e| e.to_string())?;
+        let mut midi_in = MidiInput::new(&name).map_err(|e| e.to_string())?;
         midi_in.ignore(Ignore::None);
 
         let queue = Arc::new(CloneLock::new(Vec::new()));
@@ -114,7 +114,7 @@ impl Midi {
         let conn = midi_in
             .connect(
                 port,
-                &client_name,
+                &name,
                 move |_, data, queue| {
                     if let Some(control) = Control::decode(data, pad) {
                         queue.lock().push(control);
@@ -139,10 +139,6 @@ impl Midi {
 
 impl fmt::Debug for Midi {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.name.as_ref().unwrap_or(&format!("midi{}", self.port))
-        )
+        write!(f, "{}", self.name)
     }
 }

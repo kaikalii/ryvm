@@ -13,8 +13,6 @@ pub enum DynamicValue {
     Control {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         controller: Optional<String>,
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        channel: Optional<u8>,
         number: u8,
         #[serde(default, skip_serializing_if = "Not::not")]
         global: bool,

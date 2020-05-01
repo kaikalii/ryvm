@@ -1,0 +1,7 @@
+{
+    "midi": controller(
+        pad_channel: 9,
+        pad_range: (36, 52)
+    ),
+    "load": load(["example"])
+}

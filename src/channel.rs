@@ -34,12 +34,12 @@ impl Channel {
             .map(AsRef::as_ref)
             .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
     }
-    // pub fn retain<F>(&mut self, f: F)
-    // where
-    //     F: FnMut(&String, &mut Device) -> bool,
-    // {
-    //     self.devices.retain(f)
-    // }
+    pub fn retain<F>(&mut self, f: F)
+    where
+        F: FnMut(&String, &mut Device) -> bool,
+    {
+        self.devices.retain(f)
+    }
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(device) = self.get(name) {
             if recursive {

@@ -1,7 +1,10 @@
-use std::{f32::consts::PI, path::PathBuf};
+use std::{
+    f32::consts::{FRAC_2_PI, PI},
+    path::PathBuf,
+};
 
 use rand::random;
-use ryvm_spec::WaveForm;
+use ryvm_spec::{DynamicValue, WaveForm};
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State, Voice,
@@ -11,17 +14,9 @@ use crate::{
 #[derive(Debug)]
 pub enum Device {
     Wave(Box<Wave>),
-    DrumMachine(Box<DrumMachine>),
-    Filter {
-        input: String,
-        value: f32,
-        avg: CloneCell<Voice>,
-    },
-    Balance {
-        input: String,
-        pan: f32,
-        volume: f32,
-    },
+    DrumMachine(DrumMachine),
+    Filter(Filter),
+    Balance(Balance),
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +36,20 @@ pub struct DrumMachine {
     pub(crate) samplings: CloneLock<Vec<ActiveSampling>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Filter {
+    pub input: String,
+    pub value: DynamicValue,
+    pub avg: CloneCell<Voice>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Balance {
+    pub input: String,
+    pub volume: DynamicValue,
+    pub pan: DynamicValue,
+}
+
 impl Device {
     pub fn default_wave(form: WaveForm) -> Self {
         Device::Wave(Box::new(Wave {
@@ -54,10 +63,24 @@ impl Device {
         }))
     }
     pub fn default_drum_machine() -> Self {
-        Device::DrumMachine(Box::new(DrumMachine {
+        Device::DrumMachine(DrumMachine {
             samples: Vec::new(),
             samplings: CloneLock::new(Vec::new()),
-        }))
+        })
+    }
+    pub fn default_filter(input: String, value: DynamicValue) -> Self {
+        Device::Filter(Filter {
+            input,
+            value,
+            avg: CloneCell::new(Voice::SILENT),
+        })
+    }
+    pub fn default_balance(input: String) -> Self {
+        Device::Balance(Balance {
+            input,
+            volume: DynamicValue::Static(1.0),
+            pan: DynamicValue::Static(0.0),
+        })
     }
     pub fn next(
         &self,
@@ -113,7 +136,9 @@ impl Device {
                             WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
                             WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
                             WaveForm::Noise => random::<f32>() % 2.0 - 1.0,
-                        } * amp;
+                        } * amp
+                            * MIN_ENERGY
+                            / waveform_energy(*form);
                         *i = (*i + 1) % spc as u32;
                         Voice::mono(s)
                     })
@@ -158,24 +183,34 @@ impl Device {
                 mixed
             }
             // Filters
-            Device::Filter { input, value, avg } => {
+            Device::Filter(filter) => {
                 // Determine the factor used to maintain the running average
-                let avg_factor = value.powf(2.0);
+                let avg_factor = state
+                    .resolve_dynamic_value(&filter.value, channel_num)
+                    .unwrap_or(1.0)
+                    .powf(2.0);
                 // Get the input channels
-                let frame = channel.next_from(channel_num, input, state, cache);
-                let left = avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;
-                let right = avg.load().right * (1.0 - avg_factor) + frame.right * avg_factor;
-                avg.store(Voice::stereo(left, right));
-                avg.load()
+                let frame = channel.next_from(channel_num, &filter.input, state, cache);
+                let left = filter.avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;
+                let right = filter.avg.load().right * (1.0 - avg_factor) + frame.right * avg_factor;
+                filter.avg.store(Voice::stereo(left, right));
+                filter.avg.load()
             }
             // Balance
-            Device::Balance { input, pan, volume } => {
-                let frame = channel.next_from(channel_num, input, state, cache);
-                let pan = Voice::stereo(
-                    (1.0 + *pan).min(1.0).max(0.0),
-                    (1.0 - *pan).min(1.0).max(0.0),
-                );
+            Device::Balance(bal) => {
+                let frame = channel.next_from(channel_num, &bal.input, state, cache);
+
+                let volume = state
+                    .resolve_dynamic_value(&bal.volume, channel_num)
+                    .unwrap_or(0.0);
+                let pan = state
+                    .resolve_dynamic_value(&bal.pan, channel_num)
+                    .unwrap_or(0.0);
+
+                let pan =
+                    Voice::stereo((1.0 + pan).min(1.0).max(0.0), (1.0 - pan).min(1.0).max(0.0));
                 let volume = volume.min(1.0).max(-1.0);
+
                 frame * pan * volume
             }
         }
@@ -183,8 +218,22 @@ impl Device {
     /// Get a list of this instrument's inputs
     pub fn inputs(&self) -> Vec<&str> {
         match self {
-            Device::Filter { input, .. } | Device::Balance { input, .. } => vec![input],
+            Device::Filter(Filter { input, .. }) | Device::Balance(Balance { input, .. }) => {
+                vec![input]
+            }
             _ => Vec::new(),
         }
+    }
+}
+
+const MIN_ENERGY: f32 = 0.5;
+
+fn waveform_energy(form: WaveForm) -> f32 {
+    match form {
+        WaveForm::Sine => FRAC_2_PI,
+        WaveForm::Square => 1.0,
+        WaveForm::Saw => 0.5,
+        WaveForm::Triangle => 0.5,
+        WaveForm::Noise => 0.5,
     }
 }

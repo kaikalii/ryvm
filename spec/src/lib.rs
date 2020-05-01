@@ -8,6 +8,16 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Spec {
+    Load(Vec<String>),
+    Controller {
+        port: Option<usize>,
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        pad_channel: Optional<u8>,
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        pad_range: Optional<(u8, u8)>,
+        #[serde(default, skip_serializing_if = "Clone::clone")]
+        manual: bool,
+    },
     Wave {
         form: WaveForm,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
@@ -30,7 +40,6 @@ pub enum Spec {
     },
     Balance {
         input: String,
-        value: DynamicValue,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         volume: Optional<DynamicValue>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
@@ -69,7 +78,6 @@ fn example() {
             input: "drums".into(),
             value: DynamicValue::Control {
                 controller: Omitted,
-                channel: Supplied(0),
                 number: 28,
                 global: false,
                 bounds: (0.0, 1.0),

@@ -1,3 +1,15 @@
 {
-    "s": wave(form: square)
+    "s": wave(
+        form: square,
+        bend: 0.3
+    ),
+    "filter": filter(
+        input: "s",
+        value: control(number: 1)
+    ),
+    "bal": balance(
+        input: "filter",
+        pan: control(number: 28, bounds: (-1.0, 1.0))
+    ),
+    "d": drums(["kick.wav", "clap.wav", "hat.wav"])
 }

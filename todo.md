@@ -1,6 +1,4 @@
 # TODO
 
-- File watcher for specs
-- Button controls
-- Spec cloning
+- Button mappings
 - Audio input

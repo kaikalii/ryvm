@@ -177,7 +177,7 @@ impl State {
                 pad_range,
                 manual,
             } => {
-                let port = port.or_else(|| match Midi::first_device() {
+                let port = Option::from(port).or_else(|| match Midi::first_device() {
                     Ok(p) => p,
                     Err(e) => {
                         println!("{}", e);
@@ -441,13 +441,18 @@ impl Iterator for State {
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
         // Get controls from midis
-        for (&port, midi) in self.midis.iter() {
-            for (channel, control) in midi.controls() {
-                // Collect control
-                controls
-                    .entry((port, channel))
-                    .or_insert_with(Vec::new)
-                    .push(control);
+        for (&port, midi) in self.midis.iter_mut() {
+            match midi.controls() {
+                Ok(new_controls) => {
+                    for (channel, control) in new_controls {
+                        // Collect control
+                        controls
+                            .entry((port, channel))
+                            .or_insert_with(Vec::new)
+                            .push(control);
+                    }
+                }
+                Err(e) => println!("{}", e),
             }
         }
         // Record loops

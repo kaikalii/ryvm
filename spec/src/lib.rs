@@ -10,7 +10,7 @@ use serde_derive::{Deserialize, Serialize};
 pub enum Spec {
     Load(Vec<String>),
     Controller {
-        port: Option<usize>,
+        port: Optional<usize>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pad_channel: Optional<u8>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]

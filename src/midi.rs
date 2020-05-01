@@ -1,7 +1,9 @@
-use std::{fmt, sync::Arc};
+use std::{error::Error, fmt, sync::Arc};
 
-use midir::{Ignore, MidiInput, MidiInputConnection};
-use send_wrapper::SendWrapper;
+use midir::{
+    ConnectError, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
+    MidiOutputConnection, PortInfoError, SendError,
+};
 
 use crate::{CloneLock, Letter};
 
@@ -59,7 +61,6 @@ impl Control {
         Some((channel, control))
     }
 }
-type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
 
 #[derive(Clone, Copy)]
 pub struct PadBounds {
@@ -68,18 +69,61 @@ pub struct PadBounds {
     pub end: u8,
 }
 
-#[derive(Clone)]
+type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
+
+#[derive(Debug)]
+pub enum MidiError {
+    Init(InitError),
+    InputConnect(ConnectError<MidiInput>),
+    OutputConnect(ConnectError<MidiOutput>),
+    Send(SendError),
+    PortInfo(PortInfoError),
+}
+
+impl fmt::Display for MidiError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MidiError::Init(e) => write!(f, "{}", e),
+            MidiError::InputConnect(e) => write!(f, "{}", e),
+            MidiError::OutputConnect(e) => write!(f, "{}", e),
+            MidiError::Send(e) => write!(f, "{}", e),
+            MidiError::PortInfo(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+macro_rules! midi_error_from {
+    ($variant:ident, $type:ty) => {
+        impl From<$type> for MidiError {
+            fn from(e: $type) -> Self {
+                MidiError::$variant(e)
+            }
+        }
+    };
+}
+
+midi_error_from!(Init, InitError);
+midi_error_from!(InputConnect, ConnectError<MidiInput>);
+midi_error_from!(OutputConnect, ConnectError<MidiOutput>);
+midi_error_from!(Send, SendError);
+midi_error_from!(PortInfo, PortInfoError);
+
+impl Error for MidiError {}
+
+#[allow(dead_code)]
 pub struct Midi {
     port: usize,
     name: String,
-    conn: Arc<SendWrapper<MidiInputConnection<ControlQueue>>>,
+    input: MidiInputConnection<ControlQueue>,
+    output: MidiOutputConnection,
     queue: ControlQueue,
     manual: bool,
+    pad: Option<PadBounds>,
 }
 
 impl Midi {
-    pub fn ports_list() -> Result<Vec<String>, String> {
-        let midi_in = MidiInput::new("").map_err(|e| e.to_string())?;
+    pub fn ports_list() -> Result<Vec<String>, InitError> {
+        let midi_in = MidiInput::new("")?;
         Ok((0..midi_in.port_count())
             .map(|i| {
                 midi_in
@@ -88,7 +132,7 @@ impl Midi {
             })
             .collect())
     }
-    pub fn first_device() -> Result<Option<usize>, String> {
+    pub fn first_device() -> Result<Option<usize>, InitError> {
         for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
             if !["thru", "through"]
                 .iter()
@@ -104,36 +148,41 @@ impl Midi {
         port: usize,
         manual: bool,
         pad: Option<PadBounds>,
-    ) -> Result<Midi, String> {
-        let mut midi_in = MidiInput::new(&name).map_err(|e| e.to_string())?;
-        midi_in.ignore(Ignore::None);
+    ) -> Result<Midi, MidiError> {
+        let mut midi_in = MidiInput::new(&name)?;
+        midi_in.ignore(Ignore::Time);
+        let midi_out = MidiOutput::new(&name)?;
+
+        assert_eq!(midi_in.port_name(port)?, midi_out.port_name(port)?);
 
         let queue = Arc::new(CloneLock::new(Vec::new()));
         let queue_clone = Arc::clone(&queue);
 
-        let conn = midi_in
-            .connect(
-                port,
-                &name,
-                move |_, data, queue| {
-                    if let Some(control) = Control::decode(data, pad) {
-                        queue.lock().push(control);
-                    }
-                },
-                queue_clone,
-            )
-            .map_err(|e| e.to_string())?;
+        let input = midi_in.connect(
+            port,
+            &name,
+            move |_, data, queue| {
+                if let Some(control) = Control::decode(data, pad) {
+                    queue.lock().push(control);
+                }
+            },
+            queue_clone,
+        )?;
+
+        let output = midi_out.connect(port, &name)?;
 
         Ok(Midi {
             port,
             name,
-            conn: Arc::new(SendWrapper::new(conn)),
+            input,
+            output,
             queue,
             manual,
+            pad,
         })
     }
-    pub fn controls(&self) -> impl Iterator<Item = (u8, Control)> {
-        self.queue.lock().drain(..).collect::<Vec<_>>().into_iter()
+    pub fn controls(&mut self) -> Result<impl Iterator<Item = (u8, Control)>, SendError> {
+        Ok(self.queue.lock().drain(..).collect::<Vec<_>>().into_iter())
     }
 }
 

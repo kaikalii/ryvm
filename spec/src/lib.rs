@@ -6,7 +6,6 @@ This crate defines the Ryvm specification format. RON files satisfying the `Spec
 
 mod parts;
 pub use parts::*;
-pub mod file;
 
 use std::path::PathBuf;
 

@@ -1,7 +1,8 @@
 {
     "s": wave(
         form: square,
-        bend: 0.3
+        bend: static(0.3),
+        attack: control(number: 27)
     ),
     "filter": filter(
         input: "s",

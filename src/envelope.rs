@@ -4,14 +4,39 @@ use crate::{Control, Letter};
 
 /// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ADSR {
-    pub attack: f32,
-    pub decay: f32,
-    pub sustain: f32,
-    pub release: f32,
+pub struct ADSR<T> {
+    pub attack: T,
+    pub decay: T,
+    pub sustain: T,
+    pub release: T,
 }
 
-impl Default for ADSR {
+impl<T> ADSR<T> {
+    pub fn map<F, U>(&self, mut f: F) -> ADSR<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        ADSR {
+            attack: f(&self.attack),
+            decay: f(&self.decay),
+            sustain: f(&self.sustain),
+            release: f(&self.release),
+        }
+    }
+    pub fn map_or_default<F>(&self, mut f: F) -> ADSR<f32>
+    where
+        F: FnMut(&T) -> Option<f32>,
+    {
+        ADSR {
+            attack: f(&self.attack).unwrap_or_else(|| ADSR::default().attack),
+            decay: f(&self.decay).unwrap_or_else(|| ADSR::default().decay),
+            sustain: f(&self.sustain).unwrap_or_else(|| ADSR::default().sustain),
+            release: f(&self.release).unwrap_or_else(|| ADSR::default().release),
+        }
+    }
+}
+
+impl Default for ADSR<f32> {
     fn default() -> Self {
         ADSR {
             attack: 0.05,
@@ -81,7 +106,7 @@ impl Enveloper {
         sample_rate: u32,
         base_octave: i8,
         bend_range: f32,
-        adsr: ADSR,
+        adsr: ADSR<f32>,
     ) -> impl Iterator<Item = (f32, f32)> + '_ {
         self.states
             .iter()

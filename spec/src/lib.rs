@@ -6,6 +6,7 @@ This crate defines the Ryvm specification format. RON files satisfying the `Spec
 
 mod parts;
 pub use parts::*;
+pub mod file;
 
 use std::path::PathBuf;
 
@@ -40,19 +41,19 @@ pub enum Spec {
         octave: Optional<i8>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         /// The envelope attack
-        attack: Optional<f32>,
+        attack: Optional<DynamicValue>,
         /// The envelope decay
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        decay: Optional<f32>,
+        decay: Optional<DynamicValue>,
         /// The envelope sustain
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        sustain: Optional<f32>,
+        sustain: Optional<DynamicValue>,
         /// The envelope release
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        release: Optional<f32>,
+        release: Optional<DynamicValue>,
         /// The +- pitch bend range in semitones
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        bend: Optional<f32>,
+        bend: Optional<DynamicValue>,
     },
     /// A drum machine with a list of paths to sample files
     Drums(Vec<PathBuf>),

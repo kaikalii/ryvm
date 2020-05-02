@@ -15,7 +15,7 @@ use crate::{
 #[derive(Debug)]
 pub enum Device {
     /// A wave synthesizer
-    Wave(Wave),
+    Wave(Box<Wave>),
     /// A drum machine
     DrumMachine(DrumMachine),
     /// A low-pass filter
@@ -33,9 +33,9 @@ pub struct Wave {
     /// The octave
     pub octave: Option<i8>,
     /// The +- range for pitch bending
-    pub pitch_bend_range: f32,
+    pub pitch_bend_range: DynamicValue,
     /// The attack-decay-sustain-release envelope
-    pub adsr: ADSR,
+    pub adsr: ADSR<DynamicValue>,
     pub(crate) enveloper: CloneLock<Enveloper>,
 }
 
@@ -70,14 +70,14 @@ pub struct Balance {
 impl Device {
     /// Create a new wave
     pub fn new_wave(form: WaveForm) -> Self {
-        Device::Wave(Wave {
+        Device::Wave(Box::new(Wave {
             form,
             octave: None,
-            pitch_bend_range: 12.0,
-            adsr: ADSR::default(),
+            pitch_bend_range: DynamicValue::Static(12.0),
+            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
             enveloper: CloneLock::new(Enveloper::default()),
             waves: CloneLock::new(vec![0; 10]),
-        })
+        }))
     }
     /// Create a new drum machine
     pub fn new_drum_machine() -> Self {
@@ -113,26 +113,23 @@ impl Device {
         match self {
             // Waves
             Device::Wave(wave) => {
-                let Wave {
-                    form,
-                    octave,
-                    pitch_bend_range,
-                    adsr,
-                    waves,
-                    enveloper,
-                    ..
-                } = wave;
                 // Ensure that waves is initialized
-                let mut waves = waves.lock();
+                let mut waves = wave.waves.lock();
 
-                let mut enveloper = enveloper.lock();
+                let mut enveloper = wave.enveloper.lock();
                 enveloper.register(cache.channel_controls(channel_num));
+                let adsr = wave
+                    .adsr
+                    .map_or_default(|value| state.resolve_dynamic_value(value, channel_num));
+                let pitch_bend_range = state
+                    .resolve_dynamic_value(&wave.pitch_bend_range, channel_num)
+                    .unwrap_or(12.0);
                 let voice = enveloper
                     .states(
                         state.sample_rate,
-                        octave.unwrap_or(0),
-                        *pitch_bend_range,
-                        *adsr,
+                        wave.octave.unwrap_or(0),
+                        pitch_bend_range,
+                        adsr,
                     )
                     .zip(&mut *waves)
                     .map(|((freq, amp), i)| {
@@ -142,7 +139,7 @@ impl Device {
                         // spc = samples per cycle
                         let spc = state.sample_rate as f32 / freq;
                         let t = *i as f32 / spc;
-                        let s = match form {
+                        let s = match wave.form {
                             WaveForm::Sine => (t * 2.0 * PI).sin(),
                             WaveForm::Square => {
                                 if t < 0.5 {
@@ -156,7 +153,7 @@ impl Device {
                             WaveForm::Noise => random::<f32>() % 2.0 - 1.0,
                         } * amp
                             * MIN_ENERGY
-                            / waveform_energy(*form);
+                            / waveform_energy(wave.form);
                         *i = (*i + 1) % spc as u32;
                         Voice::mono(s)
                     })

@@ -1,6 +1,6 @@
 # TODO
 
-- Spec::Load returns spec
 - Button controls
+- On-the-fly control mapping
 - Spec cloning
 - Audio input

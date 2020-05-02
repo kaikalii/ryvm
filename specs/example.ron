@@ -11,6 +11,7 @@
     "bal": balance(
         input: "filter",
         pan: control(number: 28, bounds: (-1.0, 1.0)),
+        volume: static(0.7)
     ),
     "d": drums(["kick.wav", "clap.wav", "hat.wav"])
 }

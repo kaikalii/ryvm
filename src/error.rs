@@ -39,6 +39,8 @@ ryvm_error!(
     Deserialization(ron::de::Error),
     /// A command line error
     CLI(clap::Error),
+    /// An error with the file watcher
+    Notify(notify::Error),
 
     also
 

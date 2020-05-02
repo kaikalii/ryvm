@@ -4,17 +4,19 @@ use std::{
     iter::once,
     mem::{discriminant, swap},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use itertools::Itertools;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use outsource::{JobDescription, Outsourcer};
 use rodio::Source;
 use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Channel, Control, Device, FrameCache, Loop, LoopState, Midi, PadBounds,
-    RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice,
+    parse_commands, Channel, CloneLock, Control, Device, FrameCache, Loop, LoopState, Midi,
+    PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice,
 };
 
 #[derive(Default)]
@@ -32,7 +34,6 @@ impl JobDescription<PathBuf> for LoadSamples {
 }
 
 /// The main Ryvm state manager
-#[derive(Debug)]
 pub struct State {
     pub(crate) sample_rate: u32,
     pub(crate) tempo: f32,
@@ -49,12 +50,20 @@ pub struct State {
     loops: HashMap<String, Loop>,
     controls: HashMap<(usize, u8, u8), u8>,
     global_controls: HashMap<(usize, u8), u8>,
+    tracked_spec_maps: HashMap<PathBuf, u8>,
+    watcher: RecommendedWatcher,
+    watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
 }
 
 impl State {
     /// Create a new state
     pub fn new() -> RyvmResult<SourceLock<Self>> {
         let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
+        let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
+        let watcher_queue_clone = Arc::clone(&watcher_queue);
+        let watcher = RecommendedWatcher::new_immediate(move |event: notify::Result<Event>| {
+            watcher_queue_clone.lock().push(event);
+        })?;
         let mut state = State {
             sample_rate: app.sample_rate.unwrap_or(44100),
             tempo: 1.0,
@@ -71,10 +80,14 @@ impl State {
             loops: HashMap::new(),
             controls: HashMap::new(),
             global_controls: HashMap::new(),
+            tracked_spec_maps: HashMap::new(),
+            watcher,
+            watcher_queue,
         };
         state.load_spec_map_from_file("specs/startup.ron", None)?;
         Ok(SourceLock::new(state))
     }
+    /// Create a watcher queue to
     /// Get the current channel id
     pub fn curr_channel(&self) -> u8 {
         self.curr_channel
@@ -336,9 +349,12 @@ impl State {
     where
         P: AsRef<Path>,
     {
-        let file = File::open(path)?;
+        let file = File::open(&path)?;
         let specs = ron::de::from_reader::<_, HashMap<String, Spec>>(file)?;
+        self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
         let channel = channel.unwrap_or(self.curr_channel);
+        self.tracked_spec_maps
+            .insert(path.as_ref().to_path_buf(), channel);
         self.channels
             .entry(channel)
             .or_insert_with(Channel::default)
@@ -420,6 +436,25 @@ impl State {
 impl Iterator for State {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
+        // Check for file watcher events
+        let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
+        for res in events {
+            match res {
+                Ok(event) => match event.kind {
+                    EventKind::Modify(_) => {
+                        for path in event.paths {
+                            let channel = self.tracked_spec_maps.get(&path).copied();
+                            if let Err(e) = self.load_spec_map_from_file(path, channel) {
+                                println!("{}", e);
+                            }
+                        }
+                    }
+                    EventKind::Remove(_) => {}
+                    _ => {}
+                },
+                Err(e) => println!("{}", e),
+            }
+        }
         // Process commands
         if let Some(period) = self.loop_period {
             if self.i % period == 0 && self.frame_queue.is_none() {

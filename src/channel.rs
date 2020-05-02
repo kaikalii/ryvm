@@ -2,44 +2,55 @@ use std::collections::{hash_map, HashMap, HashSet};
 
 use crate::{Control, Device, State, Voice};
 
+/// A midi channel that can contain many devices
 #[derive(Debug, Default)]
 pub struct Channel {
     devices: HashMap<String, Device>,
 }
 
 impl Channel {
+    /// Get a device by name
     pub fn get(&self, name: &str) -> Option<&Device> {
         self.devices.get(name)
     }
+    /// Get a device map entry
     pub fn entry(&mut self, name: String) -> hash_map::Entry<String, Device> {
         self.devices.entry(name)
     }
+    /// Get an iterator over the device names
     pub fn device_names(&self) -> hash_map::Keys<String, Device> {
         self.devices.keys()
     }
+    /// Get an iterator over the devices
     pub fn devices(&self) -> hash_map::Values<String, Device> {
         self.devices.values()
     }
-    // pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
-    //     self.devices.values_mut()
-    // }
+    /// Get an iterator over mutable references to the devices
+    pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
+        self.devices.values_mut()
+    }
+    /// Get an iterator over names and devices
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
     }
-    // pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
-    //     self.devices.iter_mut()
-    // }
+    /// Get an iterator over names and mutable references to the devices
+    pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
+        self.devices.iter_mut()
+    }
+    /// Get an iterator over the names of devices in this channel that should be output
     pub fn outputs(&self) -> impl Iterator<Item = &str> + '_ {
         self.device_names()
             .map(AsRef::as_ref)
             .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
     }
+    /// Retain devices that satisfy the predicate
     pub fn retain<F>(&mut self, f: F)
     where
         F: FnMut(&String, &mut Device) -> bool,
     {
         self.devices.retain(f)
     }
+    /// Remove a device and optionally recursively delete all of its unique inputs
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(device) = self.get(name) {
             if recursive {
@@ -58,7 +69,7 @@ impl Channel {
             self.devices.remove(name);
         }
     }
-    pub fn next_from(
+    pub(crate) fn next_from(
         &self,
         channel_num: u8,
         name: &str,
@@ -86,7 +97,7 @@ impl Channel {
     }
 }
 
-pub struct FrameCache {
+pub(crate) struct FrameCache {
     pub voices: HashMap<(u8, String), Voice>,
     pub controls: HashMap<(usize, u8), Vec<Control>>,
     pub visited: HashSet<(u8, String)>,

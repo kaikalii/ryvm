@@ -1,10 +1,9 @@
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
     fs::File,
     iter::once,
     mem::{discriminant, swap},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use itertools::Itertools;
@@ -14,12 +13,12 @@ use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    Channel, Control, Device, FrameCache, Loop, LoopState, Midi, PadBounds, RyvmApp, RyvmCommand,
-    Sample, SourceLock, Voice,
+    parse_commands, Channel, Control, Device, FrameCache, Loop, LoopState, Midi, PadBounds,
+    RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice,
 };
 
 #[derive(Default)]
-pub struct LoadSamples {}
+pub(crate) struct LoadSamples;
 
 impl JobDescription<PathBuf> for LoadSamples {
     type Output = Result<Sample, String>;
@@ -32,27 +31,29 @@ impl JobDescription<PathBuf> for LoadSamples {
     }
 }
 
+/// The main Ryvm state manager
 #[derive(Debug)]
 pub struct State {
-    pub sample_rate: u32,
-    pub tempo: f32,
+    pub(crate) sample_rate: u32,
+    pub(crate) tempo: f32,
     curr_channel: u8,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
-    pub i: u32,
-    pub loop_period: Option<u32>,
-    pub sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
-    pub midis: HashMap<usize, Midi>,
+    pub(crate) i: u32,
+    pub(crate) loop_period: Option<u32>,
+    pub(crate) sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
+    pub(crate) midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
-    pub default_midi: Option<usize>,
+    pub(crate) default_midi: Option<usize>,
     loops: HashMap<String, Loop>,
     controls: HashMap<(usize, u8, u8), u8>,
     global_controls: HashMap<(usize, u8), u8>,
 }
 
-impl Default for State {
-    fn default() -> Self {
+impl State {
+    /// Create a new state
+    pub fn new() -> RyvmResult<SourceLock<Self>> {
         let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
         let mut state = State {
             sample_rate: app.sample_rate.unwrap_or(44100),
@@ -71,38 +72,34 @@ impl Default for State {
             controls: HashMap::new(),
             global_controls: HashMap::new(),
         };
-        if let Err(e) = state.load_spec("startup", None) {
-            println!("Error loading startup spec: {}", e);
-        }
-        state
+        state.load_spec_map_from_file("specs/startup.ron", None)?;
+        Ok(SourceLock::new(state))
     }
-}
-
-impl State {
-    pub fn new() -> SourceLock<Self> {
-        SourceLock::new(Self::default())
-    }
+    /// Get the current channel id
     pub fn curr_channel(&self) -> u8 {
         self.curr_channel
     }
+    /// Set the current channel id
     pub fn set_curr_channel(&mut self, ch: u8) {
         self.curr_channel = ch;
         println!("Channel {}", ch);
     }
+    /// Get a mutable reference to the current channel
     pub fn channel(&mut self) -> &mut Channel {
         self.channels
             .entry(self.curr_channel)
             .or_insert_with(Channel::default)
     }
     #[allow(dead_code)]
-    pub fn is_debug_frame(&self) -> bool {
+    fn is_debug_frame(&self) -> bool {
         if let Some(period) = self.loop_period {
             self.i % (period / 10) == 0
         } else {
             self.i % (self.sample_rate / 5) == 0
         }
     }
-    pub fn insert_loop(&mut self, name: Option<String>, length: Option<f32>) {
+    /// Start a loop
+    pub fn start_loop(&mut self, name: Option<String>, length: Option<f32>) {
         let name = name.unwrap_or_else(|| {
             let mut i = 1;
             loop {
@@ -116,6 +113,7 @@ impl State {
         self.loops
             .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
     }
+    /// Stop recording any loops
     pub fn stop_recording(&mut self) {
         let mut loop_period = self.loop_period;
         let mut loops_to_delete: Vec<String> = Vec::new();
@@ -134,11 +132,12 @@ impl State {
         }
         self.loop_period = self.loop_period.or(loop_period);
         for name in loops_to_delete {
-            self.channel().remove(&name, false)
+            self.loops.remove(&name);
         }
     }
     #[allow(clippy::cognitive_complexity)]
-    fn process_spec(&mut self, channel: u8, name: String, spec: Spec) {
+    fn load_spec(&mut self, name: String, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
+        let channel = channel.unwrap_or(self.curr_channel);
         macro_rules! inner {
             ($variant:ident, $default:expr) => {{
                 let entry = self
@@ -164,11 +163,7 @@ impl State {
         match spec {
             Spec::Load(names) => {
                 for name in names {
-                    if let Err(e) = self.load_spec(&name, Some(channel)) {
-                        println!("Error in {}: {}", name, e);
-                    } else {
-                        println!("Loaded {}", name)
-                    }
+                    self.load_spec_map_from_file(format!("specs/{}.ron", name), Some(channel))?;
                 }
             }
             Spec::Controller {
@@ -177,17 +172,13 @@ impl State {
                 pad_range,
                 manual,
             } => {
-                let port = Option::from(port).or_else(|| match Midi::first_device() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        println!("{}", e);
-                        None
-                    }
-                });
-                if let Some(port) = port {
-                    let pad = if let (Supplied(channel), Supplied((start, end))) =
-                        (pad_channel, pad_range)
-                    {
+                let port = if let Supplied(port) = port {
+                    port
+                } else {
+                    Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                };
+                let pad =
+                    if let (Supplied(channel), Supplied((start, end))) = (pad_channel, pad_range) {
                         Some(PadBounds {
                             channel,
                             start,
@@ -196,23 +187,20 @@ impl State {
                     } else {
                         None
                     };
-                    match Midi::new(name.clone(), port, manual, pad) {
-                        Ok(midi) => {
-                            if self.midis.remove(&port).is_some() {
-                                println!("Reinitialized midi {}", port);
-                            } else {
-                                println!("Initialized midi {}", port);
-                            }
-                            self.midis.insert(port, midi);
-                            self.midi_names.insert(name, port);
-                            if self.default_midi.is_none() {
-                                self.default_midi = Some(port);
-                            }
+                match Midi::new(name.clone(), port, manual, pad) {
+                    Ok(midi) => {
+                        if self.midis.remove(&port).is_some() {
+                            println!("Reinitialized midi {}", port);
+                        } else {
+                            println!("Initialized midi {}", port);
                         }
-                        Err(e) => println!("{}", e),
+                        self.midis.insert(port, midi);
+                        self.midi_names.insert(name, port);
+                        if self.default_midi.is_none() {
+                            self.default_midi = Some(port);
+                        }
                     }
-                } else {
-                    println!("No available port")
+                    Err(e) => println!("{}", e),
                 }
             }
             Spec::Wave {
@@ -224,7 +212,7 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = inner!(Wave, || Device::default_wave(form));
+                let wave = inner!(Wave, || Device::new_wave(form));
                 wave.form = form;
                 if let Supplied(octave) = octave {
                     wave.octave = Some(octave);
@@ -246,22 +234,19 @@ impl State {
                 }
             }
             Spec::Drums(paths) => {
-                let drums = inner!(DrumMachine, || Device::default_drum_machine());
+                let drums = inner!(DrumMachine, || Device::new_drum_machine());
                 for path in paths.clone() {
                     self.sample_bank.start(path);
                 }
                 drums.samples = paths;
             }
             Spec::Filter { input, value } => {
-                let filter = inner!(Filter, || Device::default_filter(
-                    input.clone(),
-                    value.clone()
-                ));
+                let filter = inner!(Filter, || Device::new_filter(input.clone(), value.clone()));
                 filter.input = input;
                 filter.value = value;
             }
             Spec::Balance { input, volume, pan } => {
-                let balance = inner!(Balance, || Device::default_balance(input.clone()));
+                let balance = inner!(Balance, || Device::new_balance(input.clone()));
                 balance.input = input;
                 if let Supplied(volume) = volume {
                     balance.volume = volume;
@@ -271,26 +256,37 @@ impl State {
                 }
             }
         }
+        Ok(())
     }
-    pub fn queue_command(&mut self, delay: bool, command: RyvmCommand) {
-        if delay {
-            self.command_queue.push(command);
-        } else {
-            self.process_command(command);
-        }
-    }
-    fn process_command(&mut self, command: RyvmCommand) {
-        match command {
-            RyvmCommand::Quit => {}
-            RyvmCommand::Midi => match Midi::ports_list() {
-                Ok(list) => {
-                    for (i, name) in list.into_iter().enumerate() {
-                        println!("{}. {}", i, name);
+    /// Queue a command
+    pub fn queue_command(&mut self, text: &str) -> RyvmResult<bool> {
+        if let Some(commands) = parse_commands(&text) {
+            for (delay, args) in commands {
+                match RyvmCommand::from_iter_safe(&args)? {
+                    RyvmCommand::Quit => return Ok(false),
+                    command => {
+                        if delay {
+                            self.command_queue.push(command);
+                        } else {
+                            self.process_command(command)?;
+                        }
                     }
                 }
-                Err(e) => println!("{}", e),
-            },
-            RyvmCommand::Loop { name, length } => self.insert_loop(name, length),
+            }
+        } else {
+            self.stop_recording();
+        }
+        Ok(true)
+    }
+    fn process_command(&mut self, command: RyvmCommand) -> RyvmResult<()> {
+        match command {
+            RyvmCommand::Quit => {}
+            RyvmCommand::Midi => {
+                for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
+                    println!("{}. {}", i, name);
+                }
+            }
+            RyvmCommand::Loop { name, length } => self.start_loop(name, length),
             RyvmCommand::Play { names } => {
                 for (name, lup) in self.loops.iter_mut() {
                     if names.contains(name) {
@@ -330,14 +326,17 @@ impl State {
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
-                if let Err(e) = self.load_spec(&name, channel) {
-                    println!("{}", e)
-                }
+                self.load_spec_map_from_file(format!("specs/{}.ron", name), channel)?
             }
         }
+        Ok(())
     }
-    pub fn load_spec(&mut self, name: &str, channel: Option<u8>) -> Result<(), Box<dyn Error>> {
-        let file = File::open(format!("specs/{}.ron", name))?;
+    /// Load a spec map into the state from a file
+    pub fn load_spec_map_from_file<P>(&mut self, path: P, channel: Option<u8>) -> RyvmResult<()>
+    where
+        P: AsRef<Path>,
+    {
+        let file = File::open(path)?;
         let specs = ron::de::from_reader::<_, HashMap<String, Spec>>(file)?;
         let channel = channel.unwrap_or(self.curr_channel);
         self.channels
@@ -345,7 +344,7 @@ impl State {
             .or_insert_with(Channel::default)
             .retain(|name, _| specs.contains_key(name));
         for (name, spec) in specs {
-            self.process_spec(channel, name, spec)
+            self.load_spec(name, spec, Some(channel))?;
         }
         Ok(())
     }
@@ -393,7 +392,7 @@ impl State {
             println!();
         }
     }
-    pub fn resolve_dynamic_value(&self, dyn_val: &DynamicValue, channel: u8) -> Option<f32> {
+    pub(crate) fn resolve_dynamic_value(&self, dyn_val: &DynamicValue, channel: u8) -> Option<f32> {
         match dyn_val {
             DynamicValue::Static(f) => Some(*f),
             DynamicValue::Control {
@@ -427,7 +426,9 @@ impl Iterator for State {
                 let mut commands = Vec::new();
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
-                    self.process_command(command);
+                    if let Err(e) = self.process_command(command) {
+                        println!("{}", e)
+                    }
                 }
             }
         }

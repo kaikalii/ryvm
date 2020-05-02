@@ -122,7 +122,7 @@ pub struct Midi {
 }
 
 impl Midi {
-    pub fn ports_list() -> Result<Vec<String>, InitError> {
+    pub fn ports_list() -> Result<Vec<String>, MidiError> {
         let midi_in = MidiInput::new("")?;
         Ok((0..midi_in.port_count())
             .map(|i| {
@@ -132,7 +132,7 @@ impl Midi {
             })
             .collect())
     }
-    pub fn first_device() -> Result<Option<usize>, InitError> {
+    pub fn first_device() -> Result<Option<usize>, MidiError> {
         for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
             if !["thru", "through"]
                 .iter()

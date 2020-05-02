@@ -1,80 +1,13 @@
-#![deny(missing_docs)]
+#![warn(missing_docs)]
 
 /*!
 Ryvm is an interface into a digital audio workstation (DAW). You can use Ryvm as a library or as a command-line app.
 */
 
 macro_rules! mods {
-    ($($m:ident),*) => ($(mod $m; use $m::*;)*);
+    ($($vis:vis $m:ident),*) => ($(mod $m; $vis use $m::*;)*);
 }
 
-mods!(app, channel, device, drum, envelope, r#loop, midi, parts, state, track, utility);
-
-use std::{sync::mpsc, thread, time::Duration};
-
-use structopt::StructOpt;
+mods!(app, pub channel, pub device, drum, envelope, pub error, r#loop, midi, parts, pub state, track, utility);
 
 pub use rodio::{default_output_device, output_devices};
-
-/// A Ryvm context
-pub struct Ryvm {
-    send: mpsc::Sender<String>,
-}
-
-impl Ryvm {
-    /// Create a new Ryvm context
-    pub fn new(device: rodio::Device) -> Self {
-        let (send, recv) = mpsc::channel::<String>();
-
-        thread::spawn(move || {
-            let sink = match std::panic::catch_unwind(|| rodio::Sink::new(&device)) {
-                Ok(sink) => sink,
-                Err(_) => {
-                    println!("Unable to initialize audio device");
-                    std::process::exit(1);
-                }
-            };
-
-            let state = State::new();
-
-            sink.append(state.clone());
-
-            // Main loop
-            'main_loop: loop {
-                // Read commands
-                if let Ok(text) = recv.try_recv() {
-                    if let Some(commands) = parse_commands(&text) {
-                        for (delay, args) in commands {
-                            match RyvmCommand::from_iter_safe(&args) {
-                                Ok(RyvmCommand::Quit) => break 'main_loop,
-                                Ok(command) => {
-                                    state.update(|state| state.queue_command(delay, command))
-                                }
-                                Err(e) => println!("{}", e),
-                            }
-                        }
-                    } else {
-                        state.update(State::stop_recording);
-                        continue;
-                    }
-                }
-                // Sleep
-                thread::sleep(Duration::from_millis(100));
-            }
-        });
-        Ryvm { send }
-    }
-    /// Send a command to the Ryvm context
-    pub fn send_command<S>(&self, command: S)
-    where
-        S: Into<String>,
-    {
-        let _ = self.send.send(command.into());
-    }
-}
-
-impl Drop for Ryvm {
-    fn drop(&mut self) {
-        self.send_command("exit");
-    }
-}

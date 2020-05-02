@@ -11,78 +11,98 @@ use crate::{
     ADSR,
 };
 
+/// A virtual audio processing device
 #[derive(Debug)]
 pub enum Device {
-    Wave(Box<Wave>),
+    /// A wave synthesizer
+    Wave(Wave),
+    /// A drum machine
     DrumMachine(DrumMachine),
+    /// A low-pass filter
     Filter(Filter),
+    /// A volume and pan balancer
     Balance(Balance),
 }
 
+/// A wave synthesizer
 #[derive(Debug, Clone)]
 pub struct Wave {
+    /// The waveform
     pub form: WaveForm,
-    pub voices: u32,
     pub(crate) waves: CloneLock<Vec<u32>>,
+    /// The octave
     pub octave: Option<i8>,
+    /// The +- range for pitch bending
     pub pitch_bend_range: f32,
+    /// The attack-decay-sustain-release envelope
     pub adsr: ADSR,
     pub(crate) enveloper: CloneLock<Enveloper>,
 }
 
+/// A drum machine
 #[derive(Debug, Clone, Default)]
 pub struct DrumMachine {
     pub(crate) samples: Vec<PathBuf>,
     pub(crate) samplings: CloneLock<Vec<ActiveSampling>>,
 }
 
+/// A low-pass filter
 #[derive(Debug, Clone)]
 pub struct Filter {
+    /// The name of the input device
     pub input: String,
+    /// The value used to determine filter strength
     pub value: DynamicValue,
-    pub avg: CloneCell<Voice>,
+    avg: CloneCell<Voice>,
 }
 
+/// A volume and pan balancer
 #[derive(Debug, Clone)]
 pub struct Balance {
+    /// The name of the input device
     pub input: String,
+    /// The volume
     pub volume: DynamicValue,
+    /// The left-right
     pub pan: DynamicValue,
 }
 
 impl Device {
-    pub fn default_wave(form: WaveForm) -> Self {
-        Device::Wave(Box::new(Wave {
+    /// Create a new wave
+    pub fn new_wave(form: WaveForm) -> Self {
+        Device::Wave(Wave {
             form,
             octave: None,
             pitch_bend_range: 12.0,
             adsr: ADSR::default(),
             enveloper: CloneLock::new(Enveloper::default()),
-            voices: 10,
-            waves: CloneLock::new(Vec::new()),
-        }))
+            waves: CloneLock::new(vec![0; 10]),
+        })
     }
-    pub fn default_drum_machine() -> Self {
+    /// Create a new drum machine
+    pub fn new_drum_machine() -> Self {
         Device::DrumMachine(DrumMachine {
             samples: Vec::new(),
             samplings: CloneLock::new(Vec::new()),
         })
     }
-    pub fn default_filter(input: String, value: DynamicValue) -> Self {
+    /// Create a new filter
+    pub fn new_filter(input: String, value: DynamicValue) -> Self {
         Device::Filter(Filter {
             input,
             value,
             avg: CloneCell::new(Voice::SILENT),
         })
     }
-    pub fn default_balance(input: String) -> Self {
+    /// Create a new balance
+    pub fn new_balance(input: String) -> Self {
         Device::Balance(Balance {
             input,
             volume: DynamicValue::Static(1.0),
             pan: DynamicValue::Static(0.0),
         })
     }
-    pub fn next(
+    pub(crate) fn next(
         &self,
         channel_num: u8,
         channel: &Channel,
@@ -95,17 +115,15 @@ impl Device {
             Device::Wave(wave) => {
                 let Wave {
                     form,
-                    voices,
                     octave,
                     pitch_bend_range,
                     adsr,
                     waves,
                     enveloper,
                     ..
-                } = &**wave;
+                } = wave;
                 // Ensure that waves is initialized
                 let mut waves = waves.lock();
-                waves.resize(*voices as usize, 0);
 
                 let mut enveloper = enveloper.lock();
                 enveloper.register(cache.channel_controls(channel_num));
@@ -215,7 +233,7 @@ impl Device {
             }
         }
     }
-    /// Get a list of this instrument's inputs
+    /// Get a list of this device's input devices
     pub fn inputs(&self) -> Vec<&str> {
         match self {
             Device::Filter(Filter { input, .. }) | Device::Balance(Balance { input, .. }) => {

@@ -1,3 +1,9 @@
+#![warn(missing_docs)]
+
+/*!
+This crate defines the Ryvm specification format. RON files satisfying the `Spec` structure are used to program a Ryvm state.
+*/
+
 mod parts;
 pub use parts::*;
 
@@ -5,50 +11,75 @@ use std::path::PathBuf;
 
 use serde_derive::{Deserialize, Serialize};
 
+/// A specification for a Ryvm item
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Spec {
+    /// Load all spec files with the given names from the `specs` directory
     Load(Vec<String>),
+    /// A midi controller
     Controller {
+        /// The midi port to use
         port: Optional<usize>,
+        /// The channel that drum pads on the controller use
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pad_channel: Optional<u8>,
+        /// The midi note index range that drum pads on the controller fall into
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pad_range: Optional<(u8, u8)>,
+        /// Whether channel switching
         #[serde(default, skip_serializing_if = "Clone::clone")]
         manual: bool,
     },
+    /// A wave synthesizer
     Wave {
+        /// The waveform
         form: WaveForm,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        /// The base octave
         octave: Optional<i8>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        /// The envelope attack
         attack: Optional<f32>,
+        /// The envelope decay
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         decay: Optional<f32>,
+        /// The envelope sustain
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         sustain: Optional<f32>,
+        /// The envelope release
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         release: Optional<f32>,
+        /// The +- pitch bend range in semitones
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         bend: Optional<f32>,
     },
+    /// A drum machine with a list of paths to sample files
     Drums(Vec<PathBuf>),
+    /// A low-pass filter
     Filter {
+        /// The name of the input device
         input: String,
+        /// The value that determines the filter's shape
         value: DynamicValue,
     },
+    /// A volume and pan balancer
     Balance {
+        /// The name of the input device
         input: String,
+        /// The volume
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         volume: Optional<DynamicValue>,
+        /// The left-right pan
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pan: Optional<DynamicValue>,
     },
 }
 
+/// A waveform
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[allow(missing_docs)]
 pub enum WaveForm {
     Sine,
     Square,

@@ -6,16 +6,25 @@ use serde::{
 };
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
+/// A value that can be either a static number or mapped to a midi control
 #[derive(Debug, Clone, Ser, Deser)]
 #[serde(rename_all = "kebab-case")]
 pub enum DynamicValue {
+    /// A static number
     Static(f32),
+    /// A midi control mapping
     Control {
+        /// The name of the midi controller
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         controller: Optional<String>,
+        /// The control number
         number: u8,
+        /// Whether this is a global control
+        ///
+        /// Global controls are active even if the midi controller is set to output a different channel
         #[serde(default, skip_serializing_if = "Not::not")]
         global: bool,
+        /// The minimum and maxinum values this control should map to
         #[serde(default = "default_bounds", skip_serializing_if = "is_default_bounds")]
         bounds: (f32, f32),
     },
@@ -30,9 +39,14 @@ fn is_default_bounds(bounds: &(f32, f32)) -> bool {
     bounds == &default_bounds()
 }
 
+/// An optional that can be omitted
+///
+/// Optionals that are not given a value typically choose some sensible default
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Optional<T> {
+    /// The option was supplied by the user
     Supplied(T),
+    /// The option was omitted by the user
     Omitted,
 }
 
@@ -63,12 +77,6 @@ impl<T> From<Optional<T>> for Option<T> {
 }
 
 impl<T> Optional<T> {
-    pub fn or(self, default: T) -> T {
-        match self {
-            Supplied(val) => val,
-            Omitted => default,
-        }
-    }
     pub(crate) fn is_omitted(&self) -> bool {
         matches!(self, Omitted)
     }

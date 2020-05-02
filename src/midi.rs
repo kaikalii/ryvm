@@ -15,16 +15,23 @@ pub enum Control {
     Control(u8, u8),
     PadStart(u8, u8),
     PadEnd(u8),
+    Record,
+    StopRecord,
 }
 
 const NOTE_START: u8 = 0x9;
 const NOTE_END: u8 = 0x8;
 const PITCH_BEND: u8 = 0xE;
-const CONTROLLER: u8 = 0xB;
+const CONTROL: u8 = 0xB;
 
 impl Control {
     #[allow(clippy::unnecessary_cast)]
-    pub fn decode(data: &[u8], pad: Option<PadBounds>) -> Option<(u8, Control)> {
+    pub fn decode(
+        data: &[u8],
+        pad: Option<PadBounds>,
+        record: Option<u8>,
+        stop_record: Option<u8>,
+    ) -> Option<(u8, Control)> {
         let status = data[0] / 0x10;
         let channel = data[0] % 0x10;
         let d1 = data.get(1).copied().unwrap_or(0);
@@ -54,7 +61,21 @@ impl Control {
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
                 Control::PitchBend(pb)
             }
-            (CONTROLLER, n, i) => Control::Control(n, i),
+            (CONTROL, n, i) => {
+                if record == Some(n) {
+                    if i != 0x7f {
+                        return None;
+                    };
+                    Control::Record
+                } else if stop_record == Some(n) {
+                    if i != 0x7f {
+                        return None;
+                    };
+                    Control::StopRecord
+                } else {
+                    Control::Control(n, i)
+                }
+            }
             _ => return None,
         };
 
@@ -148,6 +169,8 @@ impl Midi {
         port: usize,
         manual: bool,
         pad: Option<PadBounds>,
+        record: Option<u8>,
+        stop_record: Option<u8>,
     ) -> Result<Midi, MidiError> {
         let mut midi_in = MidiInput::new(&name)?;
         midi_in.ignore(Ignore::Time);
@@ -162,7 +185,7 @@ impl Midi {
             port,
             &name,
             move |_, data, queue| {
-                if let Some(control) = Control::decode(data, pad) {
+                if let Some(control) = Control::decode(data, pad, record, stop_record) {
                     queue.lock().push(control);
                 }
             },

@@ -7,13 +7,13 @@ This crate defines the Ryvm specification format. RON files satisfying the `Spec
 mod parts;
 pub use parts::*;
 
-use std::path::PathBuf;
+use std::{ops::Not, path::PathBuf};
 
 use serde_derive::{Deserialize, Serialize};
 
 /// A specification for a Ryvm item
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum Spec {
     /// Load all spec files with the given names from the `specs` directory
     Load(Vec<String>),
@@ -27,9 +27,13 @@ pub enum Spec {
         /// The midi note index range that drum pads on the controller fall into
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pad_range: Optional<(u8, u8)>,
-        /// Whether channel switching
-        #[serde(default, skip_serializing_if = "Clone::clone")]
+        /// Set this to true if the controller cannot change its own midi channels
+        #[serde(default, skip_serializing_if = "Not::not")]
         manual: bool,
+        /// The midi control number used to start and end loops
+        record: Optional<u8>,
+        /// The midi control number used to stop recording loops
+        stop_record: Optional<u8>,
     },
     /// A wave synthesizer
     Wave {
@@ -78,7 +82,7 @@ pub enum Spec {
 
 /// A waveform
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 #[allow(missing_docs)]
 pub enum WaveForm {
     Sine,

@@ -5,7 +5,7 @@ use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
 /// A value that can be either a static number or mapped to a midi control
 #[derive(Debug, Clone, Ser, Deser)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum DynamicValue {
     /// A static number
     Static(f32),
@@ -14,7 +14,7 @@ pub enum DynamicValue {
         /// The name of the midi controller
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         controller: Optional<String>,
-        /// The control number
+        /// The midi control number
         number: u8,
         /// Whether this is a global control
         ///

@@ -117,6 +117,7 @@ impl State {
     }
     /// Start a loop
     pub fn start_loop(&mut self, name: Option<String>, length: Option<f32>) {
+        self.stop_recording();
         let name = name.unwrap_or_else(|| {
             let mut i = 1;
             loop {
@@ -129,6 +130,7 @@ impl State {
         });
         self.loops
             .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
+        println!("Loop ready");
     }
     /// Stop recording any loops
     pub fn stop_recording(&mut self) {
@@ -190,6 +192,8 @@ impl State {
                 pad_channel,
                 pad_range,
                 manual,
+                record,
+                stop_record,
             } => {
                 let port = if let Supplied(port) = port {
                     port
@@ -206,7 +210,14 @@ impl State {
                     } else {
                         None
                     };
-                match Midi::new(name.clone(), port, manual, pad) {
+                match Midi::new(
+                    name.clone(),
+                    port,
+                    manual,
+                    pad,
+                    record.into(),
+                    stop_record.into(),
+                ) {
                     Ok(midi) => {
                         if self.midis.remove(&port).is_some() {
                             println!("Reinitialized midi {}", port);
@@ -476,20 +487,31 @@ impl Iterator for State {
         // Calculate next frame
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
+        let mut start_record = false;
+        let mut stop_record = false;
         // Get controls from midis
         for (&port, midi) in &mut self.midis {
             match midi.controls() {
                 Ok(new_controls) => {
                     for (channel, control) in new_controls {
-                        // Collect control
-                        controls
-                            .entry((port, channel))
-                            .or_insert_with(Vec::new)
-                            .push(control);
+                        match control {
+                            Control::Record => start_record = true,
+                            Control::StopRecord => stop_record = true,
+                            control => controls
+                                .entry((port, channel))
+                                .or_insert_with(Vec::new)
+                                .push(control),
+                        }
                     }
                 }
                 Err(e) => println!("{}", e),
             }
+        }
+        // Start or stop loops if necessary
+        if stop_record {
+            self.stop_recording();
+        } else if start_record {
+            self.start_loop(None, None);
         }
         // Record loops
         for lup in self.loops.values_mut() {

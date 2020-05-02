@@ -50,8 +50,8 @@ impl Control {
                 }
             }
             (PITCH_BEND, lsb, msb) => {
-                let pb_u16 = msb as u16 * 0x80 + lsb as u16;
-                let pb = pb_u16 as f32 / 0x3fff as f32 * 2.0 - 1.0;
+                let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
+                let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
                 Control::PitchBend(pb)
             }
             (CONTROLLER, n, i) => Control::Control(n, i),

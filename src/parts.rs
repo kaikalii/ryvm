@@ -6,7 +6,7 @@ use std::{
 
 use crate::CloneLock;
 
-/// A lock used primarily to allow the manipulation of a rodio::Source
+/// A lock used primarily to allow the manipulation of a `rodio::Source`
 /// while it is already playing
 #[derive(Debug)]
 pub struct SourceLock<T>(Arc<CloneLock<T>>);

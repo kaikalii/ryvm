@@ -69,6 +69,7 @@ pub struct Balance {
 
 impl Device {
     /// Create a new wave
+    #[must_use]
     pub fn new_wave(form: WaveForm) -> Self {
         Device::Wave(Box::new(Wave {
             form,
@@ -80,6 +81,7 @@ impl Device {
         }))
     }
     /// Create a new drum machine
+    #[must_use]
     pub fn new_drum_machine() -> Self {
         Device::DrumMachine(DrumMachine {
             samples: Vec::new(),
@@ -87,6 +89,7 @@ impl Device {
         })
     }
     /// Create a new filter
+    #[must_use]
     pub fn new_filter(input: String, value: DynamicValue) -> Self {
         Device::Filter(Filter {
             input,
@@ -95,6 +98,7 @@ impl Device {
         })
     }
     /// Create a new balance
+    #[must_use]
     pub fn new_balance(input: String) -> Self {
         Device::Balance(Balance {
             input,
@@ -174,7 +178,7 @@ impl Device {
                                 samplings.push(ActiveSampling {
                                     index,
                                     i: 0,
-                                    velocity: v as f32 / 127.0,
+                                    velocity: f32::from(v) / 127.0,
                                 });
                             }
                         }
@@ -247,8 +251,6 @@ fn waveform_energy(form: WaveForm) -> f32 {
     match form {
         WaveForm::Sine => FRAC_2_PI,
         WaveForm::Square => 1.0,
-        WaveForm::Saw => 0.5,
-        WaveForm::Triangle => 0.5,
-        WaveForm::Noise => 0.5,
+        WaveForm::Saw | WaveForm::Triangle | WaveForm::Noise => 0.5,
     }
 }

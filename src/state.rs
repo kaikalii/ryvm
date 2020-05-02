@@ -57,6 +57,10 @@ pub struct State {
 
 impl State {
     /// Create a new state
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if it fails to load a startup spec
     pub fn new() -> RyvmResult<SourceLock<Self>> {
         let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
         let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
@@ -130,7 +134,7 @@ impl State {
     pub fn stop_recording(&mut self) {
         let mut loop_period = self.loop_period;
         let mut loops_to_delete: Vec<String> = Vec::new();
-        for (name, lup) in self.loops.iter_mut() {
+        for (name, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
                 let len = lup.controls.lock().len() as u32;
                 if len > 0 {
@@ -272,6 +276,10 @@ impl State {
         Ok(())
     }
     /// Queue a command
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if it failes to parse or process the command
     pub fn queue_command(&mut self, text: &str) -> RyvmResult<bool> {
         if let Some(commands) = parse_commands(&text) {
             for (delay, args) in commands {
@@ -301,7 +309,7 @@ impl State {
             }
             RyvmCommand::Loop { name, length } => self.start_loop(name, length),
             RyvmCommand::Play { names } => {
-                for (name, lup) in self.loops.iter_mut() {
+                for (name, lup) in &mut self.loops {
                     if names.contains(name) {
                         lup.loop_state = LoopState::Playing;
                     }
@@ -316,7 +324,7 @@ impl State {
                         lup.loop_state = LoopState::Disabled;
                     }
                 } else {
-                    for (name, lup) in self.loops.iter_mut() {
+                    for (name, lup) in &mut self.loops {
                         if names.contains(name) {
                             lup.loop_state = LoopState::Disabled;
                         }
@@ -345,6 +353,10 @@ impl State {
         Ok(())
     }
     /// Load a spec map into the state from a file
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened or parsed or if a spec load fails
     pub fn load_spec_map_from_file<P>(&mut self, path: P, channel: Option<u8>) -> RyvmResult<()>
     where
         P: AsRef<Path>,
@@ -427,7 +439,7 @@ impl State {
                 } else {
                     *self.controls.get(&(port, channel, *number))?
                 };
-                Some(value as f32 / 127.0 * (max - min) + min)
+                Some(f32::from(value) / 127.0 * (max - min) + min)
             }
         }
     }
@@ -477,7 +489,7 @@ impl Iterator for State {
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
         // Get controls from midis
-        for (&port, midi) in self.midis.iter_mut() {
+        for (&port, midi) in &mut self.midis {
             match midi.controls() {
                 Ok(new_controls) => {
                     for (channel, control) in new_controls {
@@ -520,7 +532,7 @@ impl Iterator for State {
                 from_loop: i != 0,
             };
             // Mix output voices for each channel
-            for (&channel_num, channel) in self.channels.iter() {
+            for (&channel_num, channel) in &self.channels {
                 let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
                 for name in outputs {
                     cache.visited.clear();

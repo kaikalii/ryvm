@@ -52,7 +52,7 @@ impl Sample {
         let channels = decoder.channels();
         let samples = if channels == 1 {
             decoder
-                .map(|i| Voice::mono(i as f32 / std::i16::MAX as f32))
+                .map(|i| Voice::mono(f32::from(i) / f32::from(i16::MAX)))
                 .collect()
         } else {
             decoder
@@ -60,8 +60,8 @@ impl Sample {
                 .into_iter()
                 .map(|mut lr| {
                     Voice::stereo(
-                        lr.next().unwrap_or(0) as f32 / std::i16::MAX as f32,
-                        lr.next().unwrap_or(0) as f32 / std::i16::MAX as f32,
+                        f32::from(lr.next().unwrap_or(0)) / f32::from(i16::MAX),
+                        f32::from(lr.next().unwrap_or(0)) / f32::from(i16::MAX),
                     )
                 })
                 .collect()
@@ -76,7 +76,7 @@ impl Sample {
         &self.samples[adjusted as usize]
     }
     pub fn len(&self, sample_rate: u32) -> u32 {
-        (self.samples.len() as u64 * sample_rate as u64 / self.sample_rate as u64) as u32
+        (u64::from(sample_rate) * self.samples.len() as u64 / u64::from(self.sample_rate)) as u32
     }
 }
 

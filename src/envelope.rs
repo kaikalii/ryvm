@@ -113,7 +113,7 @@ impl Enveloper {
             .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
             .filter_map(move |((letter, octave), (start, state, velocity))| {
                 let t = (self.i - *start) as f32 / sample_rate as f32;
-                let velocity = *velocity as f32 / 127.0 as f32;
+                let velocity = f32::from(*velocity) / 127.0;
                 let amplitude = match state {
                     NoteState::Pressed => {
                         if t < adsr.attack {
@@ -139,8 +139,8 @@ impl Enveloper {
                 };
                 if amplitude > 0.0 {
                     Some((
-                        letter.freq((*octave as i16 + base_octave as i16).max(0) as u8)
-                            * 2f32.powf(self.pitch_bend * bend_range / 12.0),
+                        letter.freq((i16::from(*octave) + i16::from(base_octave)).max(0) as u8)
+                            * 2_f32.powf(self.pitch_bend * bend_range / 12.0),
                         amplitude,
                     ))
                 } else {

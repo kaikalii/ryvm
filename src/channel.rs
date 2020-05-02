@@ -10,6 +10,7 @@ pub struct Channel {
 
 impl Channel {
     /// Get a device by name
+    #[must_use]
     pub fn get(&self, name: &str) -> Option<&Device> {
         self.devices.get(name)
     }
@@ -18,22 +19,27 @@ impl Channel {
         self.devices.entry(name)
     }
     /// Get an iterator over the device names
+    #[must_use]
     pub fn device_names(&self) -> hash_map::Keys<String, Device> {
         self.devices.keys()
     }
     /// Get an iterator over the devices
+    #[must_use]
     pub fn devices(&self) -> hash_map::Values<String, Device> {
         self.devices.values()
     }
     /// Get an iterator over mutable references to the devices
+    #[must_use]
     pub fn devices_mut(&mut self) -> hash_map::ValuesMut<String, Device> {
         self.devices.values_mut()
     }
     /// Get an iterator over names and devices
+    #[must_use]
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
     }
     /// Get an iterator over names and mutable references to the devices
+    #[must_use]
     pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
         self.devices.iter_mut()
     }
@@ -69,6 +75,7 @@ impl Channel {
             self.devices.remove(name);
         }
     }
+    #[must_use]
     pub(crate) fn next_from(
         &self,
         channel_num: u8,

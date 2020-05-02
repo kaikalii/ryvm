@@ -1,9 +1,6 @@
-use std::{fmt, marker::PhantomData, ops::Not};
+use std::ops::Not;
 
-use serde::{
-    de::{Error, Visitor},
-    Deserialize, Deserializer, Serialize, Serializer,
-};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
 /// A value that can be either a static number or mapped to a midi control
@@ -37,6 +34,12 @@ fn default_bounds() -> (f32, f32) {
 #[allow(clippy::trivially_copy_pass_by_ref)]
 fn is_default_bounds(bounds: &(f32, f32)) -> bool {
     bounds == &default_bounds()
+}
+
+impl From<f32> for DynamicValue {
+    fn from(f: f32) -> Self {
+        DynamicValue::Static(f)
+    }
 }
 
 /// An optional that can be omitted
@@ -77,6 +80,26 @@ impl<T> From<Optional<T>> for Option<T> {
 }
 
 impl<T> Optional<T> {
+    #[doc(hidden)]
+    pub fn or<U>(self, default: U) -> T
+    where
+        U: Into<T>,
+    {
+        match self {
+            Supplied(val) => val,
+            Omitted => default.into(),
+        }
+    }
+    #[doc(hidden)]
+    pub fn or_else<F>(self, default: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        match self {
+            Supplied(val) => val,
+            Omitted => default(),
+        }
+    }
     pub(crate) fn is_omitted(&self) -> bool {
         matches!(self, Omitted)
     }
@@ -97,53 +120,6 @@ where
     }
 }
 
-struct OptionalVisitor<T> {
-    marker: PhantomData<T>,
-}
-
-impl<'de, T> Visitor<'de> for OptionalVisitor<T>
-where
-    T: Deserialize<'de>,
-{
-    type Value = Option<T>;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("option")
-    }
-
-    #[inline]
-    fn visit_unit<E>(self) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        Ok(None)
-    }
-
-    #[inline]
-    fn visit_none<E>(self) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        Ok(None)
-    }
-
-    #[inline]
-    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        T::deserialize(deserializer).map(Some)
-    }
-
-    #[doc(hidden)]
-    fn __private_visit_untagged_option<D>(self, deserializer: D) -> Result<Self::Value, ()>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(T::deserialize(deserializer).ok())
-    }
-}
-
 impl<'de, T> Deserialize<'de> for Optional<T>
 where
     T: Deserialize<'de>,
@@ -152,10 +128,8 @@ where
     where
         D: Deserializer<'de>,
     {
-        Ok(if let Ok(val) = T::deserialize(deserializer) {
-            Supplied(val)
-        } else {
-            Omitted
-        })
+        Ok(T::deserialize(deserializer)
+            .map(Supplied)
+            .unwrap_or(Omitted))
     }
 }

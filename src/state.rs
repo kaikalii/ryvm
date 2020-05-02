@@ -16,7 +16,7 @@ use structopt::StructOpt;
 
 use crate::{
     parse_commands, Channel, CloneLock, Control, Device, FrameCache, Loop, LoopState, Midi,
-    PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice,
+    PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -155,7 +155,8 @@ impl State {
     #[allow(clippy::cognitive_complexity)]
     fn load_spec(&mut self, name: String, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
         let channel = channel.unwrap_or(self.curr_channel);
-        macro_rules! inner {
+        // Macro for initializting devices
+        macro_rules! device {
             ($variant:ident, $default:expr) => {{
                 let entry = self
                     .channels
@@ -177,6 +178,7 @@ impl State {
                 }
             }};
         }
+        // Match over different spec types
         match spec {
             Spec::Load(names) => {
                 for name in names {
@@ -229,48 +231,34 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = inner!(Wave, || Device::new_wave(form));
+                let wave = device!(Wave, || Device::new_wave(form));
                 wave.form = form;
                 if let Supplied(octave) = octave {
                     wave.octave = Some(octave);
                 }
-                if let Supplied(attack) = attack {
-                    wave.adsr.attack = attack;
-                }
-                if let Supplied(decay) = decay {
-                    wave.adsr.decay = decay;
-                }
-                if let Supplied(sustain) = sustain {
-                    wave.adsr.sustain = sustain;
-                }
-                if let Supplied(release) = release {
-                    wave.adsr.release = release;
-                }
-                if let Supplied(bend) = bend {
-                    wave.pitch_bend_range = bend;
-                }
+                wave.adsr.attack = attack.or_else(|| ADSR::default().attack.into());
+                wave.adsr.decay = decay.or_else(|| ADSR::default().decay.into());
+                wave.adsr.sustain = sustain.or_else(|| ADSR::default().sustain.into());
+                wave.adsr.release = release.or_else(|| ADSR::default().release.into());
+                wave.pitch_bend_range = bend.or(12.0);
             }
             Spec::Drums(paths) => {
-                let drums = inner!(DrumMachine, || Device::new_drum_machine());
+                let drums = device!(DrumMachine, || Device::new_drum_machine());
                 for path in paths.clone() {
                     self.sample_bank.start(path);
                 }
                 drums.samples = paths;
             }
             Spec::Filter { input, value } => {
-                let filter = inner!(Filter, || Device::new_filter(input.clone(), value.clone()));
+                let filter = device!(Filter, || Device::new_filter(input.clone(), value.clone()));
                 filter.input = input;
                 filter.value = value;
             }
             Spec::Balance { input, volume, pan } => {
-                let balance = inner!(Balance, || Device::new_balance(input.clone()));
+                let balance = device!(Balance, || Device::new_balance(input.clone()));
                 balance.input = input;
-                if let Supplied(volume) = volume {
-                    balance.volume = volume;
-                }
-                if let Supplied(pan) = pan {
-                    balance.pan = pan;
-                }
+                balance.volume = volume.or(1.0);
+                balance.pan = pan.or(0.0);
             }
         }
         Ok(())

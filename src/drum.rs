@@ -22,7 +22,7 @@ pub struct ActiveSampling {
 
 /// Data for an audio sample
 #[derive(Clone)]
-pub struct Sample {
+pub(crate) struct Sample {
     sample_rate: u32,
     samples: Vec<Voice>,
 }

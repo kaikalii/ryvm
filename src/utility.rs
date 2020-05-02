@@ -2,10 +2,43 @@ use std::{
     fmt,
     iter::once,
     ops::{Deref, DerefMut},
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use crossbeam_utils::atomic::AtomicCell;
+
+/// A lock used primarily to allow the manipulation of a `rodio::Source`
+/// while it is already playing
+#[derive(Debug)]
+pub struct SourceLock<T>(Arc<CloneLock<T>>);
+
+impl<T> Clone for SourceLock<T> {
+    fn clone(&self) -> Self {
+        SourceLock(Arc::clone(&self.0))
+    }
+}
+
+impl<T> SourceLock<T> {
+    pub fn new(inner: T) -> Self {
+        SourceLock(Arc::new(CloneLock::new(inner)))
+    }
+    pub fn update<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut T) -> R,
+    {
+        f(&mut *self.0.lock())
+    }
+}
+
+impl<T> Iterator for SourceLock<T>
+where
+    T: Iterator,
+{
+    type Item = T::Item;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.update(Iterator::next)
+    }
+}
 
 pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
     (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32

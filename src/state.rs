@@ -9,7 +9,7 @@ use std::{
 
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use outsource::{JobDescription, Outsourcer};
+use employer::{JobDescription, Employer};
 use rodio::Source;
 use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
@@ -43,7 +43,7 @@ pub struct State {
     command_queue: Vec<RyvmCommand>,
     pub(crate) i: u32,
     pub(crate) loop_period: Option<u32>,
-    pub(crate) sample_bank: Outsourcer<PathBuf, Result<Sample, String>, LoadSamples>,
+    pub(crate) sample_bank: Employer<PathBuf, Result<Sample, String>, LoadSamples>,
     pub(crate) midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
     pub(crate) default_midi: Option<usize>,
@@ -77,7 +77,7 @@ impl State {
             command_queue: Vec::new(),
             i: 0,
             loop_period: None,
-            sample_bank: Outsourcer::default(),
+            sample_bank: Employer::default(),
             midis: HashMap::new(),
             midi_names: HashMap::new(),
             default_midi: None,

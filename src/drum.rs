@@ -1,7 +1,6 @@
 use std::{
     convert::Infallible,
     env::{current_dir, current_exe},
-    error::Error,
     fmt, fs,
     path::Path,
     str::FromStr,
@@ -11,7 +10,7 @@ use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
 
-use crate::Voice;
+use crate::{RyvmResult, Voice};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
@@ -37,7 +36,7 @@ impl Default for Sample {
 }
 
 impl Sample {
-    pub fn open<P>(path: P) -> Result<Self, Box<dyn Error>>
+    pub fn open<P>(path: P) -> RyvmResult<Self>
     where
         P: AsRef<Path>,
     {

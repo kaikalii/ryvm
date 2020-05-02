@@ -24,9 +24,9 @@ use crate::{
 pub(crate) struct LoadSamples;
 
 impl JobDescription<PathBuf> for LoadSamples {
-    type Output = Result<Sample, String>;
+    type Output = RyvmResult<Sample>;
     fn work(&self, input: PathBuf) -> Self::Output {
-        let res = Sample::open(input).map_err(|e| e.to_string());
+        let res = Sample::open(input);
         if let Err(e) = &res {
             println!("{}", e);
         }
@@ -44,7 +44,7 @@ pub struct State {
     command_queue: Vec<RyvmCommand>,
     pub(crate) i: u32,
     pub(crate) loop_period: Option<u32>,
-    pub(crate) sample_bank: Employer<PathBuf, Result<Sample, String>, LoadSamples>,
+    pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub(crate) midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
     pub(crate) default_midi: Option<usize>,
@@ -211,27 +211,23 @@ impl State {
                     } else {
                         None
                     };
-                match Midi::new(
+                let midi = Midi::new(
                     name.clone(),
                     port,
                     manual,
                     pad,
                     record.into(),
                     stop_record.into(),
-                ) {
-                    Ok(midi) => {
-                        if self.midis.remove(&port).is_some() {
-                            println!("Reinitialized midi {}", port);
-                        } else {
-                            println!("Initialized midi {}", port);
-                        }
-                        self.midis.insert(port, midi);
-                        self.midi_names.insert(name, port);
-                        if self.default_midi.is_none() {
-                            self.default_midi = Some(port);
-                        }
-                    }
-                    Err(e) => println!("{}", e),
+                )?;
+                if self.midis.remove(&port).is_some() {
+                    println!("Reinitialized midi {}", port);
+                } else {
+                    println!("Initialized midi {}", port);
+                }
+                self.midis.insert(port, midi);
+                self.midi_names.insert(name, port);
+                if self.default_midi.is_none() {
+                    self.default_midi = Some(port);
                 }
             }
             Spec::Wave {

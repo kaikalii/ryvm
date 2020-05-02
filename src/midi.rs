@@ -1,7 +1,7 @@
 use std::{error::Error, fmt, sync::Arc};
 
 use midir::{
-    ConnectError, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
+    ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
     MidiOutputConnection, PortInfoError, SendError,
 };
 
@@ -117,8 +117,7 @@ pub struct PadBounds {
 #[derive(Debug)]
 pub enum MidiError {
     Init(InitError),
-    InputConnect(ConnectError<MidiInput>),
-    OutputConnect(ConnectError<MidiOutput>),
+    Connect(ConnectErrorKind),
     Send(SendError),
     PortInfo(PortInfoError),
 }
@@ -127,8 +126,7 @@ impl fmt::Display for MidiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MidiError::Init(e) => write!(f, "{}", e),
-            MidiError::InputConnect(e) => write!(f, "{}", e),
-            MidiError::OutputConnect(e) => write!(f, "{}", e),
+            MidiError::Connect(e) => write!(f, "{}", e),
             MidiError::Send(e) => write!(f, "{}", e),
             MidiError::PortInfo(e) => write!(f, "{}", e),
         }
@@ -146,8 +144,7 @@ macro_rules! midi_error_from {
 }
 
 midi_error_from!(Init, InitError);
-midi_error_from!(InputConnect, ConnectError<MidiInput>);
-midi_error_from!(OutputConnect, ConnectError<MidiOutput>);
+midi_error_from!(Connect, ConnectErrorKind);
 midi_error_from!(Send, SendError);
 midi_error_from!(PortInfo, PortInfoError);
 
@@ -219,20 +216,22 @@ impl Midi {
             monitor: Arc::new(CloneCell::new(false)),
         };
 
-        let input = midi_in.connect(
-            port,
-            &name,
-            move |_, data, state| {
-                if let Some(control) =
-                    Control::decode(data, port, state.monitor.load(), pad, record, stop_record)
-                {
-                    state.queue.lock().push(control);
-                }
-            },
-            state.clone(),
-        )?;
+        let input = midi_in
+            .connect(
+                port,
+                &name,
+                move |_, data, state| {
+                    if let Some(control) =
+                        Control::decode(data, port, state.monitor.load(), pad, record, stop_record)
+                    {
+                        state.queue.lock().push(control);
+                    }
+                },
+                state.clone(),
+            )
+            .map_err(|e| e.kind())?;
 
-        let output = midi_out.connect(port, &name)?;
+        let output = midi_out.connect(port, &name).map_err(|e| e.kind())?;
 
         Ok(Midi {
             port,

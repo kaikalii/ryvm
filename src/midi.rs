@@ -5,7 +5,7 @@ use midir::{
     MidiOutputConnection, PortInfoError, SendError,
 };
 
-use crate::{CloneLock, Letter};
+use crate::{CloneCell, CloneLock, Letter};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
@@ -24,18 +24,38 @@ const NOTE_END: u8 = 0x8;
 const PITCH_BEND: u8 = 0xE;
 const CONTROL: u8 = 0xB;
 
+const TIMING: u8 = 0x15;
+
 impl Control {
     #[allow(clippy::unnecessary_cast)]
     pub fn decode(
         data: &[u8],
+        port: usize,
+        monitor: bool,
         pad: Option<PadBounds>,
         record: Option<u8>,
         stop_record: Option<u8>,
     ) -> Option<(u8, Control)> {
+        if data[0] == TIMING {
+            return None;
+        }
         let status = data[0] / 0x10;
         let channel = data[0] % 0x10;
         let d1 = data.get(1).copied().unwrap_or(0);
         let d2 = data.get(2).copied().unwrap_or(0);
+
+        if monitor {
+            print!(
+                "port {:port_width$} | {:data_width$}",
+                port,
+                format!("{:?}", data),
+                port_width = 3,
+                data_width = 15
+            );
+        }
+
+        #[rustfmt::skip]
+        macro_rules! return_none { () => {{ println!(); return None; }} };
 
         let control = match (status, d1, d2) {
             (NOTE_START, n, v) => {
@@ -64,20 +84,24 @@ impl Control {
             (CONTROL, n, i) => {
                 if record == Some(n) {
                     if i != 0x7f {
-                        return None;
+                        return_none!();
                     };
                     Control::Record
                 } else if stop_record == Some(n) {
                     if i != 0x7f {
-                        return None;
+                        return_none!();
                     };
                     Control::StopRecord
                 } else {
                     Control::Control(n, i)
                 }
             }
-            _ => return None,
+            _ => return_none!(),
         };
+
+        if monitor {
+            println!(" | ch{:ch_width$} | {:?}", channel, control, ch_width = 3)
+        }
 
         Some((channel, control))
     }
@@ -89,8 +113,6 @@ pub struct PadBounds {
     pub start: u8,
     pub end: u8,
 }
-
-type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
 
 #[derive(Debug)]
 pub enum MidiError {
@@ -131,13 +153,21 @@ midi_error_from!(PortInfo, PortInfoError);
 
 impl Error for MidiError {}
 
+type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
+
+#[derive(Clone)]
+struct MidiInputState {
+    queue: ControlQueue,
+    monitor: Arc<CloneCell<bool>>,
+}
+
 #[allow(dead_code)]
 pub struct Midi {
     port: usize,
     name: String,
-    input: MidiInputConnection<ControlQueue>,
+    input: MidiInputConnection<MidiInputState>,
     output: MidiOutputConnection,
-    queue: ControlQueue,
+    state: MidiInputState,
     manual: bool,
     pad: Option<PadBounds>,
 }
@@ -152,6 +182,12 @@ impl Midi {
                     .unwrap_or_else(|_| "<unknown>".to_string())
             })
             .collect())
+    }
+    pub fn monitoring(&self) -> bool {
+        self.state.monitor.load()
+    }
+    pub fn set_monitoring(&self, monitoring: bool) {
+        self.state.monitor.store(monitoring)
     }
     pub fn first_device() -> Result<Option<usize>, MidiError> {
         for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
@@ -178,18 +214,22 @@ impl Midi {
 
         assert_eq!(midi_in.port_name(port)?, midi_out.port_name(port)?);
 
-        let queue = Arc::new(CloneLock::new(Vec::new()));
-        let queue_clone = Arc::clone(&queue);
+        let state = MidiInputState {
+            queue: Arc::new(CloneLock::new(Vec::new())),
+            monitor: Arc::new(CloneCell::new(false)),
+        };
 
         let input = midi_in.connect(
             port,
             &name,
-            move |_, data, queue| {
-                if let Some(control) = Control::decode(data, pad, record, stop_record) {
-                    queue.lock().push(control);
+            move |_, data, state| {
+                if let Some(control) =
+                    Control::decode(data, port, state.monitor.load(), pad, record, stop_record)
+                {
+                    state.queue.lock().push(control);
                 }
             },
-            queue_clone,
+            state.clone(),
         )?;
 
         let output = midi_out.connect(port, &name)?;
@@ -199,13 +239,19 @@ impl Midi {
             name,
             input,
             output,
-            queue,
+            state,
             manual,
             pad,
         })
     }
     pub fn controls(&mut self) -> Result<impl Iterator<Item = (u8, Control)>, SendError> {
-        Ok(self.queue.lock().drain(..).collect::<Vec<_>>().into_iter())
+        Ok(self
+            .state
+            .queue
+            .lock()
+            .drain(..)
+            .collect::<Vec<_>>()
+            .into_iter())
     }
 }
 

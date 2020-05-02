@@ -61,7 +61,7 @@ pub enum RyvmCommand {
         channel: u8,
     },
     #[structopt(about = "List all available midi ports")]
-    Midi,
+    Midi(MidiSubCommand),
     #[structopt(about = "Load a spec file")]
     Load {
         #[structopt(help = "The name of the spec")]
@@ -69,6 +69,14 @@ pub enum RyvmCommand {
         #[structopt(help = "The channel to load into")]
         channel: Option<u8>,
     },
+}
+
+#[derive(Debug, StructOpt)]
+pub enum MidiSubCommand {
+    #[structopt(about = "List all available midi ports")]
+    List,
+    #[structopt(about = "Monitor midi input. Use again to stop.")]
+    Monitor,
 }
 
 #[derive(Debug, Default, StructOpt)]

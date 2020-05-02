@@ -7,16 +7,17 @@ use std::{
     sync::Arc,
 };
 
+use employer::{Employer, JobDescription};
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use employer::{JobDescription, Employer};
 use rodio::Source;
 use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
     parse_commands, Channel, CloneLock, Control, Device, FrameCache, Loop, LoopState, Midi,
-    PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock, Voice, ADSR,
+    MidiSubCommand, PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock,
+    Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -301,9 +302,14 @@ impl State {
     fn process_command(&mut self, command: RyvmCommand) -> RyvmResult<()> {
         match command {
             RyvmCommand::Quit => {}
-            RyvmCommand::Midi => {
+            RyvmCommand::Midi(MidiSubCommand::List) => {
                 for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
                     println!("{}. {}", i, name);
+                }
+            }
+            RyvmCommand::Midi(MidiSubCommand::Monitor) => {
+                for midi in self.midis.values() {
+                    midi.set_monitoring(!midi.monitoring());
                 }
             }
             RyvmCommand::Loop { name, length } => self.start_loop(name, length),

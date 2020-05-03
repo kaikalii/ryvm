@@ -42,7 +42,6 @@ pub enum RyvmCommand {
     },
     #[structopt(about = "Print a tree of all output devices")]
     Tree,
-    #[structopt(about = "Choose which keyboard device to be controlled by the actual keyboard")]
     #[structopt(about = "Remove an device", alias = "remove")]
     Rm {
         #[structopt(help = "The name of the device to be removed")]

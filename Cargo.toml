@@ -1,6 +1,6 @@
 [dependencies]
-crossbeam-utils = '0.7.2'
 crossbeam-channel = '0.4.2'
+crossbeam-utils = '0.7.2'
 employer = '0.1.0'
 find_folder = '0.3.0'
 itertools = '0.9.0'
@@ -25,7 +25,6 @@ authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'
 name = 'ryvm'
 version = '0.1.0'
-
 [profile.release]
 debug = true
 

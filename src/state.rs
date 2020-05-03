@@ -132,7 +132,7 @@ impl State {
     }
     /// Start a loop
     pub fn start_loop(&mut self, name: Option<String>, length: Option<f32>) {
-        self.stop_recording();
+        self.finish_recording();
         let name = name.unwrap_or_else(|| {
             let mut i = 1;
             loop {
@@ -147,8 +147,8 @@ impl State {
             .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
         println!("Loop ready");
     }
-    /// Stop recording any loops
-    pub fn stop_recording(&mut self) {
+    /// Finish recording any loops
+    pub fn finish_recording(&mut self) {
         let mut loop_period = self.loop_period;
         let mut loops_to_delete: Vec<String> = Vec::new();
         for (name, lup) in &mut self.loops {
@@ -169,6 +169,18 @@ impl State {
             self.loops.remove(&name);
         }
     }
+    /// Cancel all loop recording
+    pub fn cancel_recording(&mut self) {
+        self.loops.retain(|name, lup| {
+            if let LoopState::Recording = lup.loop_state {
+                println!("Cancelled recording {:?}", name);
+                true
+            } else {
+                false
+            }
+        });
+    }
+    /// Load a spec into the state
     #[allow(clippy::cognitive_complexity)]
     fn load_spec(&mut self, name: String, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
         let channel = channel.unwrap_or(self.curr_channel);
@@ -303,7 +315,7 @@ impl State {
                 }
             }
         } else {
-            self.stop_recording();
+            self.finish_recording();
         }
         Ok(true)
     }
@@ -542,7 +554,7 @@ impl Iterator for State {
             // Process certain controls separate from the rest
             match control {
                 Control::Record => self.start_loop(None, None),
-                Control::StopRecord => self.stop_recording(),
+                Control::StopRecord => self.cancel_recording(),
                 control => {
                     // Check if a fly mapping can be processed
                     let midis = &self.midis;

@@ -15,9 +15,9 @@ use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Channel, CloneLock, Control, Device, FrameCache, Loop, LoopState, Midi,
-    MidiSubCommand, PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample, SourceLock,
-    Voice, ADSR,
+    parse_commands, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop, LoopState,
+    Midi, MidiSubCommand, PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample,
+    SourceLock, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -54,6 +54,7 @@ pub struct State {
     tracked_spec_maps: HashMap<PathBuf, u8>,
     watcher: RecommendedWatcher,
     watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
+    fly_control: Option<FlyControl>,
 }
 
 impl State {
@@ -88,6 +89,7 @@ impl State {
             tracked_spec_maps: HashMap::new(),
             watcher,
             watcher_queue,
+            fly_control: None,
         };
         state.load_spec_map_from_file("specs/startup.ron", None)?;
         Ok(SourceLock::new(state))
@@ -457,8 +459,14 @@ impl Iterator for State {
                     EventKind::Modify(_) => {
                         for path in event.paths {
                             let channel = self.tracked_spec_maps.get(&path).copied();
-                            if let Err(e) = self.load_spec_map_from_file(path, channel) {
-                                println!("{}", e);
+                            if let Err(e) = self.load_spec_map_from_file(&path, channel) {
+                                match FlyControl::find(&path) {
+                                    Ok(Some(fly)) => {
+                                        println!("Activate the control you would like to map");
+                                        self.fly_control = Some(fly)
+                                    }
+                                    Ok(None) | Err(_) => println!("{}", e),
+                                }
                             }
                         }
                     }
@@ -468,7 +476,7 @@ impl Iterator for State {
                 Err(e) => println!("{}", e),
             }
         }
-        // Process commands
+        // Process CLI commands
         if let Some(period) = self.loop_period {
             if self.i % period == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
@@ -487,33 +495,50 @@ impl Iterator for State {
             return Some(voice);
         }
         // Calculate next frame
+        // Get controls from midis
+        let raw_controls: Vec<(usize, u8, Control)> = self
+            .midis
+            .iter_mut()
+            .filter_map(|(&port, midi)| {
+                midi.controls()
+                    .map_err(|e| println!("{}", e))
+                    .ok()
+                    .map(|controls| (port, controls))
+            })
+            .flat_map(|(port, controls)| controls.map(move |(ch, con)| (port, ch, con)))
+            .collect();
+
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
-        let mut start_record = false;
-        let mut stop_record = false;
-        // Get controls from midis
-        for (&port, midi) in &mut self.midis {
-            match midi.controls() {
-                Ok(new_controls) => {
-                    for (channel, control) in new_controls {
-                        match control {
-                            Control::Record => start_record = true,
-                            Control::StopRecord => stop_record = true,
-                            control => controls
-                                .entry((port, channel))
-                                .or_insert_with(Vec::new)
-                                .push(control),
-                        }
+        let default_midi = self.default_midi;
+        for (port, channel, control) in raw_controls {
+            // Process certain controls separate from the rest
+            match control {
+                Control::Record => self.start_loop(None, None),
+                Control::StopRecord => self.stop_recording(),
+                control => {
+                    // Check if a fly mapping can be processed
+                    let midis = &self.midis;
+                    match self.fly_control.as_mut().map(|fly| {
+                        fly.process(control, || {
+                            if default_midi.map(|p| p == port).unwrap_or(true) {
+                                None
+                            } else {
+                                Some(midis[&port].name().into())
+                            }
+                        })
+                    }) {
+                        // Pass the control on
+                        Some(Ok(false)) | None => controls
+                            .entry((port, channel))
+                            .or_insert_with(Vec::new)
+                            .push(control),
+                        // Reset the fly
+                        Some(Ok(true)) => self.fly_control = None,
+                        Some(Err(e)) => println!("{}", e),
                     }
                 }
-                Err(e) => println!("{}", e),
             }
-        }
-        // Start or stop loops if necessary
-        if stop_record {
-            self.stop_recording();
-        } else if start_record {
-            self.start_loop(None, None);
         }
         // Record loops
         for lup in self.loops.values_mut() {

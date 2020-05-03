@@ -1,32 +1,71 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
 };
 
 use ropey::Rope;
+use ryvm_spec::DynamicValue;
 
-use crate::RyvmResult;
+use crate::{Control, RyvmResult};
 
+#[derive(Debug, Clone)]
 pub struct FlyControl {
     pub file: PathBuf,
-    pub line: usize,
-    pub column: usize,
-    pub rope: Arc<Mutex<Rope>>,
+    pub index: usize,
+    pub rope: Rope,
 }
 
 const FLY_PATTERN: &str = "#";
 
 impl FlyControl {
-    pub fn find<P>(path: P) -> RyvmResult<Vec<Self>>
+    pub fn find<P>(path: P) -> RyvmResult<Option<Self>>
     where
         P: AsRef<Path>,
     {
-        let mut file_str = fs::read_to_string(&path)?;
-        if !file_str.contains(FLY_PATTERN) {
-            return Ok(Vec::new());
+        let file_str = fs::read_to_string(&path)?;
+        let index = if let Some(i) = file_str.find(FLY_PATTERN) {
+            i
+        } else {
+            return Ok(None);
+        };
+        let rope = Rope::from_str(&file_str);
+        let index = rope.byte_to_char(index);
+        Ok(Some(FlyControl {
+            file: path.as_ref().into(),
+            index,
+            rope,
+        }))
+    }
+    /// Try to process a control and return whether it was mapped
+    pub fn process(
+        &mut self,
+        control: Control,
+        mut name: impl FnMut() -> Option<String>,
+    ) -> RyvmResult<bool> {
+        if let Control::Control(i, _) = control {
+            // Create control value
+            let value = DynamicValue::Control {
+                controller: name().into(),
+                number: i,
+                global: false,
+                bounds: (0.0, 1.0),
+            };
+            // Serialize control value
+            let mut config = ron::ser::PrettyConfig::default();
+            config.new_line = " ".into();
+            config.indentor = "".into();
+            let mut value_str = ron::ser::to_string_pretty(&value, config)?;
+            value_str.push(',');
+            // Insert control string
+            self.rope
+                .remove(self.index..(self.index + FLY_PATTERN.len()));
+            self.rope.insert(self.index, &value_str);
+            // Write the file
+            let file = fs::File::create(&self.file)?;
+            self.rope.write_to(file)?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-
-        unimplemented!()
     }
 }

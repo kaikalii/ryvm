@@ -170,6 +170,9 @@ pub struct Midi {
 }
 
 impl Midi {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
     pub fn ports_list() -> Result<Vec<String>, MidiError> {
         let midi_in = MidiInput::new("")?;
         Ok((0..midi_in.port_count())

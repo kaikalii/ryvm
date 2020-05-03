@@ -867,6 +867,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ropey"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba326a8508a4add47e7b260333aa2d896213a5f3572fde11ed6e9130241b7f71"
+dependencies = [
+ "smallvec",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -886,6 +895,7 @@ dependencies = [
  "rand 0.7.3",
  "rodio",
  "ron",
+ "ropey",
  "ryvm_spec",
  "structopt",
  "thiserror",

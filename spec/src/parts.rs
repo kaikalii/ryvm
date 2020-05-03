@@ -23,7 +23,7 @@ impl Default for WaveForm {
 
 /// A value that can be either a static number or mapped to a midi control
 #[derive(Debug, Clone, Ser, Deser)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum DynamicValue {
     /// A static number
     Static(f32),

@@ -13,7 +13,7 @@ use serde_derive::{Deserialize, Serialize};
 
 /// A specification for a Ryvm item
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Spec {
     /// Load into the given channel the spec file with the given path
     Load(u8, PathBuf),

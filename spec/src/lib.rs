@@ -30,6 +30,20 @@ pub enum Spec {
         /// Set this to true if the controller cannot change its own midi channels
         #[serde(default, skip_serializing_if = "Not::not")]
         manual: bool,
+        /// A list of the controls that are not global
+        ///
+        /// By default, every control on a midi controller is set to global.
+        /// This means that it is always in effect no matter on what channel the
+        /// controller is outputting.
+        ///
+        /// This makes sense for controls like knobs and some buttons. Physical knobs
+        /// in particular, which remain in their position when you change the channel
+        /// should not be added to this list.
+        ///
+        /// However, you may want the controls for say, a mod wheel, to be specific
+        /// to a certain channel. Controls like this should be added to this list
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        non_globals: Vec<u8>,
         /// The midi control number used to start and end loops
         record: Optional<u8>,
         /// The midi control number used to stop recording loops
@@ -78,40 +92,4 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pan: Optional<DynamicValue>,
     },
-}
-
-#[cfg(test)]
-#[test]
-fn example() {
-    use ron::ser::*;
-
-    let specs = vec![
-        Spec::Drums(vec!["kick.wav".into(), "clap.wav".into()]),
-        Spec::Filter {
-            input: "drums".into(),
-            value: DynamicValue::Static(1.0),
-        },
-        Spec::Filter {
-            input: "drums".into(),
-            value: DynamicValue::Control {
-                controller: Omitted,
-                number: 28,
-                global: false,
-                bounds: (0.0, 1.0),
-            },
-        },
-    ];
-
-    let config = PrettyConfig::default();
-    std::fs::write(
-        "../ryvm_spec.ron",
-        to_string_pretty(&specs, config).unwrap().as_bytes(),
-    )
-    .unwrap();
-}
-
-#[cfg(test)]
-#[test]
-fn deserialize() {
-    ron::de::from_reader::<_, Vec<Spec>>(std::fs::File::open("../ryvm_spec.ron").unwrap()).unwrap();
 }

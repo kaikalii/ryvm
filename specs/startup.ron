@@ -5,6 +5,7 @@
         pad_range: (36, 52),
         record: 117,
         stop_record: 115,
+        non_globals: [1]
     ),
     "load1": load(0, "specs/example1.ron"),
     "load2": load(1, "specs/example2.ron"),

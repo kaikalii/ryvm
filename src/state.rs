@@ -16,8 +16,9 @@ use ryvm_spec::{DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop, LoopState,
-    Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
+    parse_commands, Buttons, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop,
+    LoopState, Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
+    ADSR,
 };
 
 #[derive(Default)]
@@ -217,6 +218,7 @@ impl State {
                 pad_channel,
                 pad_range,
                 manual,
+                non_globals,
                 record,
                 stop_record,
             } => {
@@ -239,14 +241,11 @@ impl State {
                     } else {
                         None
                     };
-                let midi = Midi::new(
-                    name.clone(),
-                    port,
-                    manual,
-                    pad,
-                    record.into(),
-                    stop_record.into(),
-                )?;
+                let buttons = Buttons {
+                    record: record.into(),
+                    stop_record: stop_record.into(),
+                };
+                let midi = Midi::new(name.clone(), port, manual, pad, buttons, non_globals)?;
                 let removed = self.midis.remove(&port).is_some();
                 println!(
                     "{}nitialized {} ({}) on port {}",
@@ -465,19 +464,20 @@ impl State {
             DynamicValue::Control {
                 controller,
                 number,
-                global,
-                bounds: (min, max),
+                bounds,
             } => {
                 let port = if let Supplied(controller) = controller {
-                    self.midi_names.get(controller).copied()?
+                    *self.midi_names.get(controller)?
                 } else {
                     self.default_midi?
                 };
-                let value = if *global {
+                let midi = self.midis.get(&port)?;
+                let value = if midi.control_is_global(*number) {
                     *self.global_controls.get(&(port, *number))?
                 } else {
                     *self.controls.get(&(port, channel, *number))?
                 };
+                let (min, max) = bounds.or((0.0, 1.0));
                 Some(f32::from(value) / 127.0 * (max - min) + min)
             }
         }

@@ -33,8 +33,7 @@ impl Control {
         port: usize,
         monitor: bool,
         pad: Option<PadBounds>,
-        record: Option<u8>,
-        stop_record: Option<u8>,
+        buttons: Buttons,
     ) -> Option<(u8, Control)> {
         if data[0] == TIMING {
             return None;
@@ -82,12 +81,12 @@ impl Control {
                 Control::PitchBend(pb)
             }
             (CONTROL, n, i) => {
-                if record == Some(n) {
+                if buttons.record == Some(n) {
                     if i != 0x7f {
                         return_none!();
                     };
                     Control::Record
-                } else if stop_record == Some(n) {
+                } else if buttons.stop_record == Some(n) {
                     if i != 0x7f {
                         return_none!();
                     };
@@ -158,6 +157,12 @@ struct MidiInputState {
     monitor: Arc<CloneCell<bool>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct Buttons {
+    pub record: Option<u8>,
+    pub stop_record: Option<u8>,
+}
+
 #[allow(dead_code)]
 pub struct Midi {
     port: usize,
@@ -168,6 +173,7 @@ pub struct Midi {
     state: MidiInputState,
     manual: bool,
     pad: Option<PadBounds>,
+    non_globals: Vec<u8>,
 }
 
 impl Midi {
@@ -176,6 +182,9 @@ impl Midi {
     }
     pub fn device(&self) -> &str {
         &self.device
+    }
+    pub fn control_is_global(&self, control: u8) -> bool {
+        !self.non_globals.contains(&control)
     }
     pub fn ports_list() -> Result<Vec<String>, MidiError> {
         let midi_in = MidiInput::new("")?;
@@ -212,8 +221,8 @@ impl Midi {
         port: usize,
         manual: bool,
         pad: Option<PadBounds>,
-        record: Option<u8>,
-        stop_record: Option<u8>,
+        buttons: Buttons,
+        non_globals: Vec<u8>,
     ) -> Result<Midi, MidiError> {
         let mut midi_in = MidiInput::new(&name)?;
         midi_in.ignore(Ignore::Time);
@@ -234,7 +243,7 @@ impl Midi {
                 &name,
                 move |_, data, state| {
                     if let Some(control) =
-                        Control::decode(data, port, state.monitor.load(), pad, record, stop_record)
+                        Control::decode(data, port, state.monitor.load(), pad, buttons)
                     {
                         state.queue.lock().push(control);
                     }
@@ -254,6 +263,7 @@ impl Midi {
             state,
             manual,
             pad,
+            non_globals,
         })
     }
     pub fn controls(&mut self) -> Result<impl Iterator<Item = (u8, Control)>, SendError> {

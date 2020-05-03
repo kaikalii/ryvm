@@ -4,7 +4,7 @@ use std::{
 };
 
 use ropey::Rope;
-use ryvm_spec::DynamicValue;
+use ryvm_spec::{DynamicValue, Omitted};
 
 use crate::{Control, RyvmResult};
 
@@ -47,8 +47,7 @@ impl FlyControl {
             let value = DynamicValue::Control {
                 controller: name().into(),
                 number: i,
-                global: false,
-                bounds: (0.0, 1.0),
+                bounds: Omitted,
             };
             // Serialize control value
             let mut config = ron::ser::PrettyConfig::default();

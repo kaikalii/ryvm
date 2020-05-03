@@ -1,5 +1,3 @@
-use std::ops::Not;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
@@ -34,24 +32,10 @@ pub enum DynamicValue {
         controller: Optional<String>,
         /// The midi control number
         number: u8,
-        /// Whether this is a global control
-        ///
-        /// Global controls are active even if the midi controller is set to output a different channel
-        #[serde(default, skip_serializing_if = "Not::not")]
-        global: bool,
         /// The minimum and maxinum values this control should map to
-        #[serde(default = "default_bounds", skip_serializing_if = "is_default_bounds")]
-        bounds: (f32, f32),
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        bounds: Optional<(f32, f32)>,
     },
-}
-
-fn default_bounds() -> (f32, f32) {
-    (0.0, 1.0)
-}
-
-#[allow(clippy::trivially_copy_pass_by_ref)]
-fn is_default_bounds(bounds: &(f32, f32)) -> bool {
-    bounds == &default_bounds()
 }
 
 impl From<f32> for DynamicValue {

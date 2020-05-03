@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use crossbeam_channel as mpmc;
 use employer::{Employer, JobDescription};
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -16,8 +17,7 @@ use structopt::StructOpt;
 
 use crate::{
     parse_commands, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop, LoopState,
-    Midi, MidiSubCommand, PadBounds, RyvmApp, RyvmCommand, RyvmError, RyvmResult, Sample,
-    SourceLock, Voice, ADSR,
+    Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -56,6 +56,8 @@ pub struct State {
     watcher: RecommendedWatcher,
     watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
     fly_control: Option<FlyControl>,
+    send: mpmc::Sender<RyvmResult<bool>>,
+    recv: mpmc::Receiver<String>,
 }
 
 impl State {
@@ -64,15 +66,16 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if it fails to load a startup spec
-    pub fn new() -> RyvmResult<SourceLock<Self>> {
-        let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
+    pub fn new(sample_rate: u32) -> RyvmResult<(Self, StateInterface)> {
         let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
         let watcher_queue_clone = Arc::clone(&watcher_queue);
         let watcher = RecommendedWatcher::new_immediate(move |event: notify::Result<Event>| {
             watcher_queue_clone.lock().push(event);
         })?;
+        let (send, inter_recv) = mpmc::unbounded();
+        let (inter_send, recv) = mpmc::unbounded();
         let mut state = State {
-            sample_rate: app.sample_rate.unwrap_or(44100),
+            sample_rate,
             tempo: 1.0,
             frame_queue: None,
             curr_channel: 0,
@@ -91,9 +94,17 @@ impl State {
             watcher,
             watcher_queue,
             fly_control: None,
+            send,
+            recv,
         };
         state.load_spec_map_from_file("specs/startup.ron", None)?;
-        Ok(SourceLock::new(state))
+        Ok((
+            state,
+            StateInterface {
+                send: inter_send,
+                recv: inter_recv,
+            },
+        ))
     }
     /// Create a watcher queue to
     /// Get the current channel id
@@ -457,6 +468,11 @@ impl State {
 impl Iterator for State {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
+        // Check for CLI commands
+        while let Ok(command) = self.recv.try_recv() {
+            let res = self.queue_command(&command);
+            let _ = self.send.send(res);
+        }
         // Check for file watcher events
         let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
         for res in events {
@@ -594,7 +610,7 @@ impl Iterator for State {
     }
 }
 
-impl Source for SourceLock<State> {
+impl Source for State {
     fn current_frame_len(&self) -> Option<usize> {
         None
     }
@@ -602,9 +618,28 @@ impl Source for SourceLock<State> {
         2
     }
     fn sample_rate(&self) -> u32 {
-        self.update(|instrs| instrs.sample_rate)
+        self.sample_rate
     }
     fn total_duration(&self) -> std::option::Option<std::time::Duration> {
         None
+    }
+}
+
+/// An interface for sending commands to a running ryvm state
+pub struct StateInterface {
+    send: mpmc::Sender<String>,
+    recv: mpmc::Receiver<RyvmResult<bool>>,
+}
+
+impl StateInterface {
+    /// Send a command to the state corresponding to this interface
+    pub fn send_command<S>(&self, command: S) -> RyvmResult<bool>
+    where
+        S: Into<String>,
+    {
+        self.send
+            .send(command.into())
+            .map_err(|_| RyvmError::StateDropped)?;
+        self.recv.recv().unwrap_or(Err(RyvmError::StateDropped))
     }
 }

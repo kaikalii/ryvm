@@ -2,7 +2,7 @@ use structopt::StructOpt;
 
 /// A Ryvm CLI command
 #[derive(Debug, StructOpt)]
-pub enum RyvmCommand {
+pub(crate) enum RyvmCommand {
     #[structopt(about = "Quit ryvm", alias = "exit")]
     Quit,
     #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
@@ -71,15 +71,22 @@ pub enum RyvmCommand {
 }
 
 #[derive(Debug, StructOpt)]
-pub enum MidiSubCommand {
+pub(crate) enum MidiSubCommand {
     #[structopt(about = "List all available midi ports")]
     List,
     #[structopt(about = "Monitor midi input. Use again to stop.")]
     Monitor,
 }
 
+/// The command line argument parser for Ryvm
 #[derive(Debug, Default, StructOpt)]
 pub struct RyvmApp {
-    #[structopt(short = "r", long, about = "List the available midi ports")]
-    pub sample_rate: Option<u32>,
+    #[structopt(
+        short = "r",
+        long,
+        default_value = "44100",
+        about = "List the available midi ports"
+    )]
+    /// The sample rate for the session
+    pub sample_rate: u32,
 }

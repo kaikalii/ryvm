@@ -35,6 +35,9 @@ pub enum RyvmError {
     /// No available midi ports
     #[error("There are no available midi ports")]
     NoMidiPorts,
+    /// The Ryvm state was dropped
+    #[error("Attempted to send a command to a dropped ryvm state")]
+    StateDropped,
 }
 
 /// The Ryvm result type

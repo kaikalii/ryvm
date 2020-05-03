@@ -1,15 +1,16 @@
 use std::{
     io::{stdin, BufRead},
     process::exit,
-    sync::mpsc,
-    thread,
-    time::Duration,
 };
 
-use ryvm::State;
+use structopt::StructOpt;
+
+use ryvm::{RyvmApp, State};
 
 fn main() {
-    let state = match State::new() {
+    let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
+
+    let (state, interface) = match State::new(app.sample_rate) {
         Ok(state) => state,
         Err(e) => {
             println!("{}", e);
@@ -33,27 +34,14 @@ fn main() {
         }
     };
 
-    sink.append(state.clone());
-
-    // Spawn command entry thread
-    let (send, recv) = mpsc::channel();
-    thread::spawn(move || {
-        for line in stdin().lock().lines().filter_map(Result::ok) {
-            let _ = send.send(line);
-        }
-    });
+    sink.append(state);
 
     // Main loop
-    loop {
-        // Read commands
-        if let Ok(text) = recv.try_recv() {
-            match state.update(|state| state.queue_command(&text)) {
-                Ok(true) => {}
-                Ok(false) => break,
-                Err(e) => println!("{}", e),
-            }
+    for line in stdin().lock().lines().filter_map(Result::ok) {
+        match interface.send_command(line) {
+            Ok(true) => {}
+            Ok(false) => break,
+            Err(e) => println!("{}", e),
         }
-        // Sleep
-        thread::sleep(Duration::from_millis(100));
     }
 }

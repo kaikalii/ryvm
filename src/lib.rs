@@ -8,6 +8,6 @@ macro_rules! mods {
     ($($vis:vis $m:ident),*) => ($(mod $m; $vis use $m::*;)*);
 }
 
-mods!(app, pub channel, pub device, drum, envelope, pub error, r#loop, midi, onfly, pub state, track, utility);
+mods!(pub app, pub channel, pub device, drum, envelope, pub error, r#loop, midi, onfly, pub state, track, utility);
 
 pub use rodio::{default_output_device, output_devices};

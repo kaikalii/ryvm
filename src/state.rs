@@ -174,9 +174,9 @@ impl State {
         self.loops.retain(|name, lup| {
             if let LoopState::Recording = lup.loop_state {
                 println!("Cancelled recording {:?}", name);
-                true
-            } else {
                 false
+            } else {
+                true
             }
         });
     }

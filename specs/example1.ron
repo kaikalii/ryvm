@@ -2,7 +2,7 @@
     "s": wave(
         form: square,
         bend: static(0.3),
-        attack: control(number: 27)
+        attack: static(0.05),
     ),
     "filter": filter(
         input: "s",
@@ -10,8 +10,7 @@
     ),
     "bal": balance(
         input: "filter",
-        pan: control(number: 28, bounds: (-1.0, 1.0)),
-        volume: static(0.7)
+        volume: control( number: 27, ),
     ),
     "d": drums(["kick.wav", "clap.wav", "hat.wav"])
 }

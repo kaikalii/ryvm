@@ -19,8 +19,8 @@ pub enum Spec {
     Load(u8, PathBuf),
     /// A midi controller
     Controller {
-        /// The midi port to use
-        port: Optional<usize>,
+        /// The name of the midi device
+        device: Optional<String>,
         /// The channel that drum pads on the controller use
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pad_channel: Optional<u8>,

@@ -162,6 +162,7 @@ struct MidiInputState {
 pub struct Midi {
     port: usize,
     name: String,
+    device: String,
     input: MidiInputConnection<MidiInputState>,
     output: MidiOutputConnection,
     state: MidiInputState,
@@ -172,6 +173,9 @@ pub struct Midi {
 impl Midi {
     pub fn name(&self) -> &str {
         &self.name
+    }
+    pub fn device(&self) -> &str {
+        &self.device
     }
     pub fn ports_list() -> Result<Vec<String>, MidiError> {
         let midi_in = MidiInput::new("")?;
@@ -188,6 +192,9 @@ impl Midi {
     }
     pub fn set_monitoring(&self, monitoring: bool) {
         self.state.monitor.store(monitoring)
+    }
+    pub fn port_matching(name: &str) -> Result<Option<usize>, MidiError> {
+        Midi::ports_list().map(|list| list.iter().position(|item| item.contains(name)))
     }
     pub fn first_device() -> Result<Option<usize>, MidiError> {
         for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
@@ -219,6 +226,8 @@ impl Midi {
             monitor: Arc::new(CloneCell::new(false)),
         };
 
+        let device = midi_in.port_name(port)?;
+
         let input = midi_in
             .connect(
                 port,
@@ -239,6 +248,7 @@ impl Midi {
         Ok(Midi {
             port,
             name,
+            device,
             input,
             output,
             state,

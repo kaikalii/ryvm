@@ -1,5 +1,6 @@
 {
     "midi": controller(
+        device: "Launchkey",
         pad_channel: 9,
         pad_range: (36, 52),
         record: 117,

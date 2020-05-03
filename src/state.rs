@@ -213,15 +213,19 @@ impl State {
                 self.load_spec_map_from_file(path, Some(channel))?;
             }
             Spec::Controller {
-                port,
+                device,
                 pad_channel,
                 pad_range,
                 manual,
                 record,
                 stop_record,
             } => {
-                let port = if let Supplied(port) = port {
-                    port
+                let port = if let Supplied(device) = device {
+                    if let Some(port) = Midi::port_matching(&device)? {
+                        port
+                    } else {
+                        Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                    }
                 } else {
                     Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
                 };
@@ -243,11 +247,14 @@ impl State {
                     record.into(),
                     stop_record.into(),
                 )?;
-                if self.midis.remove(&port).is_some() {
-                    println!("Reinitialized midi {}", port);
-                } else {
-                    println!("Initialized midi {}", port);
-                }
+                let removed = self.midis.remove(&port).is_some();
+                println!(
+                    "{}nitialized {} ({}) on port {}",
+                    if removed { "Rei" } else { "I" },
+                    midi.name(),
+                    midi.device(),
+                    port
+                );
                 self.midis.insert(port, midi);
                 self.midi_names.insert(name, port);
                 if self.default_midi.is_none() {

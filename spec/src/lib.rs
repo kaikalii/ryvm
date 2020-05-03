@@ -80,24 +80,6 @@ pub enum Spec {
     },
 }
 
-/// A waveform
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(missing_docs)]
-pub enum WaveForm {
-    Sine,
-    Square,
-    Saw,
-    Triangle,
-    Noise,
-}
-
-impl Default for WaveForm {
-    fn default() -> Self {
-        WaveForm::Sine
-    }
-}
-
 #[cfg(test)]
 #[test]
 fn example() {

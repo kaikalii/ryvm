@@ -3,6 +3,24 @@ use std::ops::Not;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
+/// A waveform
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[allow(missing_docs)]
+pub enum WaveForm {
+    Sine,
+    Square,
+    Saw,
+    Triangle,
+    Noise,
+}
+
+impl Default for WaveForm {
+    fn default() -> Self {
+        WaveForm::Sine
+    }
+}
+
 /// A value that can be either a static number or mapped to a midi control
 #[derive(Debug, Clone, Ser, Deser)]
 #[serde(rename_all = "snake_case")]

@@ -1,0 +1,16 @@
+{
+    "s1": wave(form: saw),
+    // "s2": wave(form: noise),
+    "filter1": filter(
+        input: "s1",
+        value: control(number: 1, bounds: (0, 0.05))
+    ),
+    "bal1": balance(
+        input: "filter1",
+        volume: control(number: 1)
+    ),
+    // "filter2": filter(
+    //     input: "s2",
+    //     value: control(number: 1, bounds: (0, 0.7))
+    // ),
+}

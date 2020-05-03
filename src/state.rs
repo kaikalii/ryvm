@@ -42,6 +42,7 @@ pub struct State {
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
+    /// The index of the current frame
     pub(crate) i: u32,
     pub(crate) loop_period: Option<u32>,
     pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
@@ -185,10 +186,8 @@ impl State {
         }
         // Match over different spec types
         match spec {
-            Spec::Load(names) => {
-                for name in names {
-                    self.load_spec_map_from_file(format!("specs/{}.ron", name), Some(channel))?;
-                }
+            Spec::Load(channel, path) => {
+                self.load_spec_map_from_file(path, Some(channel))?;
             }
             Spec::Controller {
                 port,
@@ -364,18 +363,25 @@ impl State {
     where
         P: AsRef<Path>,
     {
+        let path = path.as_ref().canonicalize()?;
+        // Load and deserialize the map
         let file = File::open(&path)?;
         let specs = ron::de::from_reader::<_, HashMap<String, Spec>>(file)?;
+        // Add it to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
-        let channel = channel.unwrap_or(self.curr_channel);
-        self.tracked_spec_maps
-            .insert(path.as_ref().to_path_buf(), channel);
-        self.channels
-            .entry(channel)
-            .or_insert_with(Channel::default)
-            .retain(|name, _| specs.contains_key(name));
+
+        if let Some(channel) = channel {
+            // Add the path to the list of tracked maps
+            self.tracked_spec_maps.insert(path, channel);
+            // Remove specs no longer present for this channel
+            self.channels
+                .entry(channel)
+                .or_insert_with(Channel::default)
+                .retain(|name, _| specs.contains_key(name));
+        }
+        // Load each spec
         for (name, spec) in specs {
-            self.load_spec(name, spec, Some(channel))?;
+            self.load_spec(name, spec, channel)?;
         }
         Ok(())
     }
@@ -459,7 +465,12 @@ impl Iterator for State {
                     EventKind::Modify(_) => {
                         for path in event.paths {
                             let channel = self.tracked_spec_maps.get(&path).copied();
-                            if let Err(e) = self.load_spec_map_from_file(&path, channel) {
+                            let canonical_path = path.canonicalize();
+                            if let Err(e) =
+                                canonical_path.map_err(Into::into).and_then(|can_path| {
+                                    self.load_spec_map_from_file(&can_path, channel)
+                                })
+                            {
                                 match FlyControl::find(&path) {
                                     Ok(Some(fly)) => {
                                         println!("Activate the control you would like to map");
@@ -558,6 +569,7 @@ impl Iterator for State {
                 for control in controls {
                     if let Control::Control(i, v) = control {
                         self.controls.insert((port, channel, *i), *v);
+                        self.global_controls.insert((port, *i), *v);
                     }
                 }
             }

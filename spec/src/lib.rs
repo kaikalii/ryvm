@@ -15,8 +15,8 @@ use serde_derive::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Spec {
-    /// Load all spec files with the given names from the `specs` directory
-    Load(Vec<String>),
+    /// Load into the given channel the spec file with the given path
+    Load(u8, PathBuf),
     /// A midi controller
     Controller {
         /// The midi port to use

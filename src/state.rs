@@ -584,14 +584,17 @@ impl Iterator for State {
         // Record loops
         for lup in self.loops.values_mut() {
             if lup.loop_state == LoopState::Recording {
-                lup.record(controls.clone(), self.i, self.tempo, self.loop_period);
+                lup.record(controls.clone(), self.tempo, self.loop_period);
             }
         }
         let mut voice = Voice::SILENT;
+        // Collect loop controls
+        let state_tempo = self.tempo;
+        let loop_period = self.loop_period;
         let loop_controls: Vec<_> = self
             .loops
-            .values()
-            .filter_map(|lup| lup.controls(self.i, self.tempo, self.loop_period))
+            .values_mut()
+            .filter_map(|lup| lup.controls(state_tempo, loop_period))
             .collect();
         // Iterator through the main controls as well as all playing loop controls
         for (i, controls) in once(controls).chain(loop_controls).enumerate() {

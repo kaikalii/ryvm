@@ -129,12 +129,7 @@ impl Device {
                     .resolve_dynamic_value(&wave.pitch_bend_range, channel_num)
                     .unwrap_or(12.0);
                 let voice = enveloper
-                    .states(
-                        state.sample_rate,
-                        wave.octave.unwrap_or(0),
-                        pitch_bend_range,
-                        adsr,
-                    )
+                    .states(wave.octave.unwrap_or(0), pitch_bend_range)
                     .zip(&mut *waves)
                     .map(|((freq, amp), i)| {
                         if freq == 0.0 {
@@ -163,7 +158,7 @@ impl Device {
                     })
                     .fold(Voice::SILENT, |acc, v| acc + v);
 
-                enveloper.progress(state.sample_rate, adsr.release);
+                enveloper.progress(state.sample_rate, adsr);
                 voice
             }
             // Drum Machine
@@ -221,7 +216,7 @@ impl Device {
 
                 let volume = state
                     .resolve_dynamic_value(&bal.volume, channel_num)
-                    .unwrap_or(0.0);
+                    .unwrap_or(0.5);
                 let pan = state
                     .resolve_dynamic_value(&bal.pan, channel_num)
                     .unwrap_or(0.0);

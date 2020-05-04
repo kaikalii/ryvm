@@ -77,7 +77,6 @@ struct NoteEnvelope {
 pub struct Enveloper {
     pitch_bend: f32,
     states: HashMap<LetterOctave, Vec<NoteEnvelope>>,
-    i: u32,
 }
 
 impl Enveloper {
@@ -168,6 +167,5 @@ impl Enveloper {
             states.retain(|ne| !matches!(ne.state, EnvelopeState::Done));
         }
         self.states.retain(|_, states| !states.is_empty());
-        self.i += 1;
     }
 }

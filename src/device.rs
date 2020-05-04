@@ -7,8 +7,8 @@ use rand::random;
 use ryvm_spec::{DynamicValue, WaveForm};
 
 use crate::{
-    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, FrameCache, State, Voice,
-    ADSR,
+    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, State,
+    Voice, ADSR,
 };
 
 /// A virtual audio processing device
@@ -29,7 +29,7 @@ pub enum Device {
 pub struct Wave {
     /// The waveform
     pub form: WaveForm,
-    pub(crate) waves: CloneLock<Vec<u32>>,
+    pub(crate) waves: CloneLock<Vec<Frame>>,
     /// The octave
     pub octave: Option<i8>,
     /// The +- range for pitch bending
@@ -153,7 +153,7 @@ impl Device {
                         } * amp
                             * MIN_ENERGY
                             / waveform_energy(wave.form);
-                        *i = (*i + 1) % spc as u32;
+                        *i = (*i + 1) % spc as Frame;
                         Voice::mono(s)
                     })
                     .fold(Voice::SILENT, |acc, v| acc + v);

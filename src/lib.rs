@@ -11,3 +11,5 @@ macro_rules! mods {
 mods!(pub app, pub channel, pub device, drum, envelope, pub error, r#loop, midi, onfly, pub state, track, utility);
 
 pub use rodio::{default_output_device, output_devices};
+
+type Frame = u64;

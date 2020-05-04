@@ -16,8 +16,9 @@ use ryvm_spec::{Action, DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop, LoopState,
-    Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
+    parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
+    LoopState, Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
+    ADSR,
 };
 
 #[derive(Default)]
@@ -43,8 +44,8 @@ pub struct State {
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
     /// The index of the current frame
-    pub(crate) i: u32,
-    pub(crate) loop_period: Option<u32>,
+    pub(crate) i: Frame,
+    pub(crate) loop_period: Option<Frame>,
     pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub(crate) midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
@@ -127,7 +128,7 @@ impl State {
         if let Some(period) = self.loop_period {
             self.i % (period / 10) == 0
         } else {
-            self.i % (self.sample_rate / 5) == 0
+            self.i % (self.sample_rate as Frame / 5) == 0
         }
     }
     /// Start a loop
@@ -153,7 +154,7 @@ impl State {
         let mut loops_to_delete: Vec<String> = Vec::new();
         for (name, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
-                let len = lup.controls.lock().len() as u32;
+                let len = lup.controls.lock().len() as Frame;
                 if len > 0 {
                     loop_period.get_or_insert(len);
                     lup.loop_state = LoopState::Playing;

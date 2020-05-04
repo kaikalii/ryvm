@@ -7,8 +7,10 @@ use std::{
 
 use crossbeam_utils::atomic::AtomicCell;
 
-pub fn adjust_i(i: u32, recording_tempo: f32, current_tempo: f32) -> u32 {
-    (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as u32
+use crate::Frame;
+
+pub fn adjust_i(i: Frame, recording_tempo: f32, current_tempo: f32) -> Frame {
+    (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as Frame
 }
 
 pub fn parse_commands(text: &str) -> Option<Vec<(bool, Vec<String>)>> {

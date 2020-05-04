@@ -10,12 +10,12 @@ use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
 
-use crate::{RyvmResult, Voice};
+use crate::{Frame, RyvmResult, Voice};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
     pub index: usize,
-    pub i: u32,
+    pub i: Frame,
     pub velocity: f32,
 }
 
@@ -70,12 +70,13 @@ impl Sample {
             samples,
         })
     }
-    pub fn voice(&self, index: u32, sample_rate: u32) -> &Voice {
+    pub fn voice(&self, index: Frame, sample_rate: u32) -> &Voice {
         let adjusted = index as usize * self.sample_rate as usize / sample_rate as usize;
         &self.samples[adjusted as usize]
     }
-    pub fn len(&self, sample_rate: u32) -> u32 {
-        (u64::from(sample_rate) * self.samples.len() as u64 / u64::from(self.sample_rate)) as u32
+    pub fn len(&self, sample_rate: u32) -> Frame {
+        (u64::from(sample_rate) * self.samples.len() as Frame / Frame::from(self.sample_rate))
+            as Frame
     }
 }
 

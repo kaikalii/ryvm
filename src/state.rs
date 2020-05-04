@@ -157,7 +157,7 @@ impl State {
                 let len = lup.controls.lock().len() as Frame;
                 if len > 0 {
                     loop_period.get_or_insert(len);
-                    lup.loop_state = LoopState::Playing;
+                    lup.finish();
                     println!("Finished recording {:?}", name);
                 } else {
                     loops_to_delete.push(name.clone());

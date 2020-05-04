@@ -1,6 +1,6 @@
 # TODO
 
-- Move more commands to buttons
+- Show all channels and loops in tree and ls
 - Reduce heap allocation
 - Dynamic clipping reduction
 - Audio input

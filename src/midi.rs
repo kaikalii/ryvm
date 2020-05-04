@@ -4,7 +4,7 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
     MidiOutputConnection, PortInfoError, SendError,
 };
-use ryvm_spec::Button;
+use ryvm_spec::{Action, Button, Buttons};
 
 use crate::{CloneCell, CloneLock, Letter};
 
@@ -16,8 +16,7 @@ pub enum Control {
     Control(u8, u8),
     PadStart(u8, u8),
     PadEnd(u8),
-    Record,
-    StopRecord,
+    Action(Action),
 }
 
 const NOTE_START: u8 = 0x9;
@@ -34,7 +33,7 @@ impl Control {
         port: usize,
         monitor: bool,
         pad: Option<PadBounds>,
-        buttons: Buttons,
+        buttons: &Buttons,
     ) -> Option<(u8, Control)> {
         if data[0] == TIMING {
             return None;
@@ -60,31 +59,36 @@ impl Control {
         let control = match (status, d1, d2) {
             (NOTE_START, n, v) => {
                 let (letter, octave) = Letter::from_u8(n);
-                let control = match pad {
+                match pad {
                     Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Control::PadStart(n - pad.start, v)
+                        Some(Control::PadStart(n - pad.start, v))
                     }
-                    _ => Control::NoteStart(letter, octave, v),
-                };
-                buttons.check_control(control, v).unwrap_or(control)
+                    _ => {
+                        let control = Control::NoteStart(letter, octave, v);
+                        check_buttons(&buttons, control)
+                    }
+                }
             }
             (NOTE_END, n, _) => {
                 let (letter, octave) = Letter::from_u8(n);
                 match pad {
                     Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Control::PadEnd(n - pad.start)
+                        Some(Control::PadEnd(n - pad.start))
                     }
-                    _ => Control::NoteEnd(letter, octave),
+                    _ => {
+                        let control = Control::NoteEnd(letter, octave);
+                        check_buttons(&buttons, control)
+                    }
                 }
             }
             (PITCH_BEND, lsb, msb) => {
                 let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
-                Control::PitchBend(pb)
+                Some(Control::PitchBend(pb))
             }
             (CONTROL, n, i) => {
                 let control = Control::Control(n, i);
-                buttons.check_control(control, i).unwrap_or(control)
+                check_buttons(&buttons, control)
             }
             _ => return_none!(),
         };
@@ -93,7 +97,38 @@ impl Control {
             println!(" | ch{:ch_width$} | {:?}", channel, control, ch_width = 3)
         }
 
-        Some((channel, control))
+        control.map(|control| (channel, control))
+    }
+}
+
+fn check_buttons(buttons: &Buttons, control: Control) -> Option<Control> {
+    match control {
+        Control::Control(num, val) => {
+            if let Some(action) = buttons.get_by_right(&Button::Control(num)) {
+                if val == 0 {
+                    None
+                } else {
+                    Some(Control::Action(*action))
+                }
+            } else {
+                Some(control)
+            }
+        }
+        Control::NoteStart(l, o, _) => {
+            if let Some(action) = buttons.get_by_right(&Button::Control(l.to_u8(o))) {
+                Some(Control::Action(*action))
+            } else {
+                Some(control)
+            }
+        }
+        Control::NoteEnd(l, o) => {
+            if buttons.contains_right(&Button::Control(l.to_u8(o))) {
+                None
+            } else {
+                Some(control)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -146,59 +181,7 @@ type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
 struct MidiInputState {
     queue: ControlQueue,
     monitor: Arc<CloneCell<bool>>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Buttons {
-    pub record: Option<Button>,
-    pub stop_record: Option<Button>,
-}
-
-impl Buttons {
-    /// Check if a `Control` matches some button
-    ///
-    /// Return the new control if it does match
-    fn check_control(self, control: Control, v: u8) -> Option<Control> {
-        if v == 0 {
-            return None;
-        }
-        fn button_matches_note(button_op: Option<Button>, num: u8) -> bool {
-            if let Some(Button::Note(i)) = button_op {
-                i == num
-            } else {
-                false
-            }
-        }
-        fn button_matches_control(button_op: Option<Button>, num: u8) -> bool {
-            if let Some(Button::Control(i)) = button_op {
-                i == num
-            } else {
-                false
-            }
-        }
-        match control {
-            Control::NoteStart(l, o, _) => {
-                let num = l.to_u8(o);
-                if button_matches_note(self.record, num) {
-                    Some(Control::Record)
-                } else if button_matches_note(self.stop_record, num) {
-                    Some(Control::StopRecord)
-                } else {
-                    None
-                }
-            }
-            Control::Control(num, _) => {
-                if button_matches_control(self.record, num) {
-                    Some(Control::Record)
-                } else if button_matches_control(self.stop_record, num) {
-                    Some(Control::StopRecord)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
+    buttons: Buttons,
 }
 
 #[allow(dead_code)]
@@ -271,6 +254,7 @@ impl Midi {
         let state = MidiInputState {
             queue: Arc::new(CloneLock::new(Vec::new())),
             monitor: Arc::new(CloneCell::new(false)),
+            buttons,
         };
 
         let device = midi_in.port_name(port)?;
@@ -281,7 +265,7 @@ impl Midi {
                 &name,
                 move |_, data, state| {
                     if let Some(control) =
-                        Control::decode(data, port, state.monitor.load(), pad, buttons)
+                        Control::decode(data, port, state.monitor.load(), pad, &state.buttons)
                     {
                         state.queue.lock().push(control);
                     }

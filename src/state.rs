@@ -12,13 +12,12 @@ use employer::{Employer, JobDescription};
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::Source;
-use ryvm_spec::{DynamicValue, Spec, Supplied};
+use ryvm_spec::{Action, DynamicValue, Spec, Supplied};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Buttons, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop,
-    LoopState, Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
-    ADSR,
+    parse_commands, Channel, CloneLock, Control, Device, FlyControl, FrameCache, Loop, LoopState,
+    Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -219,8 +218,7 @@ impl State {
                 pad_range,
                 manual,
                 non_globals,
-                record,
-                stop_record,
+                buttons,
             } => {
                 let port = if let Supplied(device) = device {
                     if let Some(port) = Midi::port_matching(&device)? {
@@ -241,10 +239,6 @@ impl State {
                     } else {
                         None
                     };
-                let buttons = Buttons {
-                    record: record.into(),
-                    stop_record: stop_record.into(),
-                };
                 let midi = Midi::new(name.clone(), port, manual, pad, buttons, non_globals)?;
                 let removed = self.midis.remove(&port).is_some();
                 println!(
@@ -557,31 +551,32 @@ impl Iterator for State {
         let mut controls = HashMap::new();
         let default_midi = self.default_midi;
         for (port, channel, control) in raw_controls {
-            // Process certain controls separate from the rest
-            match control {
-                Control::Record => self.start_loop(None, None),
-                Control::StopRecord => self.cancel_recording(),
-                control => {
-                    // Check if a fly mapping can be processed
-                    let midis = &self.midis;
-                    match self.fly_control.as_mut().map(|fly| {
-                        fly.process(control, || {
-                            if default_midi.map(|p| p == port).unwrap_or(true) {
-                                None
-                            } else {
-                                Some(midis[&port].name().into())
-                            }
-                        })
-                    }) {
-                        // Pass the control on
-                        Some(Ok(false)) | None => controls
-                            .entry((port, channel))
-                            .or_insert_with(Vec::new)
-                            .push(control),
-                        // Reset the fly
-                        Some(Ok(true)) => self.fly_control = None,
-                        Some(Err(e)) => println!("{}", e),
-                    }
+            // Process action controls separate from the rest
+            if let Control::Action(action) = control {
+                match action {
+                    Action::Record => self.start_loop(None, None),
+                    Action::StopRecording => self.cancel_recording(),
+                }
+            } else {
+                // Check if a fly mapping can be processed
+                let midis = &self.midis;
+                match self.fly_control.as_mut().map(|fly| {
+                    fly.process(control, || {
+                        if default_midi.map(|p| p == port).unwrap_or(true) {
+                            None
+                        } else {
+                            Some(midis[&port].name().into())
+                        }
+                    })
+                }) {
+                    // Pass the control on
+                    Some(Ok(false)) | None => controls
+                        .entry((port, channel))
+                        .or_insert_with(Vec::new)
+                        .push(control),
+                    // Reset the fly
+                    Some(Ok(true)) => self.fly_control = None,
+                    Some(Err(e)) => println!("{}", e),
                 }
             }
         }

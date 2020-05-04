@@ -3,6 +3,10 @@ ron = '0.5.1'
 serde = '1.0.106'
 serde_derive = '1.0.106'
 
+[dependencies.bimap]
+version = '0.4.0'
+features = ['serde']
+
 [package]
 authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'

@@ -4,7 +4,9 @@
 This crate defines the Ryvm specification format. RON files satisfying the `Spec` structure are used to program a Ryvm state.
 */
 
+mod button;
 mod parts;
+pub use button::*;
 pub use parts::*;
 
 use std::{ops::Not, path::PathBuf};
@@ -45,11 +47,8 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         non_globals: Vec<u8>,
         /// The midi control used to start and end loops
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        record: Optional<Button>,
-        /// The midi control used to stop recording loops
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        stop_record: Optional<Button>,
+        #[serde(default, skip_serializing_if = "Buttons::is_empty")]
+        buttons: Buttons,
     },
     /// A wave synthesizer
     Wave {
@@ -104,9 +103,13 @@ fn button() {
         pad_channel: Omitted,
         pad_range: Omitted,
         manual: false,
-        record: Supplied(Button::Control(117)),
-        non_globals: Vec::new(),
-        stop_record: Supplied(Button::Control(115)),
+        non_globals: vec![1],
+        buttons: {
+            let mut buttons = Buttons::new();
+            buttons.insert(Action::Record, Button::Control(117));
+            buttons.insert(Action::StopRecording, Button::Control(115));
+            buttons
+        },
     };
     let mut map = std::collections::HashMap::new();
     map.insert("midi".to_string(), control);

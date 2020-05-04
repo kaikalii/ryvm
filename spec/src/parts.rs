@@ -19,16 +19,6 @@ impl Default for WaveForm {
     }
 }
 
-/// A button control
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename = "snake_case", rename_all = "snake_case")]
-pub enum Button {
-    /// A button triggered by a control midi message
-    Control(u8),
-    /// A button triggered by a note start midi message
-    Note(u8),
-}
-
 /// A value that can be either a static number or mapped to a midi control
 #[derive(Debug, Clone, PartialEq, Ser, Deser)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]

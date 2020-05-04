@@ -44,6 +44,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimap"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "783204f24fd7724ea274d327619cfa6a6018047bb0561a68aadff6f56787591b"
+dependencies = [
+ "cfg-if",
+ "serde",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.53.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -906,6 +916,7 @@ dependencies = [
 name = "ryvm_spec"
 version = "0.1.0"
 dependencies = [
+ "bimap",
  "ron",
  "serde",
  "serde_derive",

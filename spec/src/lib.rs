@@ -44,10 +44,10 @@ pub enum Spec {
         /// to a certain channel. Controls like this should be added to this list
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         non_globals: Vec<u8>,
-        /// The midi control number used to start and end loops
-        record: Optional<u8>,
-        /// The midi control number used to stop recording loops
-        stop_record: Optional<u8>,
+        /// The midi control used to start and end loops
+        record: Optional<Button>,
+        /// The midi control used to stop recording loops
+        stop_record: Optional<Button>,
     },
     /// A wave synthesizer
     Wave {
@@ -92,4 +92,23 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pan: Optional<DynamicValue>,
     },
+}
+
+#[cfg(test)]
+#[test]
+fn button() {
+    let control = Spec::Controller {
+        device: Supplied("Launchkey".into()),
+        pad_channel: Omitted,
+        pad_range: Omitted,
+        manual: false,
+        non_globals: Vec::new(),
+        record: Supplied(Button(ButtonType::Control, 117)),
+        stop_record: Supplied(Button(ButtonType::Control, 115)),
+    };
+    let mut map = std::collections::HashMap::new();
+    map.insert("midi".to_string(), control);
+    let ser_control = ron::ser::to_string_pretty(&map, Default::default()).unwrap();
+    std::fs::write("test.ron", ser_control.as_bytes()).unwrap();
+    ron::de::from_str::<std::collections::HashMap<String, Spec>>(&ser_control).unwrap();
 }

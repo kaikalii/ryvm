@@ -393,6 +393,7 @@ impl State {
         P: AsRef<Path>,
     {
         let path = path.as_ref().canonicalize()?;
+        println!("loading {:?}", path);
         // Load and deserialize the map
         let file = File::open(&path)?;
         let specs = ron::de::from_reader::<_, HashMap<String, Spec>>(file)?;

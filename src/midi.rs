@@ -4,6 +4,7 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
     MidiOutputConnection, PortInfoError, SendError,
 };
+use ryvm_spec::{Button, ButtonType};
 
 use crate::{CloneCell, CloneLock, Letter};
 
@@ -59,12 +60,13 @@ impl Control {
         let control = match (status, d1, d2) {
             (NOTE_START, n, v) => {
                 let (letter, octave) = Letter::from_u8(n);
-                match pad {
+                let control = match pad {
                     Some(pad) if pad.channel == channel && pad.start <= n => {
                         Control::PadStart(n - pad.start, v)
                     }
                     _ => Control::NoteStart(letter, octave, v),
-                }
+                };
+                buttons.check_control(control, v).unwrap_or(control)
             }
             (NOTE_END, n, _) => {
                 let (letter, octave) = Letter::from_u8(n);
@@ -81,19 +83,8 @@ impl Control {
                 Control::PitchBend(pb)
             }
             (CONTROL, n, i) => {
-                if buttons.record == Some(n) {
-                    if i != 0x7f {
-                        return_none!();
-                    };
-                    Control::Record
-                } else if buttons.stop_record == Some(n) {
-                    if i != 0x7f {
-                        return_none!();
-                    };
-                    Control::StopRecord
-                } else {
-                    Control::Control(n, i)
-                }
+                let control = Control::Control(n, i);
+                buttons.check_control(control, i).unwrap_or(control)
             }
             _ => return_none!(),
         };
@@ -159,8 +150,48 @@ struct MidiInputState {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Buttons {
-    pub record: Option<u8>,
-    pub stop_record: Option<u8>,
+    pub record: Option<Button>,
+    pub stop_record: Option<Button>,
+}
+
+impl Buttons {
+    /// Check if a `Control` matches some button
+    ///
+    /// Return the new control if it does match
+    fn check_control(self, control: Control, v: u8) -> Option<Control> {
+        if v != 0x7f {
+            return None;
+        }
+        fn button_matches(button_op: Option<Button>, ty: ButtonType, num: u8) -> bool {
+            if let Some(button) = button_op {
+                button.0 == ty && button.1 == num
+            } else {
+                false
+            }
+        }
+        match control {
+            Control::NoteStart(l, o, _) => {
+                let num = l.to_u8(o);
+                if button_matches(self.record, ButtonType::Note, num) {
+                    Some(Control::Record)
+                } else if button_matches(self.stop_record, ButtonType::Note, num) {
+                    Some(Control::StopRecord)
+                } else {
+                    None
+                }
+            }
+            Control::Control(num, _) => {
+                if button_matches(self.record, ButtonType::Control, num) {
+                    Some(Control::Record)
+                } else if button_matches(self.stop_record, ButtonType::Control, num) {
+                    Some(Control::StopRecord)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
 }
 
 #[allow(dead_code)]

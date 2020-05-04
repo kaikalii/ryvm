@@ -1,7 +1,0 @@
-{
-    "midi": controller(
-        device: "Launchkey",
-        record: (control, 117),
-        stop_record: (control, 115),
-    ),
-}

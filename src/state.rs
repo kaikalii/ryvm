@@ -548,6 +548,10 @@ impl Iterator for State {
             .flat_map(|(port, controls)| controls.map(move |(ch, con)| (port, ch, con)))
             .collect();
 
+        if !raw_controls.is_empty() {
+            println!("{}", raw_controls.len());
+        }
+
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
         let default_midi = self.default_midi;

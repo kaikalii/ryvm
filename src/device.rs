@@ -117,7 +117,6 @@ impl Device {
         match self {
             // Waves
             Device::Wave(wave) => {
-                // Ensure that waves is initialized
                 let mut waves = wave.waves.lock();
 
                 let mut enveloper = wave.enveloper.lock();

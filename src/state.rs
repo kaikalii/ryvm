@@ -476,47 +476,13 @@ impl State {
             }
         }
     }
-}
-
-impl Iterator for State {
-    type Item = f32;
-    fn next(&mut self) -> Option<Self::Item> {
-        // Check for CLI commands
+    fn check_cli_commands(&mut self) {
         while let Ok(command) = self.recv.try_recv() {
             let res = self.queue_command(&command);
             let _ = self.send.send(res);
         }
-        // Check for file watcher events
-        let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
-        for res in events {
-            match res {
-                Ok(event) => match event.kind {
-                    EventKind::Modify(_) => {
-                        for path in event.paths {
-                            let channel = self.tracked_spec_maps.get(&path).copied();
-                            let canonical_path = path.canonicalize();
-                            if let Err(e) =
-                                canonical_path.map_err(Into::into).and_then(|can_path| {
-                                    self.load_spec_map_from_file(&can_path, channel)
-                                })
-                            {
-                                match FlyControl::find(&path) {
-                                    Ok(Some(fly)) => {
-                                        println!("Activate the control you would like to map");
-                                        self.fly_control = Some(fly)
-                                    }
-                                    Ok(None) | Err(_) => println!("{}", e),
-                                }
-                            }
-                        }
-                    }
-                    EventKind::Remove(_) => {}
-                    _ => {}
-                },
-                Err(e) => println!("{}", e),
-            }
-        }
-        // Process CLI commands
+    }
+    fn process_delayed_cli_commands(&mut self) {
         if let Some(period) = self.loop_period {
             if self.i % period == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
@@ -528,6 +494,50 @@ impl Iterator for State {
                 }
             }
         }
+    }
+    fn process_watcher(&mut self) -> RyvmResult<()> {
+        let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
+        for res in events {
+            let event = res?;
+            match event.kind {
+                EventKind::Modify(_) => {
+                    for path in event.paths {
+                        let channel = self.tracked_spec_maps.get(&path).copied();
+                        let canonical_path = path.canonicalize();
+                        if let Err(e) = canonical_path
+                            .map_err(Into::into)
+                            .and_then(|can_path| self.load_spec_map_from_file(&can_path, channel))
+                        {
+                            match FlyControl::find(&path) {
+                                Ok(Some(fly)) => {
+                                    println!("Activate the control you would like to map");
+                                    self.fly_control = Some(fly)
+                                }
+                                Ok(None) | Err(_) => return Err(e),
+                            }
+                        }
+                    }
+                }
+                EventKind::Remove(_) => {}
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Iterator for State {
+    type Item = f32;
+    fn next(&mut self) -> Option<Self::Item> {
+        // Check for CLI commands
+        self.check_cli_commands();
+        // Check for file watcher events
+        if let Err(e) = self.process_watcher() {
+            println!("{}", e);
+        }
+        // Process delayed CLI commands
+        self.process_delayed_cli_commands();
+
         // Get next frame
         // Try the queue
         if let Some(voice) = self.frame_queue.take() {
@@ -547,10 +557,6 @@ impl Iterator for State {
             })
             .flat_map(|(port, controls)| controls.map(move |(ch, con)| (port, ch, con)))
             .collect();
-
-        if !raw_controls.is_empty() {
-            println!("{}", raw_controls.len());
-        }
 
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();

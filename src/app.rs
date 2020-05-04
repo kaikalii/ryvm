@@ -53,8 +53,7 @@ pub(crate) enum RyvmCommand {
         )]
         recursive: bool,
     },
-    #[structopt(about = "Set the current channel for manual-controlled devices \
-    (Simply typing the number without this command will have the same effect)")]
+    #[structopt(about = "Set the current channel for manual-controlled devices")]
     Ch {
         #[structopt(help = "The channel to set")]
         channel: u8,

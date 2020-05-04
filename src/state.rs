@@ -271,9 +271,7 @@ impl State {
             } => {
                 let wave = device!(Wave, || Device::new_wave(form));
                 wave.form = form;
-                if let Supplied(octave) = octave {
-                    wave.octave = Some(octave);
-                }
+                wave.octave = octave.into();
                 wave.adsr.attack = attack.or_else(|| ADSR::default().attack.into());
                 wave.adsr.decay = decay.or_else(|| ADSR::default().decay.into());
                 wave.adsr.sustain = sustain.or_else(|| ADSR::default().sustain.into());

@@ -19,23 +19,18 @@ impl Default for WaveForm {
     }
 }
 
-/// Defines to what type of midi message a button corresponds
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ButtonType {
-    /// The button corresponds to a control message (0xB)
-    Control,
-    /// The button corresponds to a control message (0x9)
-    Note,
-}
-
 /// A button control
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct Button(pub ButtonType, pub u8);
+#[serde(rename = "snake_case", rename_all = "snake_case")]
+pub enum Button {
+    /// A button triggered by a control midi message
+    Control(u8),
+    /// A button triggered by a note start midi message
+    Note(u8),
+}
 
 /// A value that can be either a static number or mapped to a midi control
-#[derive(Debug, Clone, Ser, Deser)]
+#[derive(Debug, Clone, PartialEq, Ser, Deser)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum DynamicValue {
     /// A static number

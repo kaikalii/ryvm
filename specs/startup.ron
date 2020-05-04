@@ -3,14 +3,8 @@
         device: "Launchkey",
         pad_channel: 9,
         pad_range: (36, 52),
-        record: button(
-            control, 
-            117
-        ),
-        stop_record: button(
-            control, 
-            115
-        ),
+        record: control(117),
+        stop_record: control(115),
         non_globals: [1]
     ),
     "load1": load(0, "specs/example1.ron"),

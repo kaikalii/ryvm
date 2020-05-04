@@ -3,7 +3,6 @@
         form: square,
         bend: static(0.3),
         attack: static(0.05),
-        octave: -2
     ),
     "filter": filter(
         input: "s",

@@ -12,7 +12,7 @@ use std::{ops::Not, path::PathBuf};
 use serde_derive::{Deserialize, Serialize};
 
 /// A specification for a Ryvm item
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Spec {
     /// Load into the given channel the spec file with the given path
@@ -45,8 +45,10 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         non_globals: Vec<u8>,
         /// The midi control used to start and end loops
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         record: Optional<Button>,
         /// The midi control used to stop recording loops
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         stop_record: Optional<Button>,
     },
     /// A wave synthesizer
@@ -102,13 +104,15 @@ fn button() {
         pad_channel: Omitted,
         pad_range: Omitted,
         manual: false,
+        record: Supplied(Button::Control(117)),
         non_globals: Vec::new(),
-        record: Supplied(Button(ButtonType::Control, 117)),
-        stop_record: Supplied(Button(ButtonType::Control, 115)),
+        stop_record: Supplied(Button::Control(115)),
     };
     let mut map = std::collections::HashMap::new();
     map.insert("midi".to_string(), control);
     let ser_control = ron::ser::to_string_pretty(&map, Default::default()).unwrap();
     std::fs::write("test.ron", ser_control.as_bytes()).unwrap();
-    ron::de::from_str::<std::collections::HashMap<String, Spec>>(&ser_control).unwrap();
+    let de_map =
+        ron::de::from_str::<std::collections::HashMap<String, Spec>>(&ser_control).unwrap();
+    assert_eq!(map, de_map);
 }

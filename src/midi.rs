@@ -4,7 +4,7 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
     MidiOutputConnection, PortInfoError, SendError,
 };
-use ryvm_spec::{Button, ButtonType};
+use ryvm_spec::Button;
 
 use crate::{CloneCell, CloneLock, Letter};
 
@@ -159,12 +159,19 @@ impl Buttons {
     ///
     /// Return the new control if it does match
     fn check_control(self, control: Control, v: u8) -> Option<Control> {
-        if v != 0x7f {
+        if v == 0 {
             return None;
         }
-        fn button_matches(button_op: Option<Button>, ty: ButtonType, num: u8) -> bool {
-            if let Some(button) = button_op {
-                button.0 == ty && button.1 == num
+        fn button_matches_note(button_op: Option<Button>, num: u8) -> bool {
+            if let Some(Button::Note(i)) = button_op {
+                i == num
+            } else {
+                false
+            }
+        }
+        fn button_matches_control(button_op: Option<Button>, num: u8) -> bool {
+            if let Some(Button::Control(i)) = button_op {
+                i == num
             } else {
                 false
             }
@@ -172,18 +179,18 @@ impl Buttons {
         match control {
             Control::NoteStart(l, o, _) => {
                 let num = l.to_u8(o);
-                if button_matches(self.record, ButtonType::Note, num) {
+                if button_matches_note(self.record, num) {
                     Some(Control::Record)
-                } else if button_matches(self.stop_record, ButtonType::Note, num) {
+                } else if button_matches_note(self.stop_record, num) {
                     Some(Control::StopRecord)
                 } else {
                     None
                 }
             }
             Control::Control(num, _) => {
-                if button_matches(self.record, ButtonType::Control, num) {
+                if button_matches_control(self.record, num) {
                     Some(Control::Record)
-                } else if button_matches(self.stop_record, ButtonType::Control, num) {
+                } else if button_matches_control(self.stop_record, num) {
                     Some(Control::StopRecord)
                 } else {
                     None

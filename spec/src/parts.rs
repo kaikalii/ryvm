@@ -36,11 +36,24 @@ pub enum DynamicValue {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         bounds: Optional<(f32, f32)>,
     },
+    /// The value output by another device
+    Output(String),
 }
 
 impl From<f32> for DynamicValue {
     fn from(f: f32) -> Self {
         DynamicValue::Static(f)
+    }
+}
+
+impl DynamicValue {
+    #[doc(hidden)]
+    pub fn input(&self) -> Option<&str> {
+        if let DynamicValue::Output(s) = self {
+            Some(s)
+        } else {
+            None
+        }
     }
 }
 

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{Control, Letter};
+use ryvm_spec::DynamicValue;
+
+use crate::Control;
 
 /// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,22 +30,39 @@ impl<T> ADSR<T> {
         F: FnMut(&T) -> Option<f32>,
     {
         ADSR {
-            attack: f(&self.attack).unwrap_or_else(|| ADSR::default().attack),
-            decay: f(&self.decay).unwrap_or_else(|| ADSR::default().decay),
-            sustain: f(&self.sustain).unwrap_or_else(|| ADSR::default().sustain),
-            release: f(&self.release).unwrap_or_else(|| ADSR::default().release),
+            attack: f(&self.attack).unwrap_or(ADSR::const_default().attack),
+            decay: f(&self.decay).unwrap_or(ADSR::const_default().decay),
+            sustain: f(&self.sustain).unwrap_or(ADSR::const_default().sustain),
+            release: f(&self.release).unwrap_or(ADSR::const_default().release),
         }
     }
 }
 
-impl Default for ADSR<f32> {
-    fn default() -> Self {
+impl ADSR<f32> {
+    pub const fn const_default() -> Self {
         ADSR {
             attack: 0.05,
             decay: 0.05,
             sustain: 0.7,
             release: 0.1,
         }
+    }
+}
+
+impl Default for ADSR<f32> {
+    fn default() -> Self {
+        ADSR::const_default()
+    }
+}
+
+impl ADSR<DynamicValue> {
+    pub fn inputs(&self) -> impl Iterator<Item = &str> {
+        self.attack
+            .input()
+            .into_iter()
+            .chain(self.decay.input())
+            .chain(self.sustain.input())
+            .chain(self.release.input())
     }
 }
 
@@ -62,6 +81,13 @@ struct NoteEnvelope {
     state: EnvelopeState,
     velocity: u8,
     amplitude: f32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EnvelopeFrame {
+    pub note: u8,
+    pub amplitude: f32,
+    pub pitch_bend: f32,
 }
 
 /// Keeps track of the key states of an input device
@@ -102,19 +128,14 @@ impl Enveloper {
         }
     }
     /// Get an iterator of frequency-amplitude pairs that are currently playing
-    pub fn envelopes(
-        &self,
-        base_octave: i8,
-        bend_range: f32,
-    ) -> impl Iterator<Item = (f32, f32)> + '_ {
+    pub fn envelopes(&self) -> impl Iterator<Item = EnvelopeFrame> + '_ {
         self.envelopes.iter().filter_map(move |(_, ne)| {
             if ne.amplitude > 0.0 {
-                let (letter, octave) = Letter::from_u8(ne.note);
-                Some((
-                    letter.freq((i16::from(octave) + i16::from(base_octave)).max(0) as u8)
-                        * 2_f32.powf(self.pitch_bend * bend_range / 12.0),
-                    ne.amplitude,
-                ))
+                Some(EnvelopeFrame {
+                    note: ne.note,
+                    pitch_bend: self.pitch_bend,
+                    amplitude: ne.amplitude,
+                })
             } else {
                 None
             }
@@ -122,20 +143,21 @@ impl Enveloper {
     }
     /// Progress the enveloper to the next frame
     pub fn progress(&mut self, sample_rate: u32, adsr: ADSR<f32>) {
+        const MIN_VAL: f32 = 0.001;
         for ne in self.envelopes.values_mut() {
             let velocity = f32::from(ne.velocity) / 127.0;
             match ne.state {
                 EnvelopeState::Attack => {
-                    let slope = velocity / adsr.attack;
-                    assert!(slope > 0.0);
+                    let slope = velocity / adsr.attack.max(MIN_VAL);
+                    assert!(slope >= 0.0);
                     ne.amplitude += slope / sample_rate as f32;
                     if ne.amplitude >= velocity {
                         ne.state = EnvelopeState::Decay;
                     }
                 }
                 EnvelopeState::Decay => {
-                    let slope = (adsr.sustain * velocity - velocity) / adsr.decay;
-                    assert!(slope < 0.0);
+                    let slope = (adsr.sustain * velocity - velocity) / adsr.decay.max(MIN_VAL);
+                    assert!(slope <= 0.0);
                     ne.amplitude += slope / sample_rate as f32;
                     if ne.amplitude <= adsr.sustain * velocity {
                         ne.state = EnvelopeState::Sustain;
@@ -143,8 +165,8 @@ impl Enveloper {
                 }
                 EnvelopeState::Sustain => {}
                 EnvelopeState::Release => {
-                    let slope = (0.0 - adsr.sustain * velocity) / adsr.release;
-                    assert!(slope < 0.0);
+                    let slope = (0.0 - adsr.sustain * velocity) / adsr.release.max(MIN_VAL);
+                    assert!(slope <= 0.0);
                     ne.amplitude += slope / sample_rate as f32;
                     if ne.amplitude <= 0.0 {
                         ne.state = EnvelopeState::Done;

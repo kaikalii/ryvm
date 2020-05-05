@@ -5,7 +5,7 @@
         pad_range: (36, 52),
         non_globals: [1],
         buttons: {
-            record: note_channel(40, 10),
+            record: control(117),
             stop_recording: control(115),
             toggle_loop(1): control(104),
             toggle_loop(2): control(105),

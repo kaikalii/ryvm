@@ -58,15 +58,15 @@ pub enum Spec {
         /// The base octave
         octave: Optional<i8>,
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        /// The envelope attack
+        /// The volume envelope attack
         attack: Optional<DynamicValue>,
-        /// The envelope decay
+        /// The volume envelope decay
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         decay: Optional<DynamicValue>,
-        /// The envelope sustain
+        /// The volume envelope sustain
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         sustain: Optional<DynamicValue>,
-        /// The envelope release
+        /// The volume envelope release
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         release: Optional<DynamicValue>,
         /// The +- pitch bend range in semitones

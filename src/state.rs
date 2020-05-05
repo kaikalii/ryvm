@@ -490,7 +490,12 @@ impl State {
             }
         }
     }
-    pub(crate) fn resolve_dynamic_value(&self, dyn_val: &DynamicValue, channel: u8) -> Option<f32> {
+    pub(crate) fn resolve_dynamic_value(
+        &self,
+        dyn_val: &DynamicValue,
+        ch: u8,
+        cache: &mut FrameCache,
+    ) -> Option<f32> {
         match dyn_val {
             DynamicValue::Static(f) => Some(*f),
             DynamicValue::Control {
@@ -507,11 +512,15 @@ impl State {
                 let value = if midi.control_is_global(*number) {
                     *self.global_controls.get(&(port, *number))?
                 } else {
-                    *self.controls.get(&(port, channel, *number))?
+                    *self.controls.get(&(port, ch, *number))?
                 };
                 let (min, max) = bounds.or((0.0, 1.0));
                 Some(f32::from(value) / 127.0 * (max - min) + min)
             }
+            DynamicValue::Output(name) => self
+                .channels
+                .get(&ch)
+                .map(|channel| channel.next_from(ch, name, self, cache).left),
         }
     }
     fn check_cli_commands(&mut self) {

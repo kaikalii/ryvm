@@ -1,5 +1,6 @@
 use std::{
     f32::consts::{FRAC_2_PI, PI},
+    iter::once,
     path::PathBuf,
 };
 
@@ -7,8 +8,8 @@ use rand::random;
 use ryvm_spec::{DynamicValue, WaveForm};
 
 use crate::{
-    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, State,
-    Voice, ADSR,
+    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, Letter,
+    State, Voice, ADSR,
 };
 
 /// A virtual audio processing device
@@ -36,7 +37,7 @@ pub struct Wave {
     pub pitch_bend_range: DynamicValue,
     /// The attack-decay-sustain-release envelope
     pub adsr: ADSR<DynamicValue>,
-    pub(crate) enveloper: CloneLock<Enveloper>,
+    enveloper: CloneLock<Enveloper>,
 }
 
 /// A drum machine
@@ -123,14 +124,18 @@ impl Device {
                 enveloper.register(cache.channel_controls(channel_num));
                 let adsr = wave
                     .adsr
-                    .map_or_default(|value| state.resolve_dynamic_value(value, channel_num));
+                    .map_or_default(|value| state.resolve_dynamic_value(value, channel_num, cache));
                 let pitch_bend_range = state
-                    .resolve_dynamic_value(&wave.pitch_bend_range, channel_num)
+                    .resolve_dynamic_value(&wave.pitch_bend_range, channel_num, cache)
                     .unwrap_or(12.0);
                 let voice = enveloper
-                    .envelopes(wave.octave.unwrap_or(0), pitch_bend_range)
+                    .envelopes()
                     .zip(&mut *waves)
-                    .map(|((freq, amp), i)| {
+                    .map(|(env_frame, i)| {
+                        let (letter, octave) = Letter::from_u8(env_frame.note);
+                        let freq = letter.freq(
+                            (i16::from(octave) + i16::from(wave.octave.unwrap_or(0))).max(0) as u8,
+                        ) * 2_f32.powf(env_frame.pitch_bend * pitch_bend_range / 12.0);
                         if freq == 0.0 {
                             return Voice::SILENT;
                         }
@@ -149,7 +154,7 @@ impl Device {
                             WaveForm::Saw => 2.0 * (t % 1.0) - 1.0,
                             WaveForm::Triangle => 2.0 * (2.0 * (t % 1.0) - 1.0).abs() - 1.0,
                             WaveForm::Noise => random::<f32>() % 2.0 - 1.0,
-                        } * amp
+                        } * env_frame.amplitude
                             * MIN_ENERGY
                             / waveform_energy(wave.form);
                         *i = (*i + 1) % spc as Frame;
@@ -199,7 +204,7 @@ impl Device {
             Device::Filter(filter) => {
                 // Determine the factor used to maintain the running average
                 let avg_factor = state
-                    .resolve_dynamic_value(&filter.value, channel_num)
+                    .resolve_dynamic_value(&filter.value, channel_num, cache)
                     .unwrap_or(1.0)
                     .powf(2.0);
                 // Get the input channels
@@ -214,10 +219,10 @@ impl Device {
                 let frame = channel.next_from(channel_num, &bal.input, state, cache);
 
                 let volume = state
-                    .resolve_dynamic_value(&bal.volume, channel_num)
+                    .resolve_dynamic_value(&bal.volume, channel_num, cache)
                     .unwrap_or(0.5);
                 let pan = state
-                    .resolve_dynamic_value(&bal.pan, channel_num)
+                    .resolve_dynamic_value(&bal.pan, channel_num, cache)
                     .unwrap_or(0.0);
 
                 let pan =
@@ -236,9 +241,19 @@ impl Device {
     /// Get a list of this device's input devices
     pub fn inputs(&self) -> Vec<&str> {
         match self {
-            Device::Filter(Filter { input, .. }) | Device::Balance(Balance { input, .. }) => {
-                vec![input]
-            }
+            Device::Wave(wave) => wave
+                .pitch_bend_range
+                .input()
+                .into_iter()
+                .chain(wave.adsr.inputs())
+                .collect(),
+            Device::Balance(bal) => once(bal.input.as_str())
+                .chain(bal.volume.input())
+                .chain(bal.pan.input())
+                .collect(),
+            Device::Filter(filter) => once(filter.input.as_str())
+                .chain(filter.value.input())
+                .collect(),
             _ => Vec::new(),
         }
     }

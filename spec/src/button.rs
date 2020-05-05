@@ -26,6 +26,8 @@ pub enum Button {
     Control(u8),
     /// A button triggered by a note start midi message
     Note(u8),
+    /// A button triggered by a note start midi message on a particular channel
+    NoteChannel(u8, u8),
 }
 
 /// A mapping of controls to buttons

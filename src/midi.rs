@@ -54,76 +54,89 @@ impl Control {
             );
         }
 
-        #[rustfmt::skip]
-        macro_rules! return_none { () => {{ println!(); return None; }} };
-
         let control = match (status, d1, d2) {
-            (NOTE_START, n, v) => match pad {
+            (NOTE_START, n, v) => check_buttons(&buttons, status, channel, d1, d2, || match pad {
                 Some(pad) if pad.channel == channel && pad.start <= n => {
-                    Some(Control::PadStart(n - pad.start, v))
+                    Control::PadStart(n - pad.start, v)
                 }
-                _ => {
-                    let control = Control::NoteStart(random(), n, v);
-                    check_buttons(&buttons, control)
-                }
-            },
-            (NOTE_END, n, _) => match pad {
+                _ => Control::NoteStart(random::<u64>() % 1_000_000, n, v),
+            }),
+            (NOTE_END, n, _) => check_buttons(&buttons, status, channel, d1, d2, || match pad {
                 Some(pad) if pad.channel == channel && pad.start <= n => {
-                    Some(Control::PadEnd(n - pad.start))
+                    Control::PadEnd(n - pad.start)
                 }
-                _ => {
-                    let control = Control::NoteEnd(0, n);
-                    check_buttons(&buttons, control)
-                }
-            },
+                _ => Control::NoteEnd(0, n),
+            }),
             (PITCH_BEND, lsb, msb) => {
                 let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
                 Some(Control::PitchBend(pb))
             }
             (CONTROL, n, i) => {
-                let control = Control::Control(n, i);
-                check_buttons(&buttons, control)
+                check_buttons(&buttons, status, channel, d1, d2, || Control::Control(n, i))
             }
-            _ => return_none!(),
+            _ => None,
         };
 
-        if monitor {
-            println!(" | ch{:ch_width$} | {:?}", channel, control, ch_width = 3)
+        if let Some(control) = control {
+            if monitor {
+                println!(" | ch{:ch_width$} | {:?}", channel, control, ch_width = 3)
+            }
+        } else if monitor {
+            println!();
         }
 
         control.map(|control| (channel, control))
     }
 }
 
-fn check_buttons(buttons: &Buttons, control: Control) -> Option<Control> {
-    match control {
-        Control::Control(num, val) => {
-            if let Some(action) = buttons.get_by_right(&Button::Control(num)) {
-                if val == 0 {
+fn check_buttons<F>(
+    buttons: &Buttons,
+    status: u8,
+    channel: u8,
+    d1: u8,
+    d2: u8,
+    otherwise: F,
+) -> Option<Control>
+where
+    F: FnOnce() -> Control,
+{
+    match (status, d1, d2) {
+        (CONTROL, n, v) => {
+            if let Some(action) = buttons.get_by_right(&Button::Control(n)) {
+                if v == 0 {
                     None
                 } else {
                     Some(Control::Action(*action))
                 }
             } else {
-                Some(control)
+                Some(otherwise())
             }
         }
-        Control::NoteStart(_, n, _) => {
-            if let Some(action) = buttons.get_by_right(&Button::Control(n)) {
-                Some(Control::Action(*action))
+        (NOTE_START, n, v) => {
+            if let Some(action) = buttons
+                .get_by_right(&Button::Note(n))
+                .or_else(|| buttons.get_by_right(&Button::NoteChannel(n, channel)))
+            {
+                if v == 0 {
+                    None
+                } else {
+                    Some(Control::Action(*action))
+                }
             } else {
-                Some(control)
+                Some(otherwise())
             }
         }
-        Control::NoteEnd(_, n) => {
-            if buttons.contains_right(&Button::Control(n)) {
+        (NOTE_END, n, _) => {
+            if buttons.contains_right(&Button::Note(n))
+                || buttons.contains_right(&Button::NoteChannel(n, channel))
+            {
                 None
             } else {
-                Some(control)
+                Some(otherwise())
             }
         }
-        _ => None,
+        _ => Some(otherwise()),
     }
 }
 

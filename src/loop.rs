@@ -98,7 +98,8 @@ impl Loop {
                 }
             }
             for (port, ch, id, n) in note_midi_channels {
-                controls[self.i as usize]
+                let last_frame = (self.i as usize + controls.len() - 1) % controls.len();
+                controls[last_frame]
                     .get_or_insert_with(HashMap::new)
                     .entry((port, ch))
                     .or_insert_with(Vec::new)

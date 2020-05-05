@@ -1,17 +1,18 @@
-use std::{error::Error, fmt, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
 use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
     MidiOutputConnection, PortInfoError, SendError,
 };
+use rand::random;
 use ryvm_spec::{Action, Button, Buttons};
 
-use crate::{CloneCell, CloneLock, Letter};
+use crate::{CloneCell, CloneLock};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
-    NoteStart(Letter, u8, u8),
-    NoteEnd(Letter, u8),
+    NoteStart(u64, u8, u8),
+    NoteEnd(u64, u8),
     PitchBend(f32),
     Control(u8, u8),
     PadStart(u8, u8),
@@ -57,30 +58,24 @@ impl Control {
         macro_rules! return_none { () => {{ println!(); return None; }} };
 
         let control = match (status, d1, d2) {
-            (NOTE_START, n, v) => {
-                let (letter, octave) = Letter::from_u8(n);
-                match pad {
-                    Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Some(Control::PadStart(n - pad.start, v))
-                    }
-                    _ => {
-                        let control = Control::NoteStart(letter, octave, v);
-                        check_buttons(&buttons, control)
-                    }
+            (NOTE_START, n, v) => match pad {
+                Some(pad) if pad.channel == channel && pad.start <= n => {
+                    Some(Control::PadStart(n - pad.start, v))
                 }
-            }
-            (NOTE_END, n, _) => {
-                let (letter, octave) = Letter::from_u8(n);
-                match pad {
-                    Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Some(Control::PadEnd(n - pad.start))
-                    }
-                    _ => {
-                        let control = Control::NoteEnd(letter, octave);
-                        check_buttons(&buttons, control)
-                    }
+                _ => {
+                    let control = Control::NoteStart(random(), n, v);
+                    check_buttons(&buttons, control)
                 }
-            }
+            },
+            (NOTE_END, n, _) => match pad {
+                Some(pad) if pad.channel == channel && pad.start <= n => {
+                    Some(Control::PadEnd(n - pad.start))
+                }
+                _ => {
+                    let control = Control::NoteEnd(0, n);
+                    check_buttons(&buttons, control)
+                }
+            },
             (PITCH_BEND, lsb, msb) => {
                 let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
@@ -114,15 +109,15 @@ fn check_buttons(buttons: &Buttons, control: Control) -> Option<Control> {
                 Some(control)
             }
         }
-        Control::NoteStart(l, o, _) => {
-            if let Some(action) = buttons.get_by_right(&Button::Control(l.to_u8(o))) {
+        Control::NoteStart(_, n, _) => {
+            if let Some(action) = buttons.get_by_right(&Button::Control(n)) {
                 Some(Control::Action(*action))
             } else {
                 Some(control)
             }
         }
-        Control::NoteEnd(l, o) => {
-            if buttons.contains_right(&Button::Control(l.to_u8(o))) {
+        Control::NoteEnd(_, n) => {
+            if buttons.contains_right(&Button::Control(n)) {
                 None
             } else {
                 Some(control)
@@ -195,6 +190,7 @@ pub struct Midi {
     manual: bool,
     pad: Option<PadBounds>,
     non_globals: Vec<u8>,
+    last_notes: HashMap<u8, u64>,
 }
 
 impl Midi {
@@ -286,14 +282,30 @@ impl Midi {
             manual,
             pad,
             non_globals,
+            last_notes: HashMap::new(),
         })
     }
     pub fn controls(&mut self) -> Result<impl Iterator<Item = (u8, Control)>, SendError> {
+        let last_notes = &mut self.last_notes;
         Ok(self
             .state
             .queue
             .lock()
             .drain(..)
+            .filter_map(|(ch, control)| {
+                match control {
+                    Control::NoteStart(id, n, _) => {
+                        last_notes.insert(n, id);
+                    }
+                    Control::NoteEnd(_, n) => {
+                        return last_notes
+                            .remove(&n)
+                            .map(|id| (ch, Control::NoteEnd(id, n)))
+                    }
+                    _ => {}
+                }
+                Some((ch, control))
+            })
             .collect::<Vec<_>>()
             .into_iter())
     }

@@ -47,8 +47,6 @@ impl Default for ADSR<f32> {
     }
 }
 
-pub type LetterOctave = (Letter, u8);
-
 #[derive(Debug, Clone, Copy)]
 enum EnvelopeState {
     Attack,
@@ -58,14 +56,9 @@ enum EnvelopeState {
     Done,
 }
 
-impl EnvelopeState {
-    fn is_pressed(self) -> bool {
-        matches!(self, Self::Attack | Self::Decay | Self::Sustain)
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 struct NoteEnvelope {
+    note: u8,
     state: EnvelopeState,
     velocity: u8,
     amplitude: f32,
@@ -76,7 +69,7 @@ struct NoteEnvelope {
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {
     pitch_bend: f32,
-    states: HashMap<LetterOctave, Vec<NoteEnvelope>>,
+    envelopes: HashMap<u64, NoteEnvelope>,
 }
 
 impl Enveloper {
@@ -87,20 +80,19 @@ impl Enveloper {
     {
         for control in iter {
             match control {
-                Control::NoteStart(l, o, v) => {
-                    let states = self.states.entry((l, o)).or_insert_with(Vec::new);
-                    if !states.iter().any(|ne| ne.state.is_pressed()) {
-                        let new_ne = NoteEnvelope {
+                Control::NoteStart(id, n, v) => {
+                    self.envelopes.insert(
+                        id,
+                        NoteEnvelope {
+                            note: n,
                             state: EnvelopeState::Attack,
                             velocity: v,
                             amplitude: 0.0,
-                        };
-                        states.push(new_ne);
-                    }
+                        },
+                    );
                 }
-                Control::NoteEnd(l, o) => {
-                    let states = self.states.entry((l, o)).or_insert_with(Vec::new);
-                    if let Some(ne) = states.iter_mut().find(|ne| ne.state.is_pressed()) {
+                Control::NoteEnd(id, _) => {
+                    if let Some(ne) = self.envelopes.get_mut(&id) {
                         ne.state = EnvelopeState::Release;
                     }
                 }
@@ -110,62 +102,63 @@ impl Enveloper {
         }
     }
     /// Get an iterator of frequency-amplitude pairs that are currently playing
-    pub fn states(
+    pub fn envelopes(
         &self,
         base_octave: i8,
         bend_range: f32,
     ) -> impl Iterator<Item = (f32, f32)> + '_ {
-        self.states
-            .iter()
-            .flat_map(|(k, states)| states.iter().map(move |state| (k, state)))
-            .filter_map(move |((letter, octave), ne)| {
-                if ne.amplitude > 0.0 {
-                    Some((
-                        letter.freq((i16::from(*octave) + i16::from(base_octave)).max(0) as u8)
-                            * 2_f32.powf(self.pitch_bend * bend_range / 12.0),
-                        ne.amplitude,
-                    ))
-                } else {
-                    None
-                }
-            })
+        self.envelopes.iter().filter_map(move |(_, ne)| {
+            if ne.amplitude > 0.0 {
+                let (letter, octave) = Letter::from_u8(ne.note);
+                Some((
+                    letter.freq((i16::from(octave) + i16::from(base_octave)).max(0) as u8)
+                        * 2_f32.powf(self.pitch_bend * bend_range / 12.0),
+                    ne.amplitude,
+                ))
+            } else {
+                None
+            }
+        })
     }
     /// Progress the enveloper to the next frame
     pub fn progress(&mut self, sample_rate: u32, adsr: ADSR<f32>) {
-        for states in self.states.values_mut() {
-            for ne in states.iter_mut() {
-                let velocity = f32::from(ne.velocity) / 127.0;
-                match ne.state {
-                    EnvelopeState::Attack => {
-                        let slope = velocity / adsr.attack;
-                        assert!(slope > 0.0);
-                        ne.amplitude += slope / sample_rate as f32;
-                        if ne.amplitude >= velocity {
-                            ne.state = EnvelopeState::Decay;
-                        }
+        for ne in self.envelopes.values_mut() {
+            let velocity = f32::from(ne.velocity) / 127.0;
+            match ne.state {
+                EnvelopeState::Attack => {
+                    let slope = velocity / adsr.attack;
+                    assert!(slope > 0.0);
+                    ne.amplitude += slope / sample_rate as f32;
+                    if ne.amplitude >= velocity {
+                        ne.state = EnvelopeState::Decay;
                     }
-                    EnvelopeState::Decay => {
-                        let slope = (adsr.sustain * velocity - velocity) / adsr.decay;
-                        assert!(slope < 0.0);
-                        ne.amplitude += slope / sample_rate as f32;
-                        if ne.amplitude <= adsr.sustain * velocity {
-                            ne.state = EnvelopeState::Sustain;
-                        }
-                    }
-                    EnvelopeState::Sustain => {}
-                    EnvelopeState::Release => {
-                        let slope = (0.0 - adsr.sustain * velocity) / adsr.release;
-                        assert!(slope < 0.0);
-                        ne.amplitude += slope / sample_rate as f32;
-                        if ne.amplitude <= 0.0 {
-                            ne.state = EnvelopeState::Done;
-                        }
-                    }
-                    EnvelopeState::Done => panic!("EnvelopeState::Done not purged"),
                 }
+                EnvelopeState::Decay => {
+                    let slope = (adsr.sustain * velocity - velocity) / adsr.decay;
+                    assert!(slope < 0.0);
+                    ne.amplitude += slope / sample_rate as f32;
+                    if ne.amplitude <= adsr.sustain * velocity {
+                        ne.state = EnvelopeState::Sustain;
+                    }
+                }
+                EnvelopeState::Sustain => {}
+                EnvelopeState::Release => {
+                    let slope = (0.0 - adsr.sustain * velocity) / adsr.release;
+                    assert!(slope < 0.0);
+                    ne.amplitude += slope / sample_rate as f32;
+                    if ne.amplitude <= 0.0 {
+                        ne.state = EnvelopeState::Done;
+                    }
+                }
+                EnvelopeState::Done => panic!("EnvelopeState::Done not purged"),
             }
-            states.retain(|ne| !matches!(ne.state, EnvelopeState::Done));
         }
-        self.states.retain(|_, states| !states.is_empty());
+        self.envelopes
+            .retain(|_, ne| !matches!(ne.state, EnvelopeState::Done));
+    }
+    pub fn end_notes(&mut self, id: u64) {
+        if let Some(ne) = self.envelopes.get_mut(&id) {
+            ne.state = EnvelopeState::Release;
+        }
     }
 }

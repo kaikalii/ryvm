@@ -128,7 +128,7 @@ impl Device {
                     .resolve_dynamic_value(&wave.pitch_bend_range, channel_num)
                     .unwrap_or(12.0);
                 let voice = enveloper
-                    .states(wave.octave.unwrap_or(0), pitch_bend_range)
+                    .envelopes(wave.octave.unwrap_or(0), pitch_bend_range)
                     .zip(&mut *waves)
                     .map(|((freq, amp), i)| {
                         if freq == 0.0 {
@@ -226,6 +226,11 @@ impl Device {
 
                 frame * pan * volume
             }
+        }
+    }
+    pub(crate) fn end_envelopes(&mut self, id: u64) {
+        if let Device::Wave(wave) = self {
+            wave.enveloper.lock().end_notes(id);
         }
     }
     /// Get a list of this device's input devices

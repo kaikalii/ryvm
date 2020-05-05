@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{adjust_i, CloneCell, CloneLock, Control, Frame, Letter};
+use crate::{adjust_i, CloneCell, CloneLock, Control, Frame};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopState {
@@ -15,6 +15,7 @@ pub type ControlsMap = HashMap<(usize, u8), Vec<Control>>;
 pub struct Loop {
     started: CloneCell<bool>,
     pub controls: CloneLock<Vec<Option<ControlsMap>>>,
+    note_ids: HashSet<(u64, u8)>,
     tempo: f32,
     length: f32,
     pub loop_state: LoopState,
@@ -26,6 +27,7 @@ impl Loop {
         Loop {
             started: CloneCell::new(false),
             controls: CloneLock::new(Vec::new()),
+            note_ids: HashSet::new(),
             tempo,
             length,
             loop_state: LoopState::Recording,
@@ -47,6 +49,7 @@ impl Loop {
             let period = period.map(|p| (p as f32 * self.length).round() as Frame);
 
             let new_controls = Some(new_controls).filter(|map| !map.is_empty());
+
             let mut controls = self.controls.lock();
             if let Some(period) = period {
                 let loop_i = self.loop_i(state_tempo);
@@ -80,34 +83,31 @@ impl Loop {
     pub fn finish(&mut self) {
         if let LoopState::Recording = self.loop_state {
             self.loop_state = LoopState::Playing;
-            let note_midi_channels = self.note_midi_channels();
             let mut controls = self.controls.lock();
-            for (port, ch, n) in note_midi_channels {
-                controls[self.i as usize]
-                    .get_or_insert_with(HashMap::new)
-                    .entry((port, ch))
-                    .or_insert_with(Vec::new)
-                    .push({
-                        let (l, o) = Letter::from_u8(n);
-                        Control::NoteEnd(l, o)
-                    });
-            }
-            self.loop_state = LoopState::Playing;
-        }
-    }
-    fn note_midi_channels(&self) -> HashSet<(usize, u8, u8)> {
-        let mut note_midi_channels = HashSet::new();
-        for control_map in self.controls.lock().iter() {
-            if let Some(control_map) = control_map {
-                for ((port, ch), controls) in control_map.iter() {
-                    for control in controls {
-                        if let Control::NoteStart(l, o, _) = control {
-                            note_midi_channels.insert((*port, *ch, l.to_u8(*o)));
+            let mut note_midi_channels = HashSet::new();
+            for control_map in controls.iter() {
+                if let Some(control_map) = control_map {
+                    for ((port, ch), controls) in control_map.iter() {
+                        for control in controls {
+                            if let Control::NoteStart(id, n, _) = control {
+                                self.note_ids.insert((*id, *n));
+                                note_midi_channels.insert((*port, *ch, *id, *n));
+                            }
                         }
                     }
                 }
             }
+            for (port, ch, id, n) in note_midi_channels {
+                controls[self.i as usize]
+                    .get_or_insert_with(HashMap::new)
+                    .entry((port, ch))
+                    .or_insert_with(Vec::new)
+                    .push(Control::NoteEnd(id, n));
+            }
+            self.loop_state = LoopState::Playing;
         }
-        note_midi_channels
+    }
+    pub fn note_ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.note_ids.iter().map(|(id, _)| *id)
     }
 }

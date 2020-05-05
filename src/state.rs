@@ -181,6 +181,16 @@ impl State {
             }
         });
     }
+    fn stop_loop(&mut self, name: &str) {
+        if let Some(lup) = self.loops.get_mut(name) {
+            for id in lup.note_ids() {
+                for device in self.channels.values_mut().flat_map(|ch| ch.devices_mut()) {
+                    device.end_envelopes(id);
+                }
+            }
+            lup.loop_state = LoopState::Disabled;
+        }
+    }
     /// Load a spec into the state
     #[allow(clippy::cognitive_complexity)]
     fn load_spec(&mut self, name: String, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
@@ -340,18 +350,18 @@ impl State {
                 }
             }
             RyvmCommand::Stop { names, all, reset } => {
+                if all || reset {
+                    let names: Vec<_> = self.loops.keys().cloned().collect();
+                    for name in names {
+                        self.stop_loop(&name);
+                    }
+                }
                 if reset {
                     self.loops.clear();
                     self.loop_period = None;
-                } else if all {
-                    for lup in self.loops.values_mut() {
-                        lup.loop_state = LoopState::Disabled;
-                    }
-                } else {
-                    for (name, lup) in &mut self.loops {
-                        if names.contains(name) {
-                            lup.loop_state = LoopState::Disabled;
-                        }
+                } else if !all {
+                    for name in names {
+                        self.stop_loop(&name);
                     }
                 }
             }

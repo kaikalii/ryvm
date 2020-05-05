@@ -40,7 +40,7 @@ impl Control {
             return None;
         }
         let status = data[0] / 0x10;
-        let channel = data[0] % 0x10;
+        let channel = (data[0] % 0x10).overflowing_add(1).0;
         let d1 = data.get(1).copied().unwrap_or(0);
         let d2 = data.get(2).copied().unwrap_or(0);
 

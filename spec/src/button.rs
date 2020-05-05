@@ -10,6 +10,12 @@ pub enum Action {
     Record,
     /// Stop recording and discard anything not already in a loop
     StopRecording,
+    /// Stop a loop for playing
+    StopLoop(u8),
+    /// Play a loop that was stopped
+    PlayLoop(u8),
+    /// Stop a loop if it is playing, play a loop if it is stopped
+    ToggleLoop(u8),
 }
 
 /// A button to map a control to

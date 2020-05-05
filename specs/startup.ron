@@ -1,14 +1,18 @@
 {
     "midi": controller(
         device: "Launchkey",
-        pad_channel: 9,
+        pad_channel: 10,
         pad_range: (36, 52),
         non_globals: [1],
         buttons: {
             record: control(117),
             stop_recording: control(115),
+            toggle_loop(1): control(104),
+            toggle_loop(2): control(105),
+            toggle_loop(3): control(106),
+            toggle_loop(4): control(107),
         }
     ),
-    "load1": load(0, "specs/example1.ron"),
-    "load2": load(1, "specs/example2.ron"),
+    "load1": load(1, "specs/example1.ron"),
+    "load2": load(2, "specs/example2.ron"),
 }

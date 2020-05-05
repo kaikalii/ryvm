@@ -50,7 +50,7 @@ pub struct State {
     pub(crate) midis: HashMap<usize, Midi>,
     midi_names: HashMap<String, usize>,
     pub(crate) default_midi: Option<usize>,
-    loops: HashMap<String, Loop>,
+    loops: HashMap<u8, Loop>,
     controls: HashMap<(usize, u8, u8), u8>,
     global_controls: HashMap<(usize, u8), u8>,
     tracked_spec_maps: HashMap<PathBuf, u8>,
@@ -79,7 +79,7 @@ impl State {
             sample_rate,
             tempo: 1.0,
             frame_queue: None,
-            curr_channel: 0,
+            curr_channel: 1,
             channels: HashMap::new(),
             command_queue: Vec::new(),
             i: 0,
@@ -132,36 +132,33 @@ impl State {
         }
     }
     /// Start a loop
-    pub fn start_loop(&mut self, name: Option<String>, length: Option<f32>) {
+    pub fn start_loop(&mut self, length: Option<f32>) {
         self.finish_recording();
-        let name = name.unwrap_or_else(|| {
-            let mut i = 1;
-            loop {
-                let possible = format!("l{}", i);
-                if !self.loops.contains_key(&possible) {
-                    break possible;
-                }
-                i += 1;
+        let mut i = 1;
+        let loop_num = loop {
+            if !self.loops.contains_key(&i) {
+                break i;
             }
-        });
+            i += 1;
+        };
         self.loops
-            .insert(name, Loop::new(self.tempo, length.unwrap_or(1.0)));
+            .insert(loop_num, Loop::new(self.tempo, length.unwrap_or(1.0)));
         println!("Loop ready");
     }
     /// Finish recording any loops
     pub fn finish_recording(&mut self) {
         let mut loop_period = self.loop_period;
-        let mut loops_to_delete: Vec<String> = Vec::new();
-        for (name, lup) in &mut self.loops {
+        let mut loops_to_delete: Vec<u8> = Vec::new();
+        for (num, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
                 let len = lup.controls.len() as Frame;
                 if len > 0 {
                     loop_period.get_or_insert(len);
                     lup.finish();
-                    println!("Finished recording {:?}", name);
+                    println!("Finished recording {:?}", num);
                 } else {
-                    loops_to_delete.push(name.clone());
-                    println!("Cancelled recording {:?}", name)
+                    loops_to_delete.push(*num);
+                    println!("Cancelled recording {:?}", num)
                 }
             }
         }
@@ -181,14 +178,23 @@ impl State {
             }
         });
     }
-    fn stop_loop(&mut self, name: &str) {
-        if let Some(lup) = self.loops.get_mut(name) {
+    fn stop_loop(&mut self, num: u8) {
+        if let Some(lup) = self.loops.get_mut(&num) {
             for id in lup.note_ids() {
                 for device in self.channels.values_mut().flat_map(|ch| ch.devices_mut()) {
                     device.end_envelopes(id);
                 }
             }
             lup.loop_state = LoopState::Disabled;
+        }
+    }
+    fn toggle_loop(&mut self, num: u8) {
+        if let Some(lup) = self.loops.get_mut(&num) {
+            match lup.loop_state {
+                LoopState::Recording => {}
+                LoopState::Playing => self.stop_loop(num),
+                LoopState::Disabled => lup.loop_state = LoopState::Playing,
+            }
         }
     }
     /// Load a spec into the state
@@ -341,27 +347,27 @@ impl State {
                     midi.set_monitoring(!midi.monitoring());
                 }
             }
-            RyvmCommand::Loop { name, length } => self.start_loop(name, length),
-            RyvmCommand::Play { names } => {
-                for (name, lup) in &mut self.loops {
-                    if names.contains(name) {
+            RyvmCommand::Loop { length } => self.start_loop(length),
+            RyvmCommand::Play { loops } => {
+                for (num, lup) in &mut self.loops {
+                    if loops.contains(num) {
                         lup.loop_state = LoopState::Playing;
                     }
                 }
             }
-            RyvmCommand::Stop { names, all, reset } => {
+            RyvmCommand::Stop { loops, all, reset } => {
                 if all || reset {
-                    let names: Vec<_> = self.loops.keys().cloned().collect();
-                    for name in names {
-                        self.stop_loop(&name);
+                    let loops: Vec<_> = self.loops.keys().cloned().collect();
+                    for num in loops {
+                        self.stop_loop(num);
                     }
                 }
                 if reset {
                     self.loops.clear();
                     self.loop_period = None;
                 } else if !all {
-                    for name in names {
-                        self.stop_loop(&name);
+                    for num in loops {
+                        self.stop_loop(num);
                     }
                 }
             }
@@ -378,7 +384,10 @@ impl State {
             }
             RyvmCommand::Rm { id, recursive } => {
                 self.channel().remove(&id, recursive);
-                self.loops.remove(&id);
+                if let Ok(num) = id.parse::<u8>() {
+                    self.stop_loop(num);
+                    self.loops.remove(&num);
+                }
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
@@ -449,13 +458,14 @@ impl State {
             println!("~~~~~~ Loops ~~~~~~");
             for name in self.loops.keys().sorted() {
                 println!(
-                    "  {} {}",
+                    "  Loop {:width$} {}",
                     name,
                     match self.loops[name].loop_state {
                         LoopState::Recording => '●',
                         LoopState::Playing => '~',
                         LoopState::Disabled => '-',
-                    }
+                    },
+                    width = 2
                 );
             }
         }
@@ -593,8 +603,15 @@ impl Iterator for State {
             // Process action controls separate from the rest
             if let Control::Action(action) = control {
                 match action {
-                    Action::Record => self.start_loop(None, None),
+                    Action::Record => self.start_loop(None),
                     Action::StopRecording => self.cancel_recording(),
+                    Action::PlayLoop(num) => {
+                        if let Some(lup) = self.loops.get_mut(&num) {
+                            lup.loop_state = LoopState::Playing;
+                        }
+                    }
+                    Action::StopLoop(num) => self.stop_loop(num),
+                    Action::ToggleLoop(num) => self.toggle_loop(num),
                 }
             } else {
                 // Check if a fly mapping can be processed

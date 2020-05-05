@@ -7,8 +7,6 @@ pub(crate) enum RyvmCommand {
     Quit,
     #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
     Loop {
-        #[structopt(help = "The name of the loop")]
-        name: Option<String>,
         #[structopt(
             long,
             short = "x",
@@ -18,19 +16,19 @@ pub(crate) enum RyvmCommand {
     },
     #[structopt(about = "Start playing a loop")]
     Play {
-        #[structopt(required = true, help = "The names of the loops to play")]
-        names: Vec<String>,
+        #[structopt(required = true, help = "The numbers of the loops to play")]
+        loops: Vec<u8>,
     },
     #[structopt(about = "Stop playing a loop")]
     Stop {
-        #[structopt(help = "The names of the loops to stop")]
-        names: Vec<String>,
+        #[structopt(help = "The numbers of the loops to stop")]
+        loops: Vec<u8>,
         #[structopt(long, conflicts_with = "names", help = "Stop all loops")]
         all: bool,
         #[structopt(
             long,
             short,
-            conflicts_with = "names",
+            conflicts_with = "loops",
             help = "Stop all loops and delete them"
         )]
         reset: bool,

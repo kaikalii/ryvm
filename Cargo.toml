@@ -1,5 +1,4 @@
 [dependencies]
-cpal = '0.11.0'
 crossbeam-channel = '0.4.2'
 crossbeam-utils = '0.7.2'
 employer = '0.1.0'

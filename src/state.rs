@@ -367,13 +367,14 @@ impl State {
             }
             RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
             RyvmCommand::Tree => {
-                let outputs: Vec<String> = self.channel().outputs().map(Into::into).collect();
-                if !outputs.is_empty() {
-                    println!("~~~~~ Devices ~~~~~");
+                for (ch, channel) in self.channels.iter().sorted_by_key(|(ch, _)| *ch) {
+                    println!("~~~~ Channel {} ~~~~", ch);
+                    let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
+                    for output in outputs {
+                        self.print_tree(*ch, &output, 0);
+                    }
                 }
-                for output in outputs {
-                    self.print_tree(&output, 0);
-                }
+                self.print_loops();
             }
             RyvmCommand::Rm { id, recursive } => {
                 self.channel().remove(&id, recursive);
@@ -421,45 +422,62 @@ impl State {
     fn print_ls(&mut self, unsorted: bool) {
         let print = |ids: &mut dyn Iterator<Item = &String>| {
             for id in ids {
-                println!("    {}", id)
+                println!("  {}", id)
             }
         };
-        if unsorted {
-            print(&mut self.channel().device_names());
-        } else {
-            print(
-                &mut self
-                    .channel()
-                    .names_devices()
-                    .sorted_by(|(a_id, a_instr), (b_id, b_instr)| {
-                        format!("{:?}", discriminant(*a_instr)).as_bytes()[14]
-                            .cmp(&format!("{:?}", discriminant(*b_instr)).as_bytes()[14])
-                            .then_with(|| a_id.cmp(b_id))
-                    })
-                    .map(|(id, _)| id),
-            );
+        for (ch, channel) in self.channels.iter().sorted_by_key(|(ch, _)| *ch) {
+            println!("~~~~ Channel {} ~~~~", ch);
+            if unsorted {
+                print(&mut channel.device_names());
+            } else {
+                print(
+                    &mut channel
+                        .names_devices()
+                        .sorted_by(|(a_id, a_dev), (b_id, b_dev)| {
+                            format!("{:?}", discriminant(*a_dev)).as_bytes()[14..]
+                                .cmp(&format!("{:?}", discriminant(*b_dev)).as_bytes()[14..])
+                                .then_with(|| a_id.cmp(b_id))
+                        })
+                        .map(|(id, _)| id),
+                );
+            }
+        }
+        self.print_loops();
+    }
+    fn print_loops(&self) {
+        if !self.loops.is_empty() {
+            println!("~~~~~~ Loops ~~~~~~");
+            for name in self.loops.keys().sorted() {
+                println!(
+                    "  {} {}",
+                    name,
+                    match self.loops[name].loop_state {
+                        LoopState::Recording => '●',
+                        LoopState::Playing => '~',
+                        LoopState::Disabled => '-',
+                    }
+                );
+            }
         }
     }
-    fn print_tree(&mut self, root: &str, depth: usize) {
-        let exists = self.channel().get(&root).is_some();
+    fn print_tree(&self, ch: u8, root: &str, depth: usize) {
+        let channel = if let Some(channel) = self.channels.get(&ch) {
+            channel
+        } else {
+            return;
+        };
+        let exists = channel.get(root).is_some();
         print!(
             "{}{}{}",
             (0..(2 * depth)).map(|_| ' ').collect::<String>(),
             root,
             if exists { "" } else { "?" }
         );
-        if let Some(instr) = self.channel().get(&root) {
-            println!();
-            for input in instr
-                .inputs()
-                .into_iter()
-                .map(Into::<String>::into)
-                .sorted()
-            {
-                self.print_tree(&input, depth + 1);
+        println!();
+        if let Some(dev) = channel.get(&root) {
+            for input in dev.inputs().into_iter().map(Into::<String>::into).sorted() {
+                self.print_tree(ch, &input, depth + 1);
             }
-        } else {
-            println!();
         }
     }
     pub(crate) fn resolve_dynamic_value(&self, dyn_val: &DynamicValue, channel: u8) -> Option<f32> {

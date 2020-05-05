@@ -1,7 +1,8 @@
 # TODO
 
-- Dynamic clipping reduction
+- Tempo changing
+- Audio input
 - Game controller support
 
+- Dynamic clipping reduction
 - Spec cloning
-- Audio input

@@ -1,6 +1,6 @@
 {
     "s": wave(
-        form: saw,
+        form: square,
         bend: static(0.3),
     ),
     "filter": filter(

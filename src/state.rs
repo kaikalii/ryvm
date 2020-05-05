@@ -154,7 +154,7 @@ impl State {
         let mut loops_to_delete: Vec<String> = Vec::new();
         for (name, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
-                let len = lup.controls.lock().len() as Frame;
+                let len = lup.controls.len() as Frame;
                 if len > 0 {
                     loop_period.get_or_insert(len);
                     lup.finish();

@@ -260,7 +260,7 @@ impl State {
                         buttons,
                         sliders,
                     );
-                    let port = Port::Midi(port);
+                    let port = Port::Gamepad(port);
                     let removed = self.midis.remove(&port).is_some();
                     println!(
                         "{}nitialized {} on port {:?}",

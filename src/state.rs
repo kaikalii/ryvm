@@ -17,8 +17,8 @@ use structopt::StructOpt;
 
 use crate::{
     parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
-    LoopState, Midi, MidiSubCommand, PadBounds, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
-    ADSR,
+    LoopState, Midi, MidiSubCommand, PadBounds, Port, RyvmCommand, RyvmError, RyvmResult, Sample,
+    Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -47,12 +47,12 @@ pub struct State {
     pub(crate) i: Frame,
     pub(crate) loop_period: Option<Frame>,
     pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
-    pub(crate) midis: HashMap<usize, Midi>,
-    midi_names: HashMap<String, usize>,
-    pub(crate) default_midi: Option<usize>,
+    pub(crate) midis: HashMap<Port, Midi>,
+    midi_names: HashMap<String, Port>,
+    pub(crate) default_midi: Option<Port>,
     loops: HashMap<u8, Loop>,
-    controls: HashMap<(usize, u8, u8), u8>,
-    global_controls: HashMap<(usize, u8), u8>,
+    controls: HashMap<(Port, u8, u8), u8>,
+    global_controls: HashMap<(Port, u8), u8>,
     tracked_spec_maps: HashMap<PathBuf, u8>,
     watcher: RecommendedWatcher,
     watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
@@ -233,19 +233,11 @@ impl State {
                 device,
                 pad_channel,
                 pad_range,
+                gamepad,
                 manual,
                 non_globals,
                 buttons,
             } => {
-                let port = if let Supplied(device) = device {
-                    if let Some(port) = Midi::port_matching(&device)? {
-                        port
-                    } else {
-                        Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
-                    }
-                } else {
-                    Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
-                };
                 let pad =
                     if let (Supplied(channel), Supplied((start, end))) = (pad_channel, pad_range) {
                         Some(PadBounds {
@@ -256,15 +248,42 @@ impl State {
                     } else {
                         None
                     };
-                let midi = Midi::new(name.clone(), port, manual, pad, buttons, non_globals)?;
-                let removed = self.midis.remove(&port).is_some();
-                println!(
-                    "{}nitialized {} ({}) on port {}",
-                    if removed { "Rei" } else { "I" },
-                    midi.name(),
-                    midi.device(),
-                    port
-                );
+                let (port, midi) = if gamepad {
+                    let port = 0;
+                    let midi =
+                        Midi::new_gamepad(name.clone(), port, manual, pad, buttons, non_globals);
+                    let port = Port::Midi(port);
+                    let removed = self.midis.remove(&port).is_some();
+                    println!(
+                        "{}nitialized {} on port {:?}",
+                        if removed { "Rei" } else { "I" },
+                        midi.name(),
+                        port
+                    );
+                    (port, midi)
+                } else {
+                    let port = if let Supplied(device) = device {
+                        if let Some(port) = Midi::port_matching(&device)? {
+                            port
+                        } else {
+                            Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                        }
+                    } else {
+                        Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                    };
+                    let midi = Midi::new(name.clone(), port, manual, pad, buttons, non_globals)?;
+                    let port = Port::Midi(port);
+                    let removed = self.midis.remove(&port).is_some();
+                    println!(
+                        "{}nitialized {} ({}) on port {:?}",
+                        if removed { "Rei" } else { "I" },
+                        midi.name(),
+                        midi.device()
+                            .expect("Real midi device initialized without a device name"),
+                        port
+                    );
+                    (port, midi)
+                };
                 self.midis.insert(port, midi);
                 self.midi_names.insert(name, port);
                 if self.default_midi.is_none() {
@@ -593,7 +612,7 @@ impl Iterator for State {
         }
         // Calculate next frame
         // Get controls from midis
-        let raw_controls: Vec<(usize, u8, Control)> = self
+        let raw_controls: Vec<(Port, u8, Control)> = self
             .midis
             .iter_mut()
             .filter_map(|(&port, midi)| {
@@ -602,7 +621,7 @@ impl Iterator for State {
                     .ok()
                     .map(|controls| (port, controls))
             })
-            .flat_map(|(port, controls)| controls.map(move |(ch, con)| (port, ch, con)))
+            .flat_map(|(port, controls)| controls.into_iter().map(move |(ch, con)| (port, ch, con)))
             .collect();
 
         // Map of port-channel pairs to control lists

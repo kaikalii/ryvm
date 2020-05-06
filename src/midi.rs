@@ -7,7 +7,13 @@ use midir::{
 use rand::random;
 use ryvm_spec::{Action, Button, Buttons};
 
-use crate::{CloneCell, CloneLock};
+use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Port {
+    Midi(usize),
+    Gamepad(usize),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
@@ -23,7 +29,7 @@ pub enum Control {
 const NOTE_START: u8 = 0x9;
 const NOTE_END: u8 = 0x8;
 const PITCH_BEND: u8 = 0xE;
-const CONTROL: u8 = 0xB;
+pub(crate) const CONTROL: u8 = 0xB;
 
 const TIMING: u8 = 0x15;
 
@@ -183,7 +189,12 @@ midi_error_from!(PortInfo, PortInfoError);
 
 impl Error for MidiError {}
 
-type ControlQueue = Arc<CloneLock<Vec<(u8, Control)>>>;
+/// A queue of channels and corresponding controls
+#[derive(Clone)]
+enum ControlQueue {
+    Midi(Arc<CloneLock<Vec<(u8, Control)>>>),
+    Gamepad(usize),
+}
 
 #[derive(Clone)]
 struct MidiInputState {
@@ -192,13 +203,18 @@ struct MidiInputState {
     buttons: Buttons,
 }
 
+enum GenericInput {
+    Midi(MidiInputConnection<MidiInputState>),
+    Gamepad,
+}
+
 #[allow(dead_code)]
 pub struct Midi {
-    port: usize,
+    port: Port,
     name: String,
-    device: String,
-    input: MidiInputConnection<MidiInputState>,
-    output: MidiOutputConnection,
+    device: Option<String>,
+    input: GenericInput,
+    output: Option<MidiOutputConnection>,
     state: MidiInputState,
     manual: bool,
     pad: Option<PadBounds>,
@@ -210,8 +226,8 @@ impl Midi {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn device(&self) -> &str {
-        &self.device
+    pub fn device(&self) -> Option<&str> {
+        self.device.as_deref()
     }
     pub fn control_is_global(&self, control: u8) -> bool {
         !self.non_globals.contains(&control)
@@ -261,7 +277,7 @@ impl Midi {
         assert_eq!(midi_in.port_name(port)?, midi_out.port_name(port)?);
 
         let state = MidiInputState {
-            queue: Arc::new(CloneLock::new(Vec::new())),
+            queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
             monitor: Arc::new(CloneCell::new(false)),
             buttons,
         };
@@ -276,7 +292,9 @@ impl Midi {
                     if let Some(control) =
                         Control::decode(data, port, state.monitor.load(), pad, &state.buttons)
                     {
-                        state.queue.lock().push(control);
+                        if let ControlQueue::Midi(queue) = &state.queue {
+                            queue.lock().push(control);
+                        }
                     }
                 },
                 state.clone(),
@@ -286,11 +304,11 @@ impl Midi {
         let output = midi_out.connect(port, &name).map_err(|e| e.kind())?;
 
         Ok(Midi {
-            port,
+            port: Port::Midi(port),
             name,
-            device,
-            input,
-            output,
+            device: Some(device),
+            input: GenericInput::Midi(input),
+            output: Some(output),
             state,
             manual,
             pad,
@@ -298,29 +316,72 @@ impl Midi {
             last_notes: HashMap::new(),
         })
     }
-    pub fn controls(&mut self) -> Result<impl Iterator<Item = (u8, Control)>, SendError> {
-        let last_notes = &mut self.last_notes;
-        Ok(self
-            .state
-            .queue
-            .lock()
-            .drain(..)
-            .filter_map(|(ch, control)| {
-                match control {
-                    Control::NoteStart(id, n, _) => {
-                        last_notes.insert(n, id);
-                    }
-                    Control::NoteEnd(_, n) => {
-                        return last_notes
-                            .remove(&n)
-                            .map(|id| (ch, Control::NoteEnd(id, n)))
-                    }
-                    _ => {}
-                }
-                Some((ch, control))
-            })
-            .collect::<Vec<_>>()
-            .into_iter())
+    pub fn new_gamepad(
+        name: String,
+        port: usize,
+        manual: bool,
+        pad: Option<PadBounds>,
+        buttons: Buttons,
+        non_globals: Vec<u8>,
+    ) -> Midi {
+        let state = MidiInputState {
+            queue: ControlQueue::Gamepad(port),
+            monitor: Arc::new(CloneCell::new(false)),
+            buttons,
+        };
+        Midi {
+            port: Port::Gamepad(port),
+            name,
+            device: None,
+            input: GenericInput::Gamepad,
+            output: None,
+            state,
+            manual,
+            pad,
+            non_globals,
+            last_notes: HashMap::new(),
+        }
+    }
+    pub fn controls(&mut self) -> Result<Vec<(u8, Control)>, SendError> {
+        Ok(match &self.state.queue {
+            ControlQueue::Midi(queue) => {
+                let last_notes = &mut self.last_notes;
+                queue
+                    .lock()
+                    .drain(..)
+                    .filter_map(|(ch, control)| {
+                        match control {
+                            Control::NoteStart(id, n, _) => {
+                                last_notes.insert(n, id);
+                            }
+                            Control::NoteEnd(_, n) => {
+                                return last_notes
+                                    .remove(&n)
+                                    .map(|id| (ch, Control::NoteEnd(id, n)))
+                            }
+                            _ => {}
+                        }
+                        Some((ch, control))
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .collect()
+            }
+            ControlQueue::Gamepad(id) => GAMEPADS
+                .events_for(*id)
+                .into_iter()
+                .filter_map(event_to_midi_message)
+                .filter_map(|data| {
+                    Control::decode(
+                        &data,
+                        *id,
+                        self.state.monitor.load(),
+                        self.pad,
+                        &self.state.buttons,
+                    )
+                })
+                .collect(),
+        })
     }
 }
 

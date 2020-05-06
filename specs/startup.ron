@@ -13,6 +13,13 @@
             toggle_loop(4): control(107),
         }
     ),
+    "gamepad": controller(
+        gamepad: true
+        buttons: {
+            record: control(2),
+            stop_recording: control(3),
+        }
+    ),
     "load1": load(1, "specs/example1.ron"),
     "load2": load(2, "specs/example2.ron"),
 }

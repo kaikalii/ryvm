@@ -18,7 +18,7 @@ pub enum Action {
     ToggleLoop(u8),
 }
 
-/// A button to map a control to
+/// A button to map an action to
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename = "snake_case", rename_all = "snake_case")]
 pub enum Button {

@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::{adjust_i, Control, Frame};
+use crate::{adjust_i, Control, Frame, Port};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopState {
@@ -9,7 +9,7 @@ pub enum LoopState {
     Disabled,
 }
 
-pub type ControlsMap = HashMap<(usize, u8), Vec<Control>>;
+pub type ControlsMap = HashMap<(Port, u8), Vec<Control>>;
 
 #[derive(Debug, Clone)]
 pub struct Loop {

@@ -5,7 +5,7 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use crate::{Control, Device, State};
+use crate::{Control, Device, Port, State};
 
 /// A midi channel that can contain many devices
 #[derive(Debug, Default)]
@@ -111,7 +111,7 @@ impl Channel {
 
 pub(crate) struct FrameCache {
     pub voices: HashMap<(u8, String), Voice>,
-    pub controls: HashMap<(usize, u8), Vec<Control>>,
+    pub controls: HashMap<(Port, u8), Vec<Control>>,
     pub visited: HashSet<(u8, String)>,
     pub from_loop: bool,
 }

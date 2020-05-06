@@ -4,9 +4,9 @@
 This crate defines the Ryvm specification format. RON files satisfying the `Spec` structure are used to program a Ryvm state.
 */
 
-mod button;
+mod action;
 mod parts;
-pub use button::*;
+pub use action::*;
 pub use parts::*;
 
 use std::{ops::Not, path::PathBuf};
@@ -16,6 +16,7 @@ use serde_derive::{Deserialize, Serialize};
 /// A specification for a Ryvm item
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[allow(clippy::large_enum_variant)]
 pub enum Spec {
     /// Load into the given channel the spec file with the given path
     Load(u8, PathBuf),
@@ -32,6 +33,36 @@ pub enum Spec {
         /// Set this to true if the controller cannot change its own midi channels
         #[serde(default, skip_serializing_if = "Not::not")]
         manual: bool,
+        /// Set this to true if the controller is actually a gamepad
+        ///
+        /// Controls on the gamepad are mapped to midi controls.
+        /// Buttons work like normal midi controller buttons.
+        /// Stick and trigger axis work like midi controller knobs.
+        ///
+        /// The mappings are as follows:
+        ///
+        /// - Start: 0
+        /// - Select: 1
+        /// - South: 2
+        /// - East: 3
+        /// - West: 4
+        /// - North: 5
+        /// - L1: 6
+        /// - R1: 7
+        /// - L2: 8
+        /// - R2: 9
+        /// - LeftStickX: 10
+        /// - LeftStickY: 11
+        /// - RightStickX: 12
+        /// - RightStickY: 13
+        /// - DPadUp: 14
+        /// - DPadDown: 15
+        /// - DPadLeft: 16
+        /// - DPadRight: 17
+        /// - L3: 18
+        /// - R3: 19
+        #[serde(default, skip_serializing_if = "Not::not")]
+        gamepad: bool,
         /// A list of the controls that are not global
         ///
         /// By default, every control on a midi controller is set to global.
@@ -46,7 +77,7 @@ pub enum Spec {
         /// to a certain channel. Controls like this should be added to this list
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         non_globals: Vec<u8>,
-        /// The midi control used to start and end loops
+        /// A mapping of buttons on this controller to Ryvm actions
         #[serde(default, skip_serializing_if = "Buttons::is_empty")]
         buttons: Buttons,
     },
@@ -102,6 +133,7 @@ fn button() {
         device: Supplied("Launchkey".into()),
         pad_channel: Omitted,
         pad_range: Omitted,
+        gamepad: false,
         manual: false,
         non_globals: vec![1],
         buttons: {

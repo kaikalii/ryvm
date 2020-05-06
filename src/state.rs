@@ -181,7 +181,7 @@ impl State {
     fn stop_loop(&mut self, num: u8) {
         if let Some(lup) = self.loops.get_mut(&num) {
             for id in lup.note_ids() {
-                for device in self.channels.values_mut().flat_map(|ch| ch.devices_mut()) {
+                for device in self.channels.values_mut().flat_map(Channel::devices_mut) {
                     device.end_envelopes(id);
                 }
             }
@@ -658,14 +658,14 @@ impl Iterator for State {
                     Action::ToggleLoop(num) => self.toggle_loop(num),
                 },
                 Control::ValuedAction(action, val) => match action {
-                    ValuedAction::Tempo => self.tempo = val as f32 / 0x3f as f32,
+                    ValuedAction::Tempo => self.tempo = f32::from(val) / 0x3f as f32,
                 },
                 control => {
                     // Check if a fly mapping can be processed
                     let midis = &self.midis;
                     match self.fly_control.as_mut().map(|fly| {
                         fly.process(control, || {
-                            if default_midi.map(|p| p == port).unwrap_or(true) {
+                            if default_midi.map_or(true, |p| p == port) {
                                 None
                             } else {
                                 Some(midis[&port].name().into())
@@ -753,6 +753,11 @@ pub struct StateInterface {
 
 impl StateInterface {
     /// Send a command to the state corresponding to this interface
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if there is an error executing the command
+    /// or if the state was dropped
     pub fn send_command<S>(&self, command: S) -> RyvmResult<bool>
     where
         S: Into<String>,

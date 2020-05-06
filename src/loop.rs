@@ -85,7 +85,7 @@ impl Loop {
             self.i += state_tempo;
             let period = period.map(|p| p * self.length);
             if let Some(period) = period {
-                if self.i >= period.floor() {
+                if self.loop_state != LoopState::Recording && self.i >= period.floor() {
                     self.i = 0.0;
                 }
             }
@@ -141,6 +141,8 @@ impl Loop {
                     .map(|(key, map)| (Float(key.0 - start_i), map))
                     .collect();
                 self.controls = used;
+                dbg!(self.period());
+                dbg!(period);
             }
             // Reset i
             self.i = 0.0;

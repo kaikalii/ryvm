@@ -1,4 +1,5 @@
 use std::{
+    cmp::Ordering,
     fmt,
     iter::once,
     ops::{Deref, DerefMut},
@@ -7,10 +8,27 @@ use std::{
 
 use crossbeam_utils::atomic::AtomicCell;
 
-use crate::Frame;
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub struct Float(pub f32);
 
-pub fn adjust_i(i: Frame, recording_tempo: f32, current_tempo: f32) -> Frame {
-    (i as f32 * current_tempo.abs() / recording_tempo.abs()).round() as Frame
+impl Eq for Float {}
+
+impl Ord for Float {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap_or(Ordering::Less)
+    }
+}
+
+impl From<f32> for Float {
+    fn from(f: f32) -> Self {
+        Float(f)
+    }
+}
+
+impl From<Float> for f32 {
+    fn from(f: Float) -> f32 {
+        f.0
+    }
 }
 
 pub fn parse_commands(text: &str) -> Option<Vec<(bool, Vec<String>)>> {

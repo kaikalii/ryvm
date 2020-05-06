@@ -45,7 +45,7 @@ pub struct State {
     command_queue: Vec<RyvmCommand>,
     /// The index of the current frame
     pub(crate) i: Frame,
-    pub(crate) loop_period: Option<Frame>,
+    pub(crate) loop_period: Option<f32>,
     pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub(crate) midis: HashMap<Port, Midi>,
     midi_names: HashMap<String, Port>,
@@ -126,7 +126,7 @@ impl State {
     #[allow(dead_code)]
     fn is_debug_frame(&self) -> bool {
         if let Some(period) = self.loop_period {
-            self.i % (period / 10) == 0
+            self.i % (period as Frame / 10) == 0
         } else {
             self.i % (self.sample_rate as Frame / 5) == 0
         }
@@ -142,7 +142,7 @@ impl State {
             i += 1;
         };
         self.loops
-            .insert(loop_num, Loop::new(self.tempo, length.unwrap_or(1.0)));
+            .insert(loop_num, Loop::new(length.unwrap_or(1.0)));
         println!("Loop ready");
     }
     /// Finish recording any loops
@@ -151,10 +151,10 @@ impl State {
         let mut loops_to_delete: Vec<u8> = Vec::new();
         for (num, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
-                let len = lup.controls.len() as Frame;
-                if len > 0 {
-                    loop_period.get_or_insert(len);
-                    lup.finish();
+                lup.finish(loop_period);
+                let period = lup.period();
+                if period > 0.0 {
+                    loop_period.get_or_insert(period);
                     println!("Finished recording {:?}", num);
                 } else {
                     loops_to_delete.push(*num);
@@ -566,7 +566,7 @@ impl State {
     }
     fn process_delayed_cli_commands(&mut self) {
         if let Some(period) = self.loop_period {
-            if self.i % period == 0 && self.frame_queue.is_none() {
+            if self.i % period as Frame == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
@@ -687,7 +687,7 @@ impl Iterator for State {
         // Record loops
         for lup in self.loops.values_mut() {
             if lup.loop_state == LoopState::Recording {
-                lup.record(controls.clone(), self.tempo, self.loop_period);
+                lup.record(controls.clone());
             }
         }
         let mut voice = Voice::SILENT;

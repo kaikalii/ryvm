@@ -5,7 +5,7 @@ use midir::{
     MidiOutputConnection, PortInfoError, SendError,
 };
 use rand::random;
-use ryvm_spec::{Action, Button, Buttons};
+use ryvm_spec::{Action, Button, Buttons, Slider, Sliders, ValuedAction};
 
 use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
 
@@ -24,6 +24,7 @@ pub enum Control {
     PadStart(u8, u8),
     PadEnd(u8),
     Action(Action),
+    ValuedAction(ValuedAction, u8),
 }
 
 const NOTE_START: u8 = 0x9;
@@ -41,6 +42,7 @@ impl Control {
         monitor: bool,
         pad: Option<PadBounds>,
         buttons: &Buttons,
+        sliders: &Sliders,
     ) -> Option<(u8, Control)> {
         if data[0] == TIMING {
             return None;
@@ -61,26 +63,30 @@ impl Control {
         }
 
         let control = match (status, d1, d2) {
-            (NOTE_START, n, v) => check_buttons(&buttons, status, channel, d1, d2, || match pad {
-                Some(pad) if pad.channel == channel && pad.start <= n => {
-                    Control::PadStart(n - pad.start, v)
-                }
-                _ => Control::NoteStart(random::<u64>() % 1_000_000, n, v),
-            }),
-            (NOTE_END, n, _) => check_buttons(&buttons, status, channel, d1, d2, || match pad {
-                Some(pad) if pad.channel == channel && pad.start <= n => {
-                    Control::PadEnd(n - pad.start)
-                }
-                _ => Control::NoteEnd(0, n),
-            }),
+            (NOTE_START, n, v) => {
+                check_buttons(buttons, sliders, status, channel, d1, d2, || match pad {
+                    Some(pad) if pad.channel == channel && pad.start <= n => {
+                        Control::PadStart(n - pad.start, v)
+                    }
+                    _ => Control::NoteStart(random::<u64>() % 1_000_000, n, v),
+                })
+            }
+            (NOTE_END, n, _) => {
+                check_buttons(buttons, sliders, status, channel, d1, d2, || match pad {
+                    Some(pad) if pad.channel == channel && pad.start <= n => {
+                        Control::PadEnd(n - pad.start)
+                    }
+                    _ => Control::NoteEnd(0, n),
+                })
+            }
             (PITCH_BEND, lsb, msb) => {
                 let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
                 Some(Control::PitchBend(pb))
             }
-            (CONTROL, n, i) => {
-                check_buttons(&buttons, status, channel, d1, d2, || Control::Control(n, i))
-            }
+            (CONTROL, n, i) => check_buttons(buttons, sliders, status, channel, d1, d2, || {
+                Control::Control(n, i)
+            }),
             _ => None,
         };
 
@@ -98,6 +104,7 @@ impl Control {
 
 fn check_buttons<F>(
     buttons: &Buttons,
+    sliders: &Sliders,
     status: u8,
     channel: u8,
     d1: u8,
@@ -115,6 +122,8 @@ where
                 } else {
                     Some(Control::Action(*action))
                 }
+            } else if let Some(val_action) = sliders.get_by_right(&Slider::Control(n)) {
+                Some(Control::ValuedAction(*val_action, v))
             } else {
                 Some(otherwise())
             }
@@ -201,6 +210,7 @@ struct MidiInputState {
     queue: ControlQueue,
     monitor: Arc<CloneCell<bool>>,
     buttons: Buttons,
+    sliders: Sliders,
 }
 
 enum GenericInput {
@@ -267,8 +277,9 @@ impl Midi {
         port: usize,
         manual: bool,
         pad: Option<PadBounds>,
-        buttons: Buttons,
         non_globals: Vec<u8>,
+        buttons: Buttons,
+        sliders: Sliders,
     ) -> Result<Midi, MidiError> {
         let mut midi_in = MidiInput::new(&name)?;
         midi_in.ignore(Ignore::Time);
@@ -280,6 +291,7 @@ impl Midi {
             queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
             monitor: Arc::new(CloneCell::new(false)),
             buttons,
+            sliders,
         };
 
         let device = midi_in.port_name(port)?;
@@ -289,9 +301,14 @@ impl Midi {
                 port,
                 &name,
                 move |_, data, state| {
-                    if let Some(control) =
-                        Control::decode(data, port, state.monitor.load(), pad, &state.buttons)
-                    {
+                    if let Some(control) = Control::decode(
+                        data,
+                        port,
+                        state.monitor.load(),
+                        pad,
+                        &state.buttons,
+                        &state.sliders,
+                    ) {
                         if let ControlQueue::Midi(queue) = &state.queue {
                             queue.lock().push(control);
                         }
@@ -321,13 +338,15 @@ impl Midi {
         port: usize,
         manual: bool,
         pad: Option<PadBounds>,
-        buttons: Buttons,
         non_globals: Vec<u8>,
+        buttons: Buttons,
+        sliders: Sliders,
     ) -> Midi {
         let state = MidiInputState {
             queue: ControlQueue::Gamepad(port),
             monitor: Arc::new(CloneCell::new(false)),
             buttons,
+            sliders,
         };
         Midi {
             port: Port::Gamepad(port),
@@ -378,6 +397,7 @@ impl Midi {
                         self.state.monitor.load(),
                         self.pad,
                         &self.state.buttons,
+                        &self.state.sliders,
                     )
                 })
                 .collect(),

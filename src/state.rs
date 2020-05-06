@@ -12,7 +12,7 @@ use employer::{Employer, JobDescription};
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::Source;
-use ryvm_spec::{Action, DynamicValue, Spec, Supplied};
+use ryvm_spec::{Action, DynamicValue, Spec, Supplied, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
@@ -237,6 +237,7 @@ impl State {
                 manual,
                 non_globals,
                 buttons,
+                sliders,
             } => {
                 let pad =
                     if let (Supplied(channel), Supplied((start, end))) = (pad_channel, pad_range) {
@@ -250,8 +251,15 @@ impl State {
                     };
                 let (port, midi) = if gamepad {
                     let port = 0;
-                    let midi =
-                        Midi::new_gamepad(name.clone(), port, manual, pad, buttons, non_globals);
+                    let midi = Midi::new_gamepad(
+                        name.clone(),
+                        port,
+                        manual,
+                        pad,
+                        non_globals,
+                        buttons,
+                        sliders,
+                    );
                     let port = Port::Midi(port);
                     let removed = self.midis.remove(&port).is_some();
                     println!(
@@ -271,7 +279,15 @@ impl State {
                     } else {
                         Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
                     };
-                    let midi = Midi::new(name.clone(), port, manual, pad, buttons, non_globals)?;
+                    let midi = Midi::new(
+                        name.clone(),
+                        port,
+                        manual,
+                        pad,
+                        non_globals,
+                        buttons,
+                        sliders,
+                    )?;
                     let port = Port::Midi(port);
                     let removed = self.midis.remove(&port).is_some();
                     println!(
@@ -629,8 +645,8 @@ impl Iterator for State {
         let default_midi = self.default_midi;
         for (port, channel, control) in raw_controls {
             // Process action controls separate from the rest
-            if let Control::Action(action) = control {
-                match action {
+            match control {
+                Control::Action(action) => match action {
                     Action::Record => self.start_loop(None),
                     Action::StopRecording => self.cancel_recording(),
                     Action::PlayLoop(num) => {
@@ -640,27 +656,31 @@ impl Iterator for State {
                     }
                     Action::StopLoop(num) => self.stop_loop(num),
                     Action::ToggleLoop(num) => self.toggle_loop(num),
-                }
-            } else {
-                // Check if a fly mapping can be processed
-                let midis = &self.midis;
-                match self.fly_control.as_mut().map(|fly| {
-                    fly.process(control, || {
-                        if default_midi.map(|p| p == port).unwrap_or(true) {
-                            None
-                        } else {
-                            Some(midis[&port].name().into())
-                        }
-                    })
-                }) {
-                    // Pass the control on
-                    Some(Ok(false)) | None => controls
-                        .entry((port, channel))
-                        .or_insert_with(Vec::new)
-                        .push(control),
-                    // Reset the fly
-                    Some(Ok(true)) => self.fly_control = None,
-                    Some(Err(e)) => println!("{}", e),
+                },
+                Control::ValuedAction(action, val) => match action {
+                    ValuedAction::Tempo => self.tempo = val as f32 / 0x3f as f32,
+                },
+                control => {
+                    // Check if a fly mapping can be processed
+                    let midis = &self.midis;
+                    match self.fly_control.as_mut().map(|fly| {
+                        fly.process(control, || {
+                            if default_midi.map(|p| p == port).unwrap_or(true) {
+                                None
+                            } else {
+                                Some(midis[&port].name().into())
+                            }
+                        })
+                    }) {
+                        // Pass the control on
+                        Some(Ok(false)) | None => controls
+                            .entry((port, channel))
+                            .or_insert_with(Vec::new)
+                            .push(control),
+                        // Reset the fly
+                        Some(Ok(true)) => self.fly_control = None,
+                        Some(Err(e)) => println!("{}", e),
+                    }
                 }
             }
         }

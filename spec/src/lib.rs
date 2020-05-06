@@ -80,6 +80,9 @@ pub enum Spec {
         /// A mapping of buttons on this controller to Ryvm actions
         #[serde(default, skip_serializing_if = "Buttons::is_empty")]
         buttons: Buttons,
+        /// A mapping of sliders or knobs on this controller to Ryvm  valued actions
+        #[serde(default, skip_serializing_if = "Sliders::is_empty")]
+        sliders: Sliders,
     },
     /// A wave synthesizer
     Wave {
@@ -142,6 +145,7 @@ fn button() {
             buttons.insert(Action::StopRecording, Button::Control(115));
             buttons
         },
+        sliders: Sliders::new(),
     };
     let mut map = std::collections::HashMap::new();
     map.insert("midi".to_string(), control);

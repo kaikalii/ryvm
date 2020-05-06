@@ -30,5 +30,24 @@ pub enum Button {
     NoteChannel(u8, u8),
 }
 
-/// A mapping of controls to buttons
+/// A mapping of actions to buttons
 pub type Buttons = BiMap<Action, Button>;
+
+/// An action that takes a value that can be mapped to a slider
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename = "snake_case", rename_all = "snake_case")]
+pub enum ValuedAction {
+    /// Sets the relative tempo
+    Tempo,
+}
+
+/// A slider or knob to map a valued action to
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename = "snake_case", rename_all = "snake_case")]
+pub enum Slider {
+    /// A slider triggered by a control midi message
+    Control(u8),
+}
+
+/// A mapping of valued actions
+pub type Sliders = BiMap<ValuedAction, Slider>;

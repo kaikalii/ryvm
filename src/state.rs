@@ -17,8 +17,7 @@ use structopt::StructOpt;
 
 use crate::{
     parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
-    LoopState, Midi, MidiSubCommand, PadBounds, Port, RyvmCommand, RyvmError, RyvmResult, Sample,
-    Voice, ADSR,
+    LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -231,31 +230,18 @@ impl State {
             }
             Spec::Controller {
                 device,
-                pad_channel,
-                pad_range,
                 gamepad,
                 manual,
                 non_globals,
                 buttons,
                 sliders,
             } => {
-                let pad =
-                    if let (Supplied(channel), Supplied((start, end))) = (pad_channel, pad_range) {
-                        Some(PadBounds {
-                            channel,
-                            start,
-                            end,
-                        })
-                    } else {
-                        None
-                    };
                 let (port, midi) = if gamepad {
                     let port = 0;
                     let midi = Midi::new_gamepad(
                         name.clone(),
                         port,
                         manual,
-                        pad,
                         non_globals,
                         buttons,
                         sliders,
@@ -279,15 +265,8 @@ impl State {
                     } else {
                         Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
                     };
-                    let midi = Midi::new(
-                        name.clone(),
-                        port,
-                        manual,
-                        pad,
-                        non_globals,
-                        buttons,
-                        sliders,
-                    )?;
+                    let midi =
+                        Midi::new(name.clone(), port, manual, non_globals, buttons, sliders)?;
                     let port = Port::Midi(port);
                     let removed = self.midis.remove(&port).is_some();
                     println!(
@@ -643,44 +622,65 @@ impl Iterator for State {
         // Map of port-channel pairs to control lists
         let mut controls = HashMap::new();
         let default_midi = self.default_midi;
-        for (port, channel, control) in raw_controls {
+        for (port, mut channel, control) in raw_controls {
             // Process action controls separate from the rest
-            match control {
-                Control::Action(action) => match action {
-                    Action::Record => self.start_loop(None),
-                    Action::StopRecording => self.cancel_recording(),
+            let control = match control {
+                Control::Action(action, vel) => match action {
+                    Action::Record => {
+                        self.start_loop(None);
+                        None
+                    }
+                    Action::StopRecording => {
+                        self.cancel_recording();
+                        None
+                    }
                     Action::PlayLoop(num) => {
                         if let Some(lup) = self.loops.get_mut(&num) {
                             lup.loop_state = LoopState::Playing;
                         }
+                        None
                     }
-                    Action::StopLoop(num) => self.stop_loop(num),
-                    Action::ToggleLoop(num) => self.toggle_loop(num),
-                },
-                Control::ValuedAction(action, val) => match action {
-                    ValuedAction::Tempo => self.tempo = f32::from(val) / 0x3f as f32,
-                },
-                control => {
-                    // Check if a fly mapping can be processed
-                    let midis = &self.midis;
-                    match self.fly_control.as_mut().map(|fly| {
-                        fly.process(control, || {
-                            if default_midi.map_or(true, |p| p == port) {
-                                None
-                            } else {
-                                Some(midis[&port].name().into())
-                            }
-                        })
-                    }) {
-                        // Pass the control on
-                        Some(Ok(false)) | None => controls
-                            .entry((port, channel))
-                            .or_insert_with(Vec::new)
-                            .push(control),
-                        // Reset the fly
-                        Some(Ok(true)) => self.fly_control = None,
-                        Some(Err(e)) => println!("{}", e),
+                    Action::StopLoop(num) => {
+                        self.stop_loop(num);
+                        None
                     }
+                    Action::ToggleLoop(num) => {
+                        self.toggle_loop(num);
+                        None
+                    }
+                    Action::Drum(ch, num) => {
+                        channel = ch;
+                        Some(Control::PadStart(num, vel))
+                    }
+                },
+                Control::ValuedAction(action, val) => {
+                    match action {
+                        ValuedAction::Tempo => self.tempo = f32::from(val) / 0x3f as f32,
+                    }
+                    None
+                }
+                control => Some(control),
+            };
+            if let Some(control) = control {
+                // Check if a fly mapping can be processed
+                let midis = &self.midis;
+                match self.fly_control.as_mut().map(|fly| {
+                    fly.process(control, || {
+                        if default_midi.map_or(true, |p| p == port) {
+                            None
+                        } else {
+                            Some(midis[&port].name().into())
+                        }
+                    })
+                }) {
+                    // Pass the control on
+                    Some(Ok(false)) | None => controls
+                        .entry((port, channel))
+                        .or_insert_with(Vec::new)
+                        .push(control),
+                    // Reset the fly
+                    Some(Ok(true)) => self.fly_control = None,
+                    Some(Err(e)) => println!("{}", e),
                 }
             }
         }

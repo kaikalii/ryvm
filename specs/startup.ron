@@ -1,8 +1,6 @@
 {
     "launchkey": controller(
         device: "Launchkey",
-        pad_channel: 10,
-        pad_range: (36, 52),
         non_globals: [1],
         buttons: {
             record: control(117),
@@ -11,6 +9,9 @@
             toggle_loop(2): control(105),
             toggle_loop(3): control(106),
             toggle_loop(4): control(107),
+            drum(1, 0): channel_note(10, 36),
+            drum(1, 1): channel_note(10, 37),
+            drum(1, 2): channel_note(10, 38),
         },
         sliders: {
             tempo: control(21)
@@ -18,8 +19,6 @@
     ),
     "launchpad": controller(
         device: "Launchpad",
-        pad_channel: 1,
-        pad_range: (0, 255),
     ),
     "gamepad": controller(
         gamepad: true,

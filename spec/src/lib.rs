@@ -24,12 +24,6 @@ pub enum Spec {
     Controller {
         /// The name of the midi device
         device: Optional<String>,
-        /// The channel that drum pads on the controller use
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        pad_channel: Optional<u8>,
-        /// The midi note index range that drum pads on the controller fall into
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        pad_range: Optional<(u8, u8)>,
         /// Set this to true if the controller cannot change its own midi channels
         #[serde(default, skip_serializing_if = "Not::not")]
         manual: bool,
@@ -127,31 +121,4 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         pan: Optional<DynamicValue>,
     },
-}
-
-#[cfg(test)]
-#[test]
-fn button() {
-    let control = Spec::Controller {
-        device: Supplied("Launchkey".into()),
-        pad_channel: Omitted,
-        pad_range: Omitted,
-        gamepad: false,
-        manual: false,
-        non_globals: vec![1],
-        buttons: {
-            let mut buttons = Buttons::new();
-            buttons.insert(Action::Record, Button::Control(117));
-            buttons.insert(Action::StopRecording, Button::Control(115));
-            buttons
-        },
-        sliders: Sliders::new(),
-    };
-    let mut map = std::collections::HashMap::new();
-    map.insert("midi".to_string(), control);
-    let ser_control = ron::ser::to_string_pretty(&map, Default::default()).unwrap();
-    std::fs::write("test.ron", ser_control.as_bytes()).unwrap();
-    let de_map =
-        ron::de::from_str::<std::collections::HashMap<String, Spec>>(&ser_control).unwrap();
-    assert_eq!(map, de_map);
 }

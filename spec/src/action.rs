@@ -16,6 +16,8 @@ pub enum Action {
     PlayLoop(u8),
     /// Stop a loop if it is playing, play a loop if it is stopped
     ToggleLoop(u8),
+    /// Play a drum pad sample on a given channel (channel, sample_index)
+    Drum(u8, u8),
 }
 
 /// A button to map an action to
@@ -26,8 +28,8 @@ pub enum Button {
     Control(u8),
     /// A button triggered by a note start midi message
     Note(u8),
-    /// A button triggered by a note start midi message on a particular channel
-    NoteChannel(u8, u8),
+    /// A button triggered by a note start midi message on a particular channel (channel, note_index)
+    ChannelNote(u8, u8),
 }
 
 /// A mapping of actions to buttons

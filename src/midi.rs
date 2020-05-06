@@ -17,13 +17,19 @@ pub enum Port {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Control {
+    /// Id, index, velocity
     NoteStart(u64, u8, u8),
+    /// Id, index
     NoteEnd(u64, u8),
+    /// Bend value
     PitchBend(f32),
+    /// Index, value
     Control(u8, u8),
+    /// Index, velocity
     PadStart(u8, u8),
-    PadEnd(u8),
-    Action(Action),
+    /// Action, velocity
+    Action(Action, u8),
+    /// Action, value
     ValuedAction(ValuedAction, u8),
 }
 
@@ -40,7 +46,6 @@ impl Control {
         data: &[u8],
         port: usize,
         monitor: bool,
-        pad: Option<PadBounds>,
         buttons: &Buttons,
         sliders: &Sliders,
     ) -> Option<(u8, Control)> {
@@ -63,22 +68,12 @@ impl Control {
         }
 
         let control = match (status, d1, d2) {
-            (NOTE_START, n, v) => {
-                check_buttons(buttons, sliders, status, channel, d1, d2, || match pad {
-                    Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Control::PadStart(n - pad.start, v)
-                    }
-                    _ => Control::NoteStart(random::<u64>() % 1_000_000, n, v),
-                })
-            }
-            (NOTE_END, n, _) => {
-                check_buttons(buttons, sliders, status, channel, d1, d2, || match pad {
-                    Some(pad) if pad.channel == channel && pad.start <= n => {
-                        Control::PadEnd(n - pad.start)
-                    }
-                    _ => Control::NoteEnd(0, n),
-                })
-            }
+            (NOTE_START, n, v) => check_buttons(buttons, sliders, status, channel, d1, d2, || {
+                Control::NoteStart(random::<u64>() % 1_000_000, n, v)
+            }),
+            (NOTE_END, n, _) => check_buttons(buttons, sliders, status, channel, d1, d2, || {
+                Control::NoteEnd(0, n)
+            }),
             (PITCH_BEND, lsb, msb) => {
                 let pb_u16 = u16::from(msb) * 0x80 + u16::from(lsb);
                 let pb = f32::from(pb_u16) / 0x3fff as f32 * 2.0 - 1.0;
@@ -120,7 +115,7 @@ where
                 if v == 0 {
                     None
                 } else {
-                    Some(Control::Action(*action))
+                    Some(Control::Action(*action, 0x7f))
                 }
             } else if let Some(val_action) = sliders.get_by_right(&Slider::Control(n)) {
                 Some(Control::ValuedAction(*val_action, v))
@@ -131,12 +126,12 @@ where
         (NOTE_START, n, v) => {
             if let Some(action) = buttons
                 .get_by_right(&Button::Note(n))
-                .or_else(|| buttons.get_by_right(&Button::NoteChannel(n, channel)))
+                .or_else(|| buttons.get_by_right(&Button::ChannelNote(channel, n)))
             {
                 if v == 0 {
                     None
                 } else {
-                    Some(Control::Action(*action))
+                    Some(Control::Action(*action, d2))
                 }
             } else {
                 Some(otherwise())
@@ -144,7 +139,7 @@ where
         }
         (NOTE_END, n, _) => {
             if buttons.contains_right(&Button::Note(n))
-                || buttons.contains_right(&Button::NoteChannel(n, channel))
+                || buttons.contains_right(&Button::ChannelNote(channel, n))
             {
                 None
             } else {
@@ -153,13 +148,6 @@ where
         }
         _ => Some(otherwise()),
     }
-}
-
-#[derive(Clone, Copy)]
-pub struct PadBounds {
-    pub channel: u8,
-    pub start: u8,
-    pub end: u8,
 }
 
 #[derive(Debug)]
@@ -227,7 +215,6 @@ pub struct Midi {
     output: Option<MidiOutputConnection>,
     state: MidiInputState,
     manual: bool,
-    pad: Option<PadBounds>,
     non_globals: Vec<u8>,
     last_notes: HashMap<u8, u64>,
 }
@@ -276,7 +263,6 @@ impl Midi {
         name: String,
         port: usize,
         manual: bool,
-        pad: Option<PadBounds>,
         non_globals: Vec<u8>,
         buttons: Buttons,
         sliders: Sliders,
@@ -305,7 +291,6 @@ impl Midi {
                         data,
                         port,
                         state.monitor.load(),
-                        pad,
                         &state.buttons,
                         &state.sliders,
                     ) {
@@ -328,7 +313,6 @@ impl Midi {
             output: Some(output),
             state,
             manual,
-            pad,
             non_globals,
             last_notes: HashMap::new(),
         })
@@ -337,7 +321,6 @@ impl Midi {
         name: String,
         port: usize,
         manual: bool,
-        pad: Option<PadBounds>,
         non_globals: Vec<u8>,
         buttons: Buttons,
         sliders: Sliders,
@@ -356,7 +339,6 @@ impl Midi {
             output: None,
             state,
             manual,
-            pad,
             non_globals,
             last_notes: HashMap::new(),
         }
@@ -395,7 +377,6 @@ impl Midi {
                         &data,
                         *id,
                         self.state.monitor.load(),
-                        self.pad,
                         &self.state.buttons,
                         &self.state.sliders,
                     )

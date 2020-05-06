@@ -11,10 +11,13 @@
             toggle_loop(2): control(105),
             toggle_loop(3): control(106),
             toggle_loop(4): control(107),
+        },
+        sliders: {
+            tempo: control(21)
         }
     ),
     "gamepad": controller(
-        gamepad: true
+        gamepad: true,
         buttons: {
             record: control(2),
             stop_recording: control(3),

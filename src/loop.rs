@@ -59,6 +59,7 @@ impl Loop {
             }
         }
     }
+    /// Get the map of controls for the current frame
     pub fn controls(&mut self, state_tempo: f32, period: Option<Frame>) -> Option<ControlsMap> {
         let period = period.map(|p| (p as f32 * self.length).round() as Frame);
         if let Some(period) = period {
@@ -67,9 +68,21 @@ impl Loop {
             }
         }
         let res = if self.loop_state == LoopState::Playing {
-            let loop_i = self.loop_i(state_tempo);
             if let Some(period) = period {
-                self.controls[(loop_i % period) as usize].clone()
+                let loop_i = self.loop_i(state_tempo);
+                let next_frame_i = adjust_i(self.i + 1, self.tempo, state_tempo);
+                let mut combined_map = HashMap::new();
+                for i in loop_i..next_frame_i {
+                    if let Some(controls) = &self.controls[(i % period) as usize] {
+                        for (key, list) in controls {
+                            combined_map
+                                .entry(*key)
+                                .or_insert_with(Vec::new)
+                                .extend(list.iter().copied());
+                        }
+                    }
+                }
+                Some(combined_map).filter(|map| !map.is_empty())
             } else {
                 None
             }

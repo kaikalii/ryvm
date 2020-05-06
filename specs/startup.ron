@@ -1,5 +1,5 @@
 {
-    "midi": controller(
+    "launchkey": controller(
         device: "Launchkey",
         pad_channel: 10,
         pad_range: (36, 52),
@@ -15,6 +15,11 @@
         sliders: {
             tempo: control(21)
         }
+    ),
+    "launchpad": controller(
+        device: "Launchpad",
+        pad_channel: 1,
+        pad_range: (0, 255),
     ),
     "gamepad": controller(
         gamepad: true,

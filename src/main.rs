@@ -1,3 +1,12 @@
+macro_rules! mods {
+    ($($vis:vis $m:ident),*) => ($(mod $m; $vis use $m::*;)*);
+}
+
+mods!(
+    app, channel, device, drum, envelope, error, gamepad, r#loop, midi, onfly, state, track,
+    utility
+);
+
 use std::{
     io::{stdin, BufRead},
     process::exit,
@@ -5,7 +14,7 @@ use std::{
 
 use structopt::StructOpt;
 
-use ryvm::{RyvmApp, State};
+type Frame = u64;
 
 fn main() {
     let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();

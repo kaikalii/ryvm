@@ -43,11 +43,11 @@ impl Channel {
     pub fn names_devices(&self) -> hash_map::Iter<String, Device> {
         self.devices.iter()
     }
-    /// Get an iterator over names and mutable references to the devices
-    #[must_use]
-    pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
-        self.devices.iter_mut()
-    }
+    // /// Get an iterator over names and mutable references to the devices
+    // #[must_use]
+    // pub fn names_devices_mut(&mut self) -> hash_map::IterMut<String, Device> {
+    //     self.devices.iter_mut()
+    // }
     /// Get an iterator over the names of devices in this channel that should be output
     pub fn outputs(&self) -> impl Iterator<Item = &str> + '_ {
         self.device_names()
@@ -61,10 +61,10 @@ impl Channel {
     {
         self.devices.retain(f)
     }
-    /// Clear all devices
-    pub fn clear(&mut self) {
-        self.devices.clear();
-    }
+    // /// Clear all devices
+    // pub fn clear(&mut self) {
+    //     self.devices.clear();
+    // }
     /// Remove a device and optionally recursively delete all of its unique inputs
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(device) = self.get(name) {

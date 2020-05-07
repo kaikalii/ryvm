@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[derive(Default)]
-pub(crate) struct LoadSamples;
+pub struct LoadSamples;
 
 impl JobDescription<PathBuf> for LoadSamples {
     type Output = RyvmResult<Sample>;
@@ -37,20 +37,20 @@ impl JobDescription<PathBuf> for LoadSamples {
 
 /// The main Ryvm state manager
 pub struct State {
-    pub(crate) sample_rate: u32,
-    pub(crate) tempo: f32,
-    pub(crate) master_volume: f32,
+    pub sample_rate: u32,
+    pub tempo: f32,
+    pub master_volume: f32,
     curr_channel: u8,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
     /// The index of the current frame
-    pub(crate) i: Frame,
-    pub(crate) loop_period: Option<f32>,
-    pub(crate) sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
-    pub(crate) midis: HashMap<Port, Midi>,
+    pub i: Frame,
+    pub loop_period: Option<f32>,
+    pub sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
+    pub midis: HashMap<Port, Midi>,
     midi_names: HashMap<String, Port>,
-    pub(crate) default_midi: Option<Port>,
+    pub default_midi: Option<Port>,
     loops: HashMap<u8, Loop>,
     controls: HashMap<(Port, u8, u8), u8>,
     global_controls: HashMap<(Port, u8), u8>,
@@ -528,7 +528,7 @@ impl State {
             }
         }
     }
-    pub(crate) fn resolve_dynamic_value(
+    pub fn resolve_dynamic_value(
         &self,
         dyn_val: &DynamicValue,
         ch: u8,

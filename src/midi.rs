@@ -35,7 +35,7 @@ pub enum Control {
 const NOTE_START: u8 = 0x9;
 const NOTE_END: u8 = 0x8;
 const PITCH_BEND: u8 = 0xE;
-pub(crate) const CONTROL: u8 = 0xB;
+pub const CONTROL: u8 = 0xB;
 
 const TIMING: u8 = 0x15;
 

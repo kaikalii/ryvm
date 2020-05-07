@@ -30,7 +30,7 @@ pub enum Device {
 pub struct Wave {
     /// The waveform
     pub form: WaveForm,
-    pub(crate) waves: CloneLock<Vec<Frame>>,
+    pub waves: CloneLock<Vec<Frame>>,
     /// The octave
     pub octave: Option<i8>,
     /// The +- range for pitch bending
@@ -43,8 +43,8 @@ pub struct Wave {
 /// A drum machine
 #[derive(Debug, Clone, Default)]
 pub struct DrumMachine {
-    pub(crate) samples: Vec<PathBuf>,
-    pub(crate) samplings: CloneLock<Vec<ActiveSampling>>,
+    pub samples: Vec<PathBuf>,
+    pub samplings: CloneLock<Vec<ActiveSampling>>,
 }
 
 /// A low-pass filter
@@ -107,7 +107,7 @@ impl Device {
             pan: DynamicValue::Static(0.0),
         })
     }
-    pub(crate) fn next(
+    pub fn next(
         &self,
         channel_num: u8,
         channel: &Channel,
@@ -233,7 +233,7 @@ impl Device {
             }
         }
     }
-    pub(crate) fn end_envelopes(&mut self, id: u64) {
+    pub fn end_envelopes(&mut self, id: u64) {
         if let Device::Wave(wave) = self {
             wave.enveloper.lock().end_notes(id);
         }

@@ -115,7 +115,8 @@ impl<T> Optional<T> {
             Omitted => default(),
         }
     }
-    pub(crate) fn is_omitted(&self) -> bool {
+    #[doc(hidden)]
+    pub fn is_omitted(&self) -> bool {
         matches!(self, Omitted)
     }
 }

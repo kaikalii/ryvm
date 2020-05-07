@@ -85,7 +85,7 @@ impl Channel {
         }
     }
     #[must_use]
-    pub(crate) fn next_from(
+    pub fn next_from(
         &self,
         channel_num: u8,
         name: &str,
@@ -113,7 +113,7 @@ impl Channel {
     }
 }
 
-pub(crate) struct FrameCache {
+pub struct FrameCache {
     pub voices: HashMap<(u8, String), Voice>,
     pub controls: HashMap<(Port, u8), Vec<Control>>,
     pub visited: HashSet<(u8, String)>,
@@ -133,7 +133,7 @@ impl FrameCache {
 }
 
 #[derive(Clone, Copy, Default)]
-pub(crate) struct Voice {
+pub struct Voice {
     pub left: f32,
     pub right: f32,
 }

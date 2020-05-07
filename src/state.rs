@@ -431,7 +431,7 @@ impl State {
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
-                self.load_spec_map_from_file(format!("specs/{}.ron", name), channel)?
+                self.load_spec_map_or_on_fly(format!("specs/{}.ron", name), channel, false)?
             }
         }
         Ok(())
@@ -446,12 +446,13 @@ impl State {
         P: AsRef<Path>,
     {
         let path = path.as_ref().canonicalize()?;
-        println!("loading {:?}", path);
-        // Load and deserialize the map
+        println!("Loading {:?}", path);
+        // Open the file
         let file = File::open(&path)?;
-        let specs = ron::de::from_reader::<_, IndexMap<String, Spec>>(file)?;
-        // Add it to the watcher
+        // The file at least exists, so the path can be added to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
+        // Deserialize the data
+        let specs = ron::de::from_reader::<_, IndexMap<String, Spec>>(file)?;
 
         let ch = channel.unwrap_or(self.curr_channel);
         // Add the path to the list of tracked maps
@@ -579,6 +580,28 @@ impl State {
             }
         }
     }
+    fn load_spec_map_or_on_fly<P>(
+        &mut self,
+        path: P,
+        channel: Option<u8>,
+        delay: bool,
+    ) -> RyvmResult<()>
+    where
+        P: AsRef<Path>,
+    {
+        let path = path.as_ref().canonicalize()?;
+        let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied());
+        if let Err(e) = self.load_spec_map_from_file(&path, channel) {
+            match FlyControl::find(&path, channel, delay) {
+                Ok(Some(fly)) => {
+                    println!("Activate the control you would like to map");
+                    self.fly_control = Some(fly)
+                }
+                Ok(None) | Err(_) => return Err(e),
+            }
+        }
+        Ok(())
+    }
     fn process_watcher(&mut self) -> RyvmResult<()> {
         let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
         for res in events {
@@ -586,20 +609,7 @@ impl State {
             match event.kind {
                 EventKind::Modify(_) => {
                     for path in event.paths {
-                        let channel = self.tracked_spec_maps.get(&path).copied();
-                        let canonical_path = path.canonicalize();
-                        if let Err(e) = canonical_path
-                            .map_err(Into::into)
-                            .and_then(|can_path| self.load_spec_map_from_file(&can_path, channel))
-                        {
-                            match FlyControl::find(&path) {
-                                Ok(Some(fly)) => {
-                                    println!("Activate the control you would like to map");
-                                    self.fly_control = Some(fly)
-                                }
-                                Ok(None) | Err(_) => return Err(e),
-                            }
-                        }
+                        self.load_spec_map_or_on_fly(path, None, false)?;
                     }
                 }
                 EventKind::Remove(_) => {}
@@ -709,7 +719,17 @@ impl Iterator for State {
                         .or_insert_with(Vec::new)
                         .push(control),
                     // Reset the fly
-                    Some(Ok(true)) => self.fly_control = None,
+                    Some(Ok(true)) => {
+                        if let Some(fly_control) = self.fly_control.take() {
+                            if let Err(e) = self.load_spec_map_or_on_fly(
+                                fly_control.file,
+                                fly_control.channel,
+                                true,
+                            ) {
+                                println!("{}", e);
+                            }
+                        }
+                    }
                     Some(Err(e)) => println!("{}", e),
                 }
             }

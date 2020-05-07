@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 use ropey::Rope;
@@ -11,14 +12,16 @@ use crate::{Control, RyvmResult};
 #[derive(Debug, Clone)]
 pub struct FlyControl {
     pub file: PathBuf,
+    pub channel: Option<u8>,
     pub index: usize,
     pub rope: Rope,
+    start: Option<Instant>,
 }
 
 const FLY_PATTERN: &str = "#";
 
 impl FlyControl {
-    pub fn find<P>(path: P) -> RyvmResult<Option<Self>>
+    pub fn find<P>(path: P, channel: Option<u8>, delay: bool) -> RyvmResult<Option<Self>>
     where
         P: AsRef<Path>,
     {
@@ -34,6 +37,8 @@ impl FlyControl {
             file: path.as_ref().into(),
             index,
             rope,
+            channel,
+            start: if delay { Some(Instant::now()) } else { None },
         }))
     }
     /// Try to process a control and return whether it was mapped
@@ -42,6 +47,12 @@ impl FlyControl {
         control: Control,
         mut name: impl FnMut() -> Option<String>,
     ) -> RyvmResult<bool> {
+        if self
+            .start
+            .map_or(false, |start| (Instant::now() - start).as_secs_f32() < 1.0)
+        {
+            return Ok(false);
+        }
         if let Control::Control(i, _) = control {
             // Create control value
             let value = DynamicValue::Control {

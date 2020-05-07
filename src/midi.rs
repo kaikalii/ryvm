@@ -267,9 +267,9 @@ impl Midi {
         buttons: Buttons,
         sliders: Sliders,
     ) -> Result<Midi, MidiError> {
-        let mut midi_in = MidiInput::new(&name)?;
+        let mut midi_in = MidiInput::new(&format!("Ryvm - {}", name))?;
         midi_in.ignore(Ignore::Time);
-        let midi_out = MidiOutput::new(&name)?;
+        let midi_out = MidiOutput::new(&format!("Ryvm - {}", name))?;
 
         assert_eq!(midi_in.port_name(port)?, midi_out.port_name(port)?);
 

@@ -10,6 +10,10 @@ pub enum Action {
     Record,
     /// Stop recording and discard anything not already in a loop
     StopRecording,
+    /// Start recording a specific loop. This discard any loop
+    /// currently being recorded as well as any previous content
+    /// of this loop
+    RecordLoop(u8),
     /// Stop a loop that is playing
     StopLoop(u8),
     /// Play a loop that was stopped
@@ -67,6 +71,12 @@ fn range_next(pair: &mut (u8, u8)) -> Option<u8> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename = "snake_case", rename_all = "snake_case")]
 pub enum ActionRange {
+    /// Start recording a specific loop. This discard any loop
+    /// currently being recorded as well as any previous content
+    /// of this loop
+    RecordLoop((u8, u8)),
+    /// Stop a loop if it is playing, play a loop if it is stopped
+    ToggleLoop((u8, u8)),
     /// Play a drum pad sample on a given channel (channel, (sample_index_start, sample_index_end))
     Drum(u8, (u8, u8)),
 }
@@ -75,6 +85,8 @@ impl Iterator for ActionRange {
     type Item = Action;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
+            ActionRange::RecordLoop(range) => range_next(range).map(Action::RecordLoop),
+            ActionRange::ToggleLoop(range) => range_next(range).map(Action::ToggleLoop),
             ActionRange::Drum(ch, range) => range_next(range).map(|i| Action::Drum(*ch, i)),
         }
     }

@@ -133,18 +133,24 @@ impl State {
         }
     }
     /// Start a loop
-    pub fn start_loop(&mut self, length: Option<f32>) {
-        self.finish_recording();
-        let mut i = 1;
-        let loop_num = loop {
-            if !self.loops.contains_key(&i) {
-                break i;
+    pub fn start_loop(&mut self, loop_num: Option<u8>, length: Option<f32>) {
+        if loop_num.is_some() {
+            self.cancel_recording();
+        } else {
+            self.finish_recording();
+        }
+        let loop_num = loop_num.unwrap_or_else(|| {
+            let mut i = 1;
+            loop {
+                if !self.loops.contains_key(&i) {
+                    break i;
+                }
+                i += 1;
             }
-            i += 1;
-        };
+        });
         self.loops
             .insert(loop_num, Loop::new(length.unwrap_or(1.0)));
-        println!("Loop ready");
+        println!("Loop {} ready", loop_num);
     }
     /// Finish recording any loops
     pub fn finish_recording(&mut self) {
@@ -156,10 +162,10 @@ impl State {
                 let period = lup.period();
                 if period > 0.0 {
                     loop_period.get_or_insert(period);
-                    println!("Finished recording {:?}", num);
+                    println!("Finished recording {}", num);
                 } else {
                     loops_to_delete.push(*num);
-                    println!("Cancelled recording {:?}", num)
+                    println!("Cancelled recording {}", num)
                 }
             }
         }
@@ -375,7 +381,7 @@ impl State {
                     midi.set_monitoring(!midi.monitoring());
                 }
             }
-            RyvmCommand::Loop { length } => self.start_loop(length),
+            RyvmCommand::Loop { num, length } => self.start_loop(num, length),
             RyvmCommand::Play { loops } => {
                 for (num, lup) in &mut self.loops {
                     if loops.contains(num) {
@@ -641,11 +647,15 @@ impl Iterator for State {
             let control = match control {
                 Control::Action(action, vel) => match action {
                     Action::Record => {
-                        self.start_loop(None);
+                        self.start_loop(None, None);
                         None
                     }
                     Action::StopRecording => {
                         self.cancel_recording();
+                        None
+                    }
+                    Action::RecordLoop(num) => {
+                        self.start_loop(Some(num), None);
                         None
                     }
                     Action::PlayLoop(num) => {

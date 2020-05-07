@@ -7,6 +7,8 @@ pub(crate) enum RyvmCommand {
     Quit,
     #[structopt(about = "Start recording a loop. Press enter to finish recording.")]
     Loop {
+        #[structopt(help = "The number of the loop to record")]
+        num: Option<u8>,
         #[structopt(
             long,
             short = "x",

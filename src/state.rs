@@ -38,6 +38,7 @@ impl JobDescription<PathBuf> for LoadSamples {
 pub struct State {
     pub(crate) sample_rate: u32,
     pub(crate) tempo: f32,
+    pub(crate) master_volume: f32,
     curr_channel: u8,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
@@ -77,6 +78,7 @@ impl State {
         let mut state = State {
             sample_rate,
             tempo: 1.0,
+            master_volume: 0.5,
             frame_queue: None,
             curr_channel: 1,
             channels: HashMap::new(),
@@ -668,6 +670,9 @@ impl Iterator for State {
                 Control::ValuedAction(action, val) => {
                     match action {
                         ValuedAction::Tempo => self.tempo = f32::from(val) / 0x3f as f32,
+                        ValuedAction::MasterVolume => {
+                            self.master_volume = f32::from(val) / 0x7f as f32
+                        }
                     }
                     None
                 }
@@ -733,7 +738,8 @@ impl Iterator for State {
                 let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
                 for name in outputs {
                     cache.visited.clear();
-                    voice += channel.next_from(channel_num, &name, self, &mut cache) * 0.5;
+                    voice += channel.next_from(channel_num, &name, self, &mut cache)
+                        * self.master_volume;
                 }
             }
         }

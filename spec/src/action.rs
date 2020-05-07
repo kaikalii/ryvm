@@ -41,6 +41,8 @@ pub type Buttons = BiMap<Action, Button>;
 pub enum ValuedAction {
     /// Sets the relative tempo
     Tempo,
+    /// Sets the master volume
+    MasterVolume,
 }
 
 /// A slider or knob to map a valued action to

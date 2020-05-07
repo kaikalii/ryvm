@@ -14,7 +14,8 @@
             drum(1, (0, 3)): channel_note(10, (36, 39))
         },
         sliders: {
-            tempo: control(21)
+            tempo: control(21),
+            master_volume: control(22),
         }
     ),
     "launchpad": controller(

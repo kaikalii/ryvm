@@ -54,7 +54,7 @@ pub struct State {
     loops: HashMap<u8, Loop>,
     controls: HashMap<(Port, u8, u8), u8>,
     global_controls: HashMap<(Port, u8), u8>,
-    tracked_spec_maps: HashMap<PathBuf, u8>,
+    tracked_spec_maps: HashMap<PathBuf, Option<u8>>,
     watcher: RecommendedWatcher,
     watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
     fly_control: Option<FlyControl>,
@@ -243,7 +243,7 @@ impl State {
                 if self
                     .tracked_spec_maps
                     .get(&path.canonicalize()?)
-                    .map_or(true, |ch| ch != &channel)
+                    .map_or(true, |ch| ch != &Some(channel))
                 {
                     self.load_spec_map_from_file(path, Some(channel))?;
                 }
@@ -265,8 +265,9 @@ impl State {
                 let (port, midi) = if gamepad {
                     let id = 0;
                     let port = Port::Gamepad(id);
-                    let removed = self.midis.remove(&port).is_some();
-                    let midi = Midi::new_gamepad(
+                    let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
+                    let removed = last_notes.is_some();
+                    let mut midi = Midi::new_gamepad(
                         name.clone(),
                         id,
                         output_channel.into(),
@@ -274,6 +275,7 @@ impl State {
                         buttons,
                         sliders,
                     );
+                    midi.last_notes = last_notes.unwrap_or_default();
                     println!(
                         "{}nitialized {} on port {:?}",
                         if removed { "Rei" } else { "I" },
@@ -292,8 +294,9 @@ impl State {
                         Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
                     };
                     let port = Port::Midi(port_num);
-                    let removed = self.midis.remove(&port).is_some();
-                    let midi = Midi::new(
+                    let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
+                    let removed = last_notes.is_some();
+                    let mut midi = Midi::new(
                         name.clone(),
                         port_num,
                         output_channel.into(),
@@ -301,6 +304,7 @@ impl State {
                         buttons,
                         sliders,
                     )?;
+                    midi.last_notes = last_notes.unwrap_or_default();
                     println!(
                         "{}nitialized {} ({}) on port {:?}",
                         if removed { "Rei" } else { "I" },
@@ -460,15 +464,38 @@ impl State {
         // Deserialize the data
         let specs = ron::de::from_reader::<_, IndexMap<String, Spec>>(file)?;
 
-        let ch = channel.unwrap_or(self.curr_channel);
         // Add the path to the list of tracked maps
-        self.tracked_spec_maps.insert(path, ch);
-        // Remove specs no longer present for this channel
-        let channel = self.channels.entry(ch).or_insert_with(Channel::default);
-        channel.retain(|name, _| specs.contains_key(name));
+        self.tracked_spec_maps.insert(path, channel);
+        if let Some(ch) = channel {
+            // Remove specs no longer present for this channel
+            let channel = self.channels.entry(ch).or_insert_with(Channel::default);
+            channel.retain(|name, _| specs.contains_key(name));
+        }
         // Load each spec
         for (name, spec) in specs {
-            self.load_spec(name, spec, Some(ch))?;
+            self.load_spec(name, spec, channel)?;
+        }
+        Ok(())
+    }
+    fn load_spec_map_or_on_fly<P>(
+        &mut self,
+        path: P,
+        channel: Option<u8>,
+        delay: bool,
+    ) -> RyvmResult<()>
+    where
+        P: AsRef<Path>,
+    {
+        let path = path.as_ref().canonicalize()?;
+        let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
+        if let Err(e) = self.load_spec_map_from_file(&path, channel) {
+            match FlyControl::find(&path, channel, delay) {
+                Ok(Some(fly)) => {
+                    println!("Activate the control you would like to map");
+                    self.fly_control = Some(fly)
+                }
+                Ok(None) | Err(_) => return Err(e),
+            }
         }
         Ok(())
     }
@@ -585,28 +612,6 @@ impl State {
                 }
             }
         }
-    }
-    fn load_spec_map_or_on_fly<P>(
-        &mut self,
-        path: P,
-        channel: Option<u8>,
-        delay: bool,
-    ) -> RyvmResult<()>
-    where
-        P: AsRef<Path>,
-    {
-        let path = path.as_ref().canonicalize()?;
-        let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied());
-        if let Err(e) = self.load_spec_map_from_file(&path, channel) {
-            match FlyControl::find(&path, channel, delay) {
-                Ok(Some(fly)) => {
-                    println!("Activate the control you would like to map");
-                    self.fly_control = Some(fly)
-                }
-                Ok(None) | Err(_) => return Err(e),
-            }
-        }
-        Ok(())
     }
     fn process_watcher(&mut self) -> RyvmResult<()> {
         let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();

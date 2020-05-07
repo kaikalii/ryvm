@@ -215,7 +215,7 @@ pub struct Midi {
     input: GenericInput,
     state: MidiInputState,
     non_globals: Vec<u8>,
-    last_notes: HashMap<u8, u64>,
+    pub last_notes: HashMap<u8, u64>,
 }
 
 impl Midi {

@@ -1,6 +1,8 @@
 use bimap::BiMap;
 use serde_derive::{Deserialize, Serialize};
 
+use crate::Name;
+
 /// An action that can be mapped to a button
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename = "snake_case", rename_all = "snake_case")]
@@ -22,6 +24,8 @@ pub enum Action {
     ToggleLoop(u8),
     /// Play a drum pad sample on a given channel (channel, sample_index)
     Drum(u8, u8),
+    /// Set the output channel of a controller
+    SetOutputChannel(Name, u8),
 }
 
 /// A button to map an action to
@@ -79,6 +83,8 @@ pub enum ActionRange {
     ToggleLoop((u8, u8)),
     /// Play a drum pad sample on a given channel (channel, (sample_index_start, sample_index_end))
     Drum(u8, (u8, u8)),
+    /// Set the output channel of a controller (name, (channel_start, channel_end))
+    SetOutputChannel(Name, (u8, u8)),
 }
 
 impl Iterator for ActionRange {
@@ -88,6 +94,9 @@ impl Iterator for ActionRange {
             ActionRange::RecordLoop(range) => range_next(range).map(Action::RecordLoop),
             ActionRange::ToggleLoop(range) => range_next(range).map(Action::ToggleLoop),
             ActionRange::Drum(ch, range) => range_next(range).map(|i| Action::Drum(*ch, i)),
+            ActionRange::SetOutputChannel(name, range) => {
+                range_next(range).map(|ch| Action::SetOutputChannel(*name, ch))
+            }
         }
     }
 }

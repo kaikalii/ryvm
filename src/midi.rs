@@ -4,7 +4,7 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, PortInfoError, SendError,
 };
 use rand::random;
-use ryvm_spec::{Action, Button, Buttons, Slider, Sliders, ValuedAction};
+use ryvm_spec::{Action, Button, Buttons, Name, Slider, Sliders, ValuedAction};
 
 use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
 
@@ -210,7 +210,7 @@ enum GenericInput {
 #[allow(dead_code)]
 pub struct Midi {
     port: Port,
-    name: String,
+    name: Name,
     device: Option<String>,
     input: GenericInput,
     state: MidiInputState,
@@ -244,6 +244,11 @@ impl Midi {
     pub fn set_monitoring(&self, monitoring: bool) {
         self.state.monitor.store(monitoring)
     }
+    pub fn set_output_channel(&self, output_channel: u8) {
+        if let Some(oc) = &self.state.output_channel {
+            oc.store(output_channel);
+        }
+    }
     pub fn port_matching(name: &str) -> Result<Option<usize>, MidiError> {
         Midi::ports_list().map(|list| list.iter().position(|item| item.contains(name)))
     }
@@ -259,7 +264,7 @@ impl Midi {
         Ok(None)
     }
     pub fn new(
-        name: String,
+        name: Name,
         port: usize,
         output_channel: Option<u8>,
         non_globals: Vec<u8>,
@@ -312,7 +317,7 @@ impl Midi {
         })
     }
     pub fn new_gamepad(
-        name: String,
+        name: Name,
         port: usize,
         output_channel: Option<u8>,
         non_globals: Vec<u8>,

@@ -1,5 +1,12 @@
+use arrayvec::ArrayString;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
+
+/// The total number of bytes that can be in a name
+pub const NAME_CAPACITY: usize = 20;
+
+/// The name of a controller or device
+pub type Name = ArrayString<[u8; NAME_CAPACITY]>;
 
 /// A waveform
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,7 +36,7 @@ pub enum DynamicValue {
     Control {
         /// The name of the midi controller
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        controller: Optional<String>,
+        controller: Optional<Name>,
         /// The midi control number
         number: u8,
         /// The minimum and maxinum values this control should map to
@@ -37,7 +44,7 @@ pub enum DynamicValue {
         bounds: Optional<(f32, f32)>,
     },
     /// The value output by another device
-    Output(String),
+    Output(Name),
 }
 
 impl From<f32> for DynamicValue {

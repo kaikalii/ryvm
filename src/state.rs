@@ -13,12 +13,13 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::Source;
-use ryvm_spec::{Action, DynamicValue, Spec, Supplied, ValuedAction};
+use ryvm_spec::{Action, DynamicValue, Name, Spec, Supplied, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
-    parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
-    LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice, ADSR,
+    name_from_str, parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame,
+    FrameCache, Loop, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult,
+    Sample, Voice, ADSR,
 };
 
 #[derive(Default)]
@@ -49,7 +50,7 @@ pub struct State {
     pub loop_period: Option<f32>,
     pub sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub midis: HashMap<Port, Midi>,
-    midi_names: HashMap<String, Port>,
+    midi_names: HashMap<Name, Port>,
     pub default_midi: Option<Port>,
     loops: HashMap<u8, Loop>,
     controls: HashMap<(Port, u8, u8), u8>,
@@ -212,7 +213,7 @@ impl State {
     }
     /// Load a spec into the state
     #[allow(clippy::cognitive_complexity)]
-    fn load_spec(&mut self, name: String, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
+    fn load_spec(&mut self, name: Name, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
         let channel = channel.unwrap_or(self.curr_channel);
         // Macro for initializting devices
         macro_rules! device {
@@ -268,7 +269,7 @@ impl State {
                     let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
                     let removed = last_notes.is_some();
                     let mut midi = Midi::new_gamepad(
-                        name.clone(),
+                        name,
                         id,
                         output_channel.into(),
                         non_globals,
@@ -297,7 +298,7 @@ impl State {
                     let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
                     let removed = last_notes.is_some();
                     let mut midi = Midi::new(
-                        name.clone(),
+                        name,
                         port_num,
                         output_channel.into(),
                         non_globals,
@@ -462,7 +463,7 @@ impl State {
         // The file at least exists, so the path can be added to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
         // Deserialize the data
-        let specs = ron::de::from_reader::<_, IndexMap<String, Spec>>(file)?;
+        let specs = ron::de::from_reader::<_, IndexMap<Name, Spec>>(file)?;
 
         // Add the path to the list of tracked maps
         self.tracked_spec_maps.insert(path, channel);
@@ -500,7 +501,7 @@ impl State {
         Ok(())
     }
     fn print_ls(&mut self, unsorted: bool) {
-        let print = |ids: &mut dyn Iterator<Item = &String>| {
+        let print = |ids: &mut dyn Iterator<Item = &Name>| {
             for id in ids {
                 println!("  {}", id)
             }
@@ -700,6 +701,16 @@ impl Iterator for State {
                         channel = ch;
                         Some(Control::PadStart(num, vel))
                     }
+                    Action::SetOutputChannel(name, ch) => {
+                        if let Some(midi) = self
+                            .midi_names
+                            .get(&name)
+                            .and_then(|port| self.midis.get(port))
+                        {
+                            midi.set_output_channel(ch);
+                        }
+                        None
+                    }
                 },
                 Control::ValuedAction(action, val) => {
                     match action {
@@ -720,7 +731,7 @@ impl Iterator for State {
                         if default_midi.map_or(true, |p| p == port) {
                             None
                         } else {
-                            Some(midis[&port].name().into())
+                            Some(name_from_str(midis[&port].name()))
                         }
                     })
                 }) {

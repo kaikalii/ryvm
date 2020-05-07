@@ -8,6 +8,12 @@ use std::{
 
 use crossbeam_utils::atomic::AtomicCell;
 
+use ryvm_spec::{Name, NAME_CAPACITY};
+
+pub fn name_from_str(s: &str) -> Name {
+    Name::from(&s[..s.len().min(NAME_CAPACITY)]).unwrap()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Float(pub f32);
 

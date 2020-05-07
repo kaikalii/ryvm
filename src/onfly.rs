@@ -5,7 +5,7 @@ use std::{
 };
 
 use ropey::Rope;
-use ryvm_spec::{DynamicValue, Omitted};
+use ryvm_spec::{DynamicValue, Name, Omitted};
 
 use crate::{Control, RyvmResult};
 
@@ -45,7 +45,7 @@ impl FlyControl {
     pub fn process(
         &mut self,
         control: Control,
-        mut name: impl FnMut() -> Option<String>,
+        mut name: impl FnMut() -> Option<Name>,
     ) -> RyvmResult<bool> {
         if self
             .start

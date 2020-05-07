@@ -226,7 +226,13 @@ impl State {
         // Match over different spec types
         match spec {
             Spec::Load(channel, path) => {
-                self.load_spec_map_from_file(path, Some(channel))?;
+                if self
+                    .tracked_spec_maps
+                    .get(&path.canonicalize()?)
+                    .map_or(true, |ch| ch != &channel)
+                {
+                    self.load_spec_map_from_file(path, Some(channel))?;
+                }
             }
             Spec::Controller {
                 device,

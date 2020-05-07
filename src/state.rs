@@ -9,6 +9,7 @@ use std::{
 
 use crossbeam_channel as mpmc;
 use employer::{Employer, JobDescription};
+use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::Source;
@@ -448,7 +449,7 @@ impl State {
         println!("loading {:?}", path);
         // Load and deserialize the map
         let file = File::open(&path)?;
-        let specs = ron::de::from_reader::<_, HashMap<String, Spec>>(file)?;
+        let specs = ron::de::from_reader::<_, IndexMap<String, Spec>>(file)?;
         // Add it to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
 
@@ -642,7 +643,7 @@ impl Iterator for State {
             .collect();
 
         // Map of port-channel pairs to control lists
-        let mut controls = HashMap::new();
+        let mut controls: HashMap<(Port, u8), Vec<Control>> = HashMap::new();
         let default_midi = self.default_midi;
         for (port, mut channel, control) in raw_controls {
             // Process action controls separate from the rest

@@ -5,10 +5,6 @@
         buttons: {
             record: control(117),
             stop_recording: control(115),
-            toggle_loop(1): control(104),
-            toggle_loop(2): control(105),
-            toggle_loop(3): control(106),
-            toggle_loop(4): control(107),
         },
         ranges: {
             drum(1, (0, 3)): channel_note(10, (36, 39))

@@ -140,7 +140,7 @@ impl State {
             self.finish_recording();
         }
         let loop_num = loop_num.unwrap_or_else(|| {
-            let mut i = 1;
+            let mut i = 0;
             loop {
                 if !self.loops.contains_key(&i) {
                     break i;
@@ -185,6 +185,7 @@ impl State {
             }
         });
     }
+    /// Stop a loop from playing
     fn stop_loop(&mut self, num: u8) {
         if let Some(lup) = self.loops.get_mut(&num) {
             for id in lup.note_ids() {
@@ -195,6 +196,7 @@ impl State {
             lup.loop_state = LoopState::Disabled;
         }
     }
+    /// Toggle a loop's playing state
     fn toggle_loop(&mut self, num: u8) {
         if let Some(lup) = self.loops.get_mut(&num) {
             match lup.loop_state {

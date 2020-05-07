@@ -141,8 +141,6 @@ impl Loop {
                     .map(|(key, map)| (Float(key.0 - start_i), map))
                     .collect();
                 self.controls = used;
-                dbg!(self.period());
-                dbg!(period);
             }
             // Reset i
             self.i = 0.0;

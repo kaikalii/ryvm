@@ -44,6 +44,7 @@ impl Control {
     pub fn decode(
         data: &[u8],
         port: usize,
+        output_channel: Option<u8>,
         monitor: bool,
         buttons: &Buttons,
         sliders: &Sliders,
@@ -52,7 +53,7 @@ impl Control {
             return None;
         }
         let status = data[0] / 0x10;
-        let channel = (data[0] % 0x10).overflowing_add(1).0;
+        let channel = output_channel.unwrap_or_else(|| (data[0] % 0x10).overflowing_add(1).0);
         let d1 = data.get(1).copied().unwrap_or(0);
         let d2 = data.get(2).copied().unwrap_or(0);
 
@@ -196,6 +197,7 @@ enum ControlQueue {
 struct MidiInputState {
     queue: ControlQueue,
     monitor: Arc<CloneCell<bool>>,
+    output_channel: Option<Arc<CloneCell<u8>>>,
     buttons: Buttons,
     sliders: Sliders,
 }
@@ -212,7 +214,6 @@ pub struct Midi {
     device: Option<String>,
     input: GenericInput,
     state: MidiInputState,
-    manual: bool,
     non_globals: Vec<u8>,
     last_notes: HashMap<u8, u64>,
 }
@@ -260,7 +261,7 @@ impl Midi {
     pub fn new(
         name: String,
         port: usize,
-        manual: bool,
+        output_channel: Option<u8>,
         non_globals: Vec<u8>,
         buttons: Buttons,
         sliders: Sliders,
@@ -271,6 +272,7 @@ impl Midi {
         let state = MidiInputState {
             queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
             monitor: Arc::new(CloneCell::new(false)),
+            output_channel: output_channel.map(CloneCell::new).map(Arc::new),
             buttons,
             sliders,
         };
@@ -285,6 +287,7 @@ impl Midi {
                     if let Some(control) = Control::decode(
                         data,
                         port,
+                        output_channel,
                         state.monitor.load(),
                         &state.buttons,
                         &state.sliders,
@@ -304,7 +307,6 @@ impl Midi {
             device: Some(device),
             input: GenericInput::Midi(input),
             state,
-            manual,
             non_globals,
             last_notes: HashMap::new(),
         })
@@ -312,7 +314,7 @@ impl Midi {
     pub fn new_gamepad(
         name: String,
         port: usize,
-        manual: bool,
+        output_channel: Option<u8>,
         non_globals: Vec<u8>,
         buttons: Buttons,
         sliders: Sliders,
@@ -320,6 +322,7 @@ impl Midi {
         let state = MidiInputState {
             queue: ControlQueue::Gamepad(port),
             monitor: Arc::new(CloneCell::new(false)),
+            output_channel: output_channel.map(CloneCell::new).map(Arc::new),
             buttons,
             sliders,
         };
@@ -329,7 +332,6 @@ impl Midi {
             device: None,
             input: GenericInput::Gamepad,
             state,
-            manual,
             non_globals,
             last_notes: HashMap::new(),
         }
@@ -367,6 +369,7 @@ impl Midi {
                     Control::decode(
                         &data,
                         *id,
+                        self.state.output_channel.as_ref().map(|oc| oc.load()),
                         self.state.monitor.load(),
                         &self.state.buttons,
                         &self.state.sliders,

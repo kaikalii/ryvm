@@ -12,7 +12,7 @@
         sliders: {
             tempo: control(21),
             master_volume: control(22),
-        }
+        },
     ),
     "launchpad": controller(
         device: "Launchpad",

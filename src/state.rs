@@ -251,7 +251,7 @@ impl State {
             Spec::Controller {
                 device,
                 gamepad,
-                manual,
+                output_channel,
                 non_globals,
                 mut buttons,
                 sliders,
@@ -263,17 +263,17 @@ impl State {
                     }
                 }
                 let (port, midi) = if gamepad {
-                    let port = 0;
+                    let id = 0;
+                    let port = Port::Gamepad(id);
+                    let removed = self.midis.remove(&port).is_some();
                     let midi = Midi::new_gamepad(
                         name.clone(),
-                        port,
-                        manual,
+                        id,
+                        output_channel.into(),
                         non_globals,
                         buttons,
                         sliders,
                     );
-                    let port = Port::Gamepad(port);
-                    let removed = self.midis.remove(&port).is_some();
                     println!(
                         "{}nitialized {} on port {:?}",
                         if removed { "Rei" } else { "I" },
@@ -282,7 +282,7 @@ impl State {
                     );
                     (port, midi)
                 } else {
-                    let port = if let Supplied(device) = device {
+                    let port_num = if let Supplied(device) = device {
                         if let Some(port) = Midi::port_matching(&device)? {
                             port
                         } else {
@@ -291,10 +291,16 @@ impl State {
                     } else {
                         Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
                     };
-                    let midi =
-                        Midi::new(name.clone(), port, manual, non_globals, buttons, sliders)?;
-                    let port = Port::Midi(port);
+                    let port = Port::Midi(port_num);
                     let removed = self.midis.remove(&port).is_some();
+                    let midi = Midi::new(
+                        name.clone(),
+                        port_num,
+                        output_channel.into(),
+                        non_globals,
+                        buttons,
+                        sliders,
+                    )?;
                     println!(
                         "{}nitialized {} ({}) on port {:?}",
                         if removed { "Rei" } else { "I" },

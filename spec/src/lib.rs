@@ -24,9 +24,12 @@ pub enum Spec {
     Controller {
         /// The name of the midi device
         device: Optional<String>,
-        /// Set this to true if the controller cannot change its own midi channels
-        #[serde(default, skip_serializing_if = "Not::not")]
-        manual: bool,
+        /// The midi channel to which this device should output.
+        ///
+        /// Only speficy this for devices which cannot select their own channels.
+        /// This is evaluated before all other other channel mappings.
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        output_channel: Optional<u8>,
         /// Set this to true if the controller is actually a gamepad
         ///
         /// Controls on the gamepad are mapped to midi controls.

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use structopt::StructOpt;
 
 /// A Ryvm CLI command
@@ -80,6 +82,9 @@ pub(crate) enum MidiSubCommand {
 /// The command line argument parser for Ryvm
 #[derive(Debug, Default, StructOpt)]
 pub struct RyvmApp {
+    /// The file that is loaded at the beginning of the session
+    #[structopt(help = "The main file to load")]
+    pub file: Option<PathBuf>,
     #[structopt(
         short = "r",
         long,

@@ -61,6 +61,10 @@ impl Channel {
     {
         self.devices.retain(f)
     }
+    /// Clear all devices
+    pub fn clear(&mut self) {
+        self.devices.clear();
+    }
     /// Remove a device and optionally recursively delete all of its unique inputs
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(device) = self.get(name) {

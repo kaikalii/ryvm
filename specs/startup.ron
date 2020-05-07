@@ -17,9 +17,10 @@
     "launchpad": controller(
         device: "Launchpad",
         ranges: {
-            drum(1, (0, 8)): note((0, 16)),
-            record_loop((0, 8)): note((16, 32)),
-            toggle_loop((0, 8)): note((32, 48)),
+            record_loop((0, 8)): note((0, 16)),
+            toggle_loop((0, 8)): note((16, 32)),
+            drum(1, (0, 8)): note((32, 48)),
+            drum(1, (8, 16)): note((48, 64)),
         }
     ),
     "gamepad": controller(

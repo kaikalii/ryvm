@@ -10,7 +10,7 @@ use ryvm::{RyvmApp, State};
 fn main() {
     let app = RyvmApp::from_iter_safe(std::env::args()).unwrap_or_default();
 
-    let (state, interface) = match State::new(app.sample_rate) {
+    let (state, interface) = match State::new(app.file, app.sample_rate) {
         Ok(state) => state,
         Err(e) => {
             println!("{}", e);

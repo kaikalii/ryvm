@@ -67,7 +67,7 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if it fails to load a startup spec
-    pub fn new(sample_rate: u32) -> RyvmResult<(Self, StateInterface)> {
+    pub fn new(main_file: Option<PathBuf>, sample_rate: u32) -> RyvmResult<(Self, StateInterface)> {
         let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
         let watcher_queue_clone = Arc::clone(&watcher_queue);
         let watcher = RecommendedWatcher::new_immediate(move |event: notify::Result<Event>| {
@@ -99,7 +99,10 @@ impl State {
             send,
             recv,
         };
-        state.load_spec_map_from_file("specs/startup.ron", None)?;
+        state.load_spec_map_from_file(
+            main_file.unwrap_or_else(|| "specs/startup.ron".into()),
+            None,
+        )?;
         Ok((
             state,
             StateInterface {
@@ -449,18 +452,15 @@ impl State {
         // Add it to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
 
-        if let Some(channel) = channel {
-            // Add the path to the list of tracked maps
-            self.tracked_spec_maps.insert(path, channel);
-            // Remove specs no longer present for this channel
-            self.channels
-                .entry(channel)
-                .or_insert_with(Channel::default)
-                .retain(|name, _| specs.contains_key(name));
-        }
+        let ch = channel.unwrap_or(self.curr_channel);
+        // Add the path to the list of tracked maps
+        self.tracked_spec_maps.insert(path, ch);
+        // Remove specs no longer present for this channel
+        let channel = self.channels.entry(ch).or_insert_with(Channel::default);
+        channel.retain(|name, _| specs.contains_key(name));
         // Load each spec
         for (name, spec) in specs {
-            self.load_spec(name, spec, channel)?;
+            self.load_spec(name, spec, Some(ch))?;
         }
         Ok(())
     }

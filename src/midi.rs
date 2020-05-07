@@ -1,8 +1,7 @@
 use std::{collections::HashMap, error::Error, fmt, sync::Arc};
 
 use midir::{
-    ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, MidiOutput,
-    MidiOutputConnection, PortInfoError, SendError,
+    ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, PortInfoError, SendError,
 };
 use rand::random;
 use ryvm_spec::{Action, Button, Buttons, Slider, Sliders, ValuedAction};
@@ -212,7 +211,6 @@ pub struct Midi {
     name: String,
     device: Option<String>,
     input: GenericInput,
-    output: Option<MidiOutputConnection>,
     state: MidiInputState,
     manual: bool,
     non_globals: Vec<u8>,
@@ -269,9 +267,6 @@ impl Midi {
     ) -> Result<Midi, MidiError> {
         let mut midi_in = MidiInput::new(&format!("Ryvm - {}", name))?;
         midi_in.ignore(Ignore::Time);
-        let midi_out = MidiOutput::new(&format!("Ryvm - {}", name))?;
-
-        assert_eq!(midi_in.port_name(port)?, midi_out.port_name(port)?);
 
         let state = MidiInputState {
             queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
@@ -303,14 +298,11 @@ impl Midi {
             )
             .map_err(|e| e.kind())?;
 
-        let output = midi_out.connect(port, &name).map_err(|e| e.kind())?;
-
         Ok(Midi {
             port: Port::Midi(port),
             name,
             device: Some(device),
             input: GenericInput::Midi(input),
-            output: Some(output),
             state,
             manual,
             non_globals,
@@ -336,7 +328,6 @@ impl Midi {
             name,
             device: None,
             input: GenericInput::Gamepad,
-            output: None,
             state,
             manual,
             non_globals,

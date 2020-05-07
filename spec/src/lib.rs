@@ -77,6 +77,9 @@ pub enum Spec {
         /// A mapping of sliders or knobs on this controller to Ryvm  valued actions
         #[serde(default, skip_serializing_if = "Sliders::is_empty")]
         sliders: Sliders,
+        /// A mapping of button ranges on this controller to ranges of Ryvm actions
+        #[serde(default, skip_serializing_if = "ButtonRanges::is_empty")]
+        ranges: ButtonRanges,
     },
     /// A wave synthesizer
     Wave {

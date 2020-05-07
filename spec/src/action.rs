@@ -1,7 +1,7 @@
 use bimap::BiMap;
 use serde_derive::{Deserialize, Serialize};
 
-/// A control that can be mapped to a button
+/// An action that can be mapped to a button
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename = "snake_case", rename_all = "snake_case")]
 pub enum Action {
@@ -10,7 +10,7 @@ pub enum Action {
     Record,
     /// Stop recording and discard anything not already in a loop
     StopRecording,
-    /// Stop a loop for playing
+    /// Stop a loop that is playing
     StopLoop(u8),
     /// Play a loop that was stopped
     PlayLoop(u8),
@@ -53,3 +53,56 @@ pub enum Slider {
 
 /// A mapping of valued actions
 pub type Sliders = BiMap<ValuedAction, Slider>;
+
+fn range_next(pair: &mut (u8, u8)) -> Option<u8> {
+    let mut range = pair.0..pair.1;
+    let res = range.next();
+    pair.0 = range.start;
+    res
+}
+
+/// A range of actions that can be mapped to a range of buttons
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename = "snake_case", rename_all = "snake_case")]
+pub enum ActionRange {
+    /// Play a drum pad sample on a given channel (channel, (sample_index_start, sample_index_end))
+    Drum(u8, (u8, u8)),
+}
+
+impl Iterator for ActionRange {
+    type Item = Action;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ActionRange::Drum(ch, range) => range_next(range).map(|i| Action::Drum(*ch, i)),
+        }
+    }
+}
+
+/// A range of buttons to map a ranged action to
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename = "snake_case", rename_all = "snake_case")]
+pub enum ButtonRange {
+    /// A button triggered by a control midi message
+    Control((u8, u8)),
+    /// A button triggered by a note start midi message
+    Note((u8, u8)),
+    /// A button triggered by a note start midi message on a
+    /// particular channel (channel, (note_index_start, note_index_end))
+    ChannelNote(u8, (u8, u8)),
+}
+
+impl Iterator for ButtonRange {
+    type Item = Button;
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            ButtonRange::Control(range) => range_next(range).map(Button::Control),
+            ButtonRange::Note(range) => range_next(range).map(Button::Note),
+            ButtonRange::ChannelNote(ch, range) => {
+                range_next(range).map(|i| Button::ChannelNote(*ch, i))
+            }
+        }
+    }
+}
+
+/// A mapping of action ranges
+pub type ButtonRanges = BiMap<ActionRange, ButtonRange>;

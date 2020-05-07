@@ -233,9 +233,15 @@ impl State {
                 gamepad,
                 manual,
                 non_globals,
-                buttons,
+                mut buttons,
                 sliders,
+                ranges,
             } => {
+                for (button_range, action_range) in ranges {
+                    for (button, action) in button_range.zip(action_range) {
+                        buttons.insert(button, action);
+                    }
+                }
                 let (port, midi) = if gamepad {
                     let port = 0;
                     let midi = Midi::new_gamepad(

@@ -2,7 +2,6 @@
 
 ## Soon
 
-- Saveable loops
 - Game controller support
 
 ## Later

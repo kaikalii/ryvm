@@ -28,6 +28,24 @@ impl Default for WaveForm {
     }
 }
 
+/// A type of filter
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FilterType {
+    /// A basic low-pass filter
+    ///
+    /// This is the default filter type
+    LowPass,
+    /// A comb filter
+    Comb,
+}
+
+impl Default for FilterType {
+    fn default() -> Self {
+        FilterType::LowPass
+    }
+}
+
 /// A value that can be either a static number, mapped to a midi control,
 /// or mapped to a device output
 #[derive(Debug, Clone, Copy, PartialEq, Ser, Deser)]

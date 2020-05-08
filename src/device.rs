@@ -1,11 +1,12 @@
 use std::{
+    collections::VecDeque,
     f32::consts::{FRAC_2_PI, PI},
     iter::once,
     path::PathBuf,
 };
 
 use rand::random;
-use ryvm_spec::{DynamicValue, Name, WaveForm};
+use ryvm_spec::{DynamicValue, FilterType, Name, WaveForm};
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, Letter,
@@ -47,6 +48,31 @@ pub struct DrumMachine {
     pub samplings: CloneLock<Vec<ActiveSampling>>,
 }
 
+#[derive(Debug, Clone)]
+enum FilterState {
+    LowPass(CloneCell<Voice>),
+    Comb(CloneLock<VecDeque<Voice>>),
+}
+
+impl From<FilterType> for FilterState {
+    fn from(ty: FilterType) -> Self {
+        match ty {
+            FilterType::LowPass => FilterState::LowPass(CloneCell::new(Voice::SILENT)),
+            FilterType::Comb => FilterState::Comb(CloneLock::new(VecDeque::new())),
+        }
+    }
+}
+
+impl PartialEq<FilterType> for FilterState {
+    fn eq(&self, ty: &FilterType) -> bool {
+        match (self, ty) {
+            (FilterState::LowPass(_), FilterType::LowPass)
+            | (FilterState::Comb(_), FilterType::Comb) => true,
+            _ => false,
+        }
+    }
+}
+
 /// A low-pass filter
 #[derive(Debug, Clone)]
 pub struct Filter {
@@ -54,7 +80,15 @@ pub struct Filter {
     pub input: Name,
     /// The value used to determine filter strength
     pub value: DynamicValue,
-    avg: CloneCell<Voice>,
+    state: FilterState,
+}
+
+impl Filter {
+    pub fn set_type(&mut self, ty: FilterType) {
+        if self.state != ty {
+            self.state = ty.into();
+        }
+    }
 }
 
 /// A volume and pan balancer
@@ -91,11 +125,11 @@ impl Device {
     }
     /// Create a new filter
     #[must_use]
-    pub fn new_filter(input: Name, value: DynamicValue) -> Self {
+    pub fn new_filter(input: Name, value: DynamicValue, ty: FilterType) -> Self {
         Device::Filter(Filter {
             input,
             value,
-            avg: CloneCell::new(Voice::SILENT),
+            state: ty.into(),
         })
     }
     /// Create a new balance
@@ -202,17 +236,33 @@ impl Device {
             }
             // Filters
             Device::Filter(filter) => {
-                // Determine the factor used to maintain the running average
-                let avg_factor = state
-                    .resolve_dynamic_value(&filter.value, channel_num, cache)
-                    .unwrap_or(1.0)
-                    .powf(2.0);
                 // Get the input channels
                 let frame = channel.next_from(channel_num, &filter.input, state, cache);
-                let left = filter.avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;
-                let right = filter.avg.load().right * (1.0 - avg_factor) + frame.right * avg_factor;
-                filter.avg.store(Voice::stereo(left, right));
-                filter.avg.load()
+                // Determine the factor used to maintain the running average
+                let value = state.resolve_dynamic_value(&filter.value, channel_num, cache);
+                match &filter.state {
+                    FilterState::LowPass(avg) => {
+                        let avg_factor = value.unwrap_or(1.0).powf(2.0);
+                        let left = avg.load().left * (1.0 - avg_factor) + frame.left * avg_factor;
+                        let right =
+                            avg.load().right * (1.0 - avg_factor) + frame.right * avg_factor;
+                        avg.store(Voice::stereo(left, right));
+                        avg.load()
+                    }
+                    FilterState::Comb(prevs) => {
+                        let mut prevs = prevs.lock();
+                        let delay_frames = value.map_or(0, |val| (val * 0x7f as f32) as usize);
+                        prevs.push_back(frame);
+                        let mut output = None;
+                        loop {
+                            if prevs.len() <= delay_frames {
+                                break;
+                            }
+                            output = prevs.pop_front();
+                        }
+                        (output.unwrap_or(frame) + frame) * 0.5
+                    }
+                }
             }
             // Balance
             Device::Balance(bal) => {

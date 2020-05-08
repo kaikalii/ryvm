@@ -1,5 +1,5 @@
 //! All the Ryvm spec default values
-use crate::DynamicValue;
+use crate::{DynamicValue, FilterType};
 
 macro_rules! default {
     (#[$attr:meta] const $constant:ident: $type:ty = $val:expr; $def_fn_name:ident; $is_def_fn_name:ident;) => {
@@ -76,4 +76,11 @@ default! {
     const PAN: DynamicValue = DynamicValue::Static(0.0);
     pan;
     is_pan;
+}
+
+default! {
+    /// The default filter type
+    const FILTER_TYPE: FilterType = FilterType::LowPass;
+    filter_type;
+    is_filter_type;
 }

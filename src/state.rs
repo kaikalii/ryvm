@@ -347,10 +347,15 @@ impl State {
                 }
                 drums.samples = paths;
             }
-            Spec::Filter { input, value } => {
-                let filter = device!(Filter, || Device::new_filter(input.0, value.0));
+            Spec::Filter {
+                input,
+                value,
+                r#type,
+            } => {
+                let filter = device!(Filter, || Device::new_filter(input.0, value.0, r#type));
                 filter.input = input.0;
                 filter.value = value.0;
+                filter.set_type(r#type);
             }
             Spec::Balance { input, volume, pan } => {
                 let balance = device!(Balance, || Device::new_balance(input.0));

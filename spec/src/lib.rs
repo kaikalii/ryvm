@@ -133,6 +133,12 @@ pub enum Spec {
         input: Required<Name>,
         /// The value that determines the filter's shape
         value: Required<DynamicValue>,
+        /// The type of filter
+        #[serde(
+            default = "default::filter_type",
+            skip_serializing_if = "default::is_filter_type"
+        )]
+        r#type: FilterType,
     },
     /// A volume and pan balancer
     Balance {

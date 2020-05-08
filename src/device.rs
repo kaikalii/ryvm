@@ -171,7 +171,7 @@ impl Device {
                 // Process controls
                 if channel_num == state.curr_channel() || cache.from_loop {
                     for control in cache.all_controls() {
-                        if let Control::PadStart(i, v) = control {
+                        if let Control::Pad(i, v) = control {
                             let index = i as usize;
                             if index < drums.samples.len() {
                                 samplings.push(ActiveSampling {

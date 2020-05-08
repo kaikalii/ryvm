@@ -768,7 +768,7 @@ impl Iterator for State {
                     }
                     Action::Drum(ch, num) => {
                         channel = ch;
-                        Some(Control::PadStart(num, vel))
+                        Some(Control::Pad(num, vel))
                     }
                     Action::SetOutputChannel(name, ch) => {
                         if let Some(midi) = self

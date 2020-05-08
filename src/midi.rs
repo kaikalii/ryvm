@@ -26,7 +26,7 @@ pub enum Control {
     /// Index, value
     Control(u8, u8),
     /// Index, velocity
-    PadStart(u8, u8),
+    Pad(u8, u8),
     /// Action, velocity
     Action(Action, u8),
     /// Action, value

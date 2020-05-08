@@ -52,6 +52,11 @@ pub struct DrumMachine {
 enum FilterState {
     LowPass(CloneCell<Voice>),
     Comb(CloneLock<VecDeque<Voice>>),
+    Crush {
+        counter: CloneCell<usize>,
+        voice: CloneCell<Voice>,
+    },
+    Distortion,
 }
 
 impl From<FilterType> for FilterState {
@@ -59,6 +64,11 @@ impl From<FilterType> for FilterState {
         match ty {
             FilterType::LowPass => FilterState::LowPass(CloneCell::new(Voice::SILENT)),
             FilterType::Comb => FilterState::Comb(CloneLock::new(VecDeque::new())),
+            FilterType::Crush => FilterState::Crush {
+                counter: CloneCell::new(0),
+                voice: CloneCell::new(Voice::SILENT),
+            },
+            FilterType::Distortion => FilterState::Distortion,
         }
     }
 }
@@ -261,6 +271,24 @@ impl Device {
                             output = prevs.pop_front();
                         }
                         (output.unwrap_or(frame) + frame) * 0.5
+                    }
+                    FilterState::Crush { counter, voice } => {
+                        let delay_frames = value.map_or(0, |val| (val * 0x7f as f32) as usize);
+                        if counter.load() == 0 {
+                            counter.store(delay_frames);
+                            voice.store(frame);
+                            frame
+                        } else {
+                            counter.store(counter.load() - 1);
+                            voice.load()
+                        }
+                    }
+                    FilterState::Distortion => {
+                        let threshold = value.unwrap_or(1.0).max(0.01).powf(2.0);
+                        Voice::stereo(
+                            frame.left.max(-threshold).min(threshold),
+                            frame.right.max(-threshold).min(threshold),
+                        ) * (1.0 / threshold)
                     }
                 }
             }

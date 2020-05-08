@@ -38,6 +38,10 @@ pub enum FilterType {
     LowPass,
     /// A comb filter
     Comb,
+    /// A resolution-reducing filter
+    Crush,
+    /// A distortion filter
+    Distortion,
 }
 
 impl Default for FilterType {

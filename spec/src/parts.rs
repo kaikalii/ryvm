@@ -2,6 +2,8 @@ use arrayvec::ArrayString;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_derive::{Deserialize as Deser, Serialize as Ser};
 
+use crate::default;
+
 /// The total number of bytes that can be in a name
 pub const NAME_CAPACITY: usize = 20;
 
@@ -26,8 +28,9 @@ impl Default for WaveForm {
     }
 }
 
-/// A value that can be either a static number or mapped to a midi control
-#[derive(Debug, Clone, PartialEq, Ser, Deser)]
+/// A value that can be either a static number, mapped to a midi control,
+/// or mapped to a device output
+#[derive(Debug, Clone, Copy, PartialEq, Ser, Deser)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum DynamicValue {
     /// A static number
@@ -38,10 +41,13 @@ pub enum DynamicValue {
         #[serde(default, skip_serializing_if = "Optional::is_omitted")]
         controller: Optional<Name>,
         /// The midi control number
-        number: u8,
+        number: Required<u8>,
         /// The minimum and maxinum values this control should map to
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        bounds: Optional<(f32, f32)>,
+        #[serde(
+            default = "default::bounds",
+            skip_serializing_if = "default::is_bounds"
+        )]
+        bounds: (f32, f32),
     },
     /// The value output by another device
     Output(Name),
@@ -62,11 +68,30 @@ impl DynamicValue {
             None
         }
     }
+    #[doc(hidden)]
+    pub fn unwrap_static(self) -> f32 {
+        if let DynamicValue::Static(f) = self {
+            f
+        } else {
+            panic!("Called DynamicValue::unwrap_static on a non-static value")
+        }
+    }
 }
 
-/// An optional that can be omitted
-///
-/// Optionals that are not given a value typically choose some sensible default
+/// A value that is required
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct Required<T>(pub T);
+
+impl<T> From<T> for Required<T> {
+    fn from(val: T) -> Self {
+        Required(val)
+    }
+}
+
+/// An setting that may have no value
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Optional<T> {
     /// The option was supplied by the user

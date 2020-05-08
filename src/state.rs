@@ -19,7 +19,7 @@ use structopt::StructOpt;
 use crate::{
     name_from_str, parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame,
     FrameCache, Loop, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult,
-    Sample, Voice, ADSR,
+    Sample, Voice,
 };
 
 #[derive(Default)]
@@ -331,14 +331,14 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = device!(Wave, || Device::new_wave(form));
-                wave.form = form;
+                let wave = device!(Wave, || Device::new_wave(form.0));
+                wave.form = form.0;
                 wave.octave = octave.into();
-                wave.adsr.attack = attack.or_else(|| ADSR::default().attack.into());
-                wave.adsr.decay = decay.or_else(|| ADSR::default().decay.into());
-                wave.adsr.sustain = sustain.or_else(|| ADSR::default().sustain.into());
-                wave.adsr.release = release.or_else(|| ADSR::default().release.into());
-                wave.pitch_bend_range = bend.or(12.0);
+                wave.adsr.attack = attack;
+                wave.adsr.decay = decay;
+                wave.adsr.sustain = sustain;
+                wave.adsr.release = release;
+                wave.pitch_bend_range = bend;
             }
             Spec::Drums(paths) => {
                 let drums = device!(DrumMachine, || Device::new_drum_machine());
@@ -348,15 +348,15 @@ impl State {
                 drums.samples = paths;
             }
             Spec::Filter { input, value } => {
-                let filter = device!(Filter, || Device::new_filter(input.clone(), value.clone()));
-                filter.input = input;
-                filter.value = value;
+                let filter = device!(Filter, || Device::new_filter(input.0, value.0));
+                filter.input = input.0;
+                filter.value = value.0;
             }
             Spec::Balance { input, volume, pan } => {
-                let balance = device!(Balance, || Device::new_balance(input.clone()));
-                balance.input = input;
-                balance.volume = volume.or(1.0);
-                balance.pan = pan.or(0.0);
+                let balance = device!(Balance, || Device::new_balance(input.0));
+                balance.input = input.0;
+                balance.volume = volume;
+                balance.pan = pan;
             }
         }
         Ok(())
@@ -581,12 +581,12 @@ impl State {
                     self.default_midi?
                 };
                 let midi = self.midis.get(&port)?;
-                let value = if midi.control_is_global(*number) {
-                    *self.global_controls.get(&(port, *number))?
+                let value = if midi.control_is_global(number.0) {
+                    *self.global_controls.get(&(port, number.0))?
                 } else {
-                    *self.controls.get(&(port, ch, *number))?
+                    *self.controls.get(&(port, ch, number.0))?
                 };
-                let (min, max) = bounds.or((0.0, 1.0));
+                let (min, max) = bounds;
                 Some(f32::from(value) / 127.0 * (max - min) + min)
             }
             DynamicValue::Output(name) => self

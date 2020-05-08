@@ -2,9 +2,12 @@
 
 /*!
 This crate defines the Ryvm specification format. RON files satisfying the `Spec` structure are used to program a Ryvm state.
+
+All named fields not marked `Required<..>` are optional. Most optional fields have sensible defaults chosen.
 */
 
 mod action;
+pub mod default;
 mod parts;
 pub use action::*;
 pub use parts::*;
@@ -87,44 +90,62 @@ pub enum Spec {
     /// A wave synthesizer
     Wave {
         /// The waveform
-        form: WaveForm,
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        form: Required<WaveForm>,
         /// The base octave
-        octave: Optional<i8>,
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        #[serde(
+            default = "default::octave",
+            skip_serializing_if = "default::is_octave"
+        )]
+        octave: i8,
         /// The volume envelope attack
-        attack: Optional<DynamicValue>,
+        #[serde(
+            default = "default::attack",
+            skip_serializing_if = "default::is_attack"
+        )]
+        attack: DynamicValue,
         /// The volume envelope decay
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        decay: Optional<DynamicValue>,
+        #[serde(default = "default::decay", skip_serializing_if = "default::is_decay")]
+        decay: DynamicValue,
         /// The volume envelope sustain
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        sustain: Optional<DynamicValue>,
+        #[serde(
+            default = "default::sustain",
+            skip_serializing_if = "default::is_sustain"
+        )]
+        sustain: DynamicValue,
         /// The volume envelope release
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        release: Optional<DynamicValue>,
+        #[serde(
+            default = "default::release",
+            skip_serializing_if = "default::is_release"
+        )]
+        release: DynamicValue,
         /// The +- pitch bend range in semitones
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        bend: Optional<DynamicValue>,
+        #[serde(
+            default = "default::bend_range",
+            skip_serializing_if = "default::is_bend_range"
+        )]
+        bend: DynamicValue,
     },
     /// A drum machine with a list of paths to sample files
     Drums(Vec<PathBuf>),
     /// A low-pass filter
     Filter {
         /// The name of the input device
-        input: String,
+        input: Required<Name>,
         /// The value that determines the filter's shape
-        value: DynamicValue,
+        value: Required<DynamicValue>,
     },
     /// A volume and pan balancer
     Balance {
         /// The name of the input device
-        input: String,
+        input: Required<Name>,
         /// The volume
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        volume: Optional<DynamicValue>,
+        #[serde(
+            default = "default::volume",
+            skip_serializing_if = "default::is_volume"
+        )]
+        volume: DynamicValue,
         /// The left-right pan
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        pan: Optional<DynamicValue>,
+        #[serde(default = "default::pan", skip_serializing_if = "default::is_pan")]
+        pan: DynamicValue,
     },
 }

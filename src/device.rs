@@ -5,7 +5,7 @@ use std::{
 };
 
 use rand::random;
-use ryvm_spec::{DynamicValue, WaveForm};
+use ryvm_spec::{DynamicValue, Name, WaveForm};
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, Letter,
@@ -51,7 +51,7 @@ pub struct DrumMachine {
 #[derive(Debug, Clone)]
 pub struct Filter {
     /// The name of the input device
-    pub input: String,
+    pub input: Name,
     /// The value used to determine filter strength
     pub value: DynamicValue,
     avg: CloneCell<Voice>,
@@ -61,7 +61,7 @@ pub struct Filter {
 #[derive(Debug, Clone)]
 pub struct Balance {
     /// The name of the input device
-    pub input: String,
+    pub input: Name,
     /// The volume
     pub volume: DynamicValue,
     /// The left-right
@@ -91,7 +91,7 @@ impl Device {
     }
     /// Create a new filter
     #[must_use]
-    pub fn new_filter(input: String, value: DynamicValue) -> Self {
+    pub fn new_filter(input: Name, value: DynamicValue) -> Self {
         Device::Filter(Filter {
             input,
             value,
@@ -100,7 +100,7 @@ impl Device {
     }
     /// Create a new balance
     #[must_use]
-    pub fn new_balance(input: String) -> Self {
+    pub fn new_balance(input: Name) -> Self {
         Device::Balance(Balance {
             input,
             volume: DynamicValue::Static(1.0),

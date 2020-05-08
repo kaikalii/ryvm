@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ryvm_spec::DynamicValue;
+use ryvm_spec::{default, DynamicValue};
 
 use crate::Control;
 
@@ -30,28 +30,22 @@ impl<T> ADSR<T> {
         F: FnMut(&T) -> Option<f32>,
     {
         ADSR {
-            attack: f(&self.attack).unwrap_or(ADSR::const_default().attack),
-            decay: f(&self.decay).unwrap_or(ADSR::const_default().decay),
-            sustain: f(&self.sustain).unwrap_or(ADSR::const_default().sustain),
-            release: f(&self.release).unwrap_or(ADSR::const_default().release),
-        }
-    }
-}
-
-impl ADSR<f32> {
-    pub const fn const_default() -> Self {
-        ADSR {
-            attack: 0.05,
-            decay: 0.05,
-            sustain: 0.7,
-            release: 0.1,
+            attack: f(&self.attack).unwrap_or_else(|| default::ATTACK.unwrap_static()),
+            decay: f(&self.decay).unwrap_or_else(|| default::DECAY.unwrap_static()),
+            sustain: f(&self.sustain).unwrap_or_else(|| default::SUSTAIN.unwrap_static()),
+            release: f(&self.release).unwrap_or_else(|| default::RELEASE.unwrap_static()),
         }
     }
 }
 
 impl Default for ADSR<f32> {
     fn default() -> Self {
-        ADSR::const_default()
+        ADSR {
+            attack: default::ATTACK.unwrap_static(),
+            decay: default::DECAY.unwrap_static(),
+            sustain: default::SUSTAIN.unwrap_static(),
+            release: default::RELEASE.unwrap_static(),
+        }
     }
 }
 

@@ -5,16 +5,17 @@ use midir::{
 };
 use rand::random;
 use ryvm_spec::{Action, Button, Buttons, Name, Slider, Sliders, ValuedAction};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Port {
     Midi(usize),
     Gamepad(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Control {
     /// Id, index, velocity
     NoteStart(u64, u8, u8),

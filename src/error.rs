@@ -29,6 +29,9 @@ pub enum RyvmError {
     /// An error deocoding an audio file
     #[error("Audio decoder error: {0}")]
     Decode(#[from] rodio::decoder::DecoderError),
+    /// An error encoding/decoding a loop
+    #[error("Loop decoder error: {0}")]
+    Loop(#[from] serde_cbor::Error),
     /// No available midi ports
     #[error("There are no available midi ports")]
     NoMidiPorts,

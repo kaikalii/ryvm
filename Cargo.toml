@@ -13,6 +13,9 @@ rand = '0.7.3'
 rodio = '0.11.0'
 ron = '0.5.1'
 ropey = '1.1.0'
+serde = '1.0.106'
+serde_cbor = '0.11.1'
+serde_derive = '1.0.106'
 thiserror = '1.0.16'
 
 [dependencies.indexmap]
@@ -31,7 +34,6 @@ authors = ['Kai Schmidt <kaikaliischmidt@gmail.com>']
 edition = '2018'
 name = 'ryvm'
 version = '0.1.0'
-
 [profile.dev]
 opt-level = 2
 

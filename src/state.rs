@@ -17,9 +17,10 @@ use ryvm_spec::{Action, DynamicValue, Name, Spec, Supplied, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
-    name_from_str, parse_commands, samples_dir, spec_path, specs_dir, startup_path, Channel,
-    CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop, LoopState, Midi,
-    MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
+    loop_path, loops_dir, name_from_str, parse_commands, samples_dir, spec_path, specs_dir,
+    startup_path, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
+    LoopMaster, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample,
+    Voice,
 };
 
 #[derive(Default)]
@@ -47,7 +48,7 @@ pub struct State {
     command_queue: Vec<RyvmCommand>,
     /// The index of the current frame
     pub i: Frame,
-    pub loop_period: Option<f32>,
+    pub loop_master: Option<LoopMaster>,
     pub sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub midis: HashMap<Port, Midi>,
     midi_names: HashMap<Name, Port>,
@@ -88,7 +89,7 @@ impl State {
             channels: HashMap::new(),
             command_queue: Vec::new(),
             i: 0,
-            loop_period: None,
+            loop_master: None,
             sample_bank: Employer::default(),
             midis: HashMap::new(),
             midi_names: HashMap::new(),
@@ -138,8 +139,8 @@ impl State {
     }
     #[allow(dead_code)]
     fn is_debug_frame(&self) -> bool {
-        if let Some(period) = self.loop_period {
-            self.i % (period as Frame / 10) == 0
+        if let Some(master) = self.loop_master {
+            self.i % (master.period as Frame / 10) == 0
         } else {
             self.i % (self.sample_rate as Frame / 5) == 0
         }
@@ -166,22 +167,22 @@ impl State {
     }
     /// Finish recording any loops
     pub fn finish_recording(&mut self) {
-        let mut loop_period = self.loop_period;
+        let mut loop_master = self.loop_master;
         let mut loops_to_delete: Vec<u8> = Vec::new();
-        for (num, lup) in &mut self.loops {
+        for (&num, lup) in &mut self.loops {
             if let LoopState::Recording = lup.loop_state {
-                lup.finish(loop_period);
+                lup.finish(loop_master.map(|lm| lm.period));
                 let period = lup.period();
                 if period > 0.0 {
-                    loop_period.get_or_insert(period);
+                    loop_master.get_or_insert(LoopMaster { period, num });
                     println!("Finished recording {}", num);
                 } else {
-                    loops_to_delete.push(*num);
+                    loops_to_delete.push(num);
                     println!("Cancelled recording {}", num)
                 }
             }
         }
-        self.loop_period = self.loop_period.or(loop_period);
+        self.loop_master = self.loop_master.or(loop_master);
         for name in loops_to_delete {
             self.loops.remove(&name);
         }
@@ -414,7 +415,7 @@ impl State {
                 }
                 if reset {
                     self.loops.clear();
-                    self.loop_period = None;
+                    self.loop_master = None;
                 } else if !all {
                     for num in loops {
                         self.stop_loop(num);
@@ -441,7 +442,7 @@ impl State {
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
-                self.load_spec_map_or_on_fly(name, channel, false)?
+                self.load_spec_map_or_on_fly(name.as_str(), channel, false)?
             }
             RyvmCommand::Specs => {
                 open::that(specs_dir()?)?;
@@ -449,6 +450,11 @@ impl State {
             RyvmCommand::Samples => {
                 open::that(samples_dir()?)?;
             }
+            RyvmCommand::Loops => {
+                open::that(loops_dir()?)?;
+            }
+            RyvmCommand::LoopSave { num, name } => self.save_loop(num, name)?,
+            RyvmCommand::LoopLoad { name, num, play } => self.load_loop(name, num, play)?,
         }
         Ok(())
     }
@@ -509,6 +515,58 @@ impl State {
                 Ok(None) | Err(_) => return Err(e),
             }
         }
+        Ok(())
+    }
+    fn save_loop(&mut self, num: u8, name: Option<Name>) -> RyvmResult<()> {
+        if let Some(lup) = self.loops.get(&num) {
+            let name = if let Some(name) = name {
+                name
+            } else {
+                let mut i = 0;
+                loop {
+                    let possible = Name::from(&format!("loop-{}", i)).unwrap();
+                    if !loop_path(possible.as_str())?.exists() {
+                        break possible;
+                    }
+                    i += 1;
+                }
+            };
+            let path = loop_path(name.as_str())?;
+            let file = File::create(path)?;
+            serde_cbor::to_writer(file, lup)?;
+            println!("Saved loop {} as {:?}", num, name);
+        }
+        Ok(())
+    }
+    fn load_loop(&mut self, name: Name, num: Option<u8>, play: bool) -> RyvmResult<()> {
+        let path = loop_path(name.as_str())?;
+        let file = File::open(path)?;
+        let mut lup: Loop = serde_cbor::from_reader(file)?;
+        let num = num.unwrap_or_else(|| {
+            let mut i = 0;
+            loop {
+                if !self.loops.contains_key(&i) {
+                    break i;
+                }
+                i += 1;
+            }
+        });
+        if let Some(master) = self.loop_master {
+            lup.set_period(master.period);
+            if let Some(master) = self.loops.get(&master.num) {
+                lup.set_i(master.i());
+            }
+        } else {
+            self.loop_master = Some(LoopMaster {
+                period: lup.base_period(),
+                num,
+            });
+        }
+        if play {
+            lup.loop_state = LoopState::Playing;
+        }
+        self.loops.insert(num, lup);
+        println!("Loaded {:?} as loop {}", name, num);
         Ok(())
     }
     fn print_ls(&mut self, unsorted: bool) {
@@ -613,8 +671,8 @@ impl State {
         }
     }
     fn process_delayed_cli_commands(&mut self) {
-        if let Some(period) = self.loop_period {
-            if self.i % period as Frame == 0 && self.frame_queue.is_none() {
+        if let Some(master) = self.loop_master {
+            if self.i % master.period as Frame == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
@@ -776,7 +834,7 @@ impl Iterator for State {
         let mut voice = Voice::SILENT;
         // Collect loop controls
         let state_tempo = self.tempo;
-        let loop_period = self.loop_period;
+        let loop_period = self.loop_master.map(|lm| lm.period);
         let loop_controls: Vec<_> = self
             .loops
             .values_mut()

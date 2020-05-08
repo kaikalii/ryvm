@@ -20,6 +20,10 @@ pub fn samples_dir() -> io::Result<PathBuf> {
     ensure_dir_exists("Samples dir", ryvm_dir()?.join("samples"))
 }
 
+pub fn loops_dir() -> io::Result<PathBuf> {
+    ensure_dir_exists("Loops dir", ryvm_dir()?.join("loops"))
+}
+
 pub fn startup_path() -> io::Result<PathBuf> {
     let path = specs_dir()?.join("startup.ron");
     if !path.exists() {
@@ -43,7 +47,17 @@ where
     P: AsRef<Path>,
 {
     Ok(specs_dir()?
+        .canonicalize()?
         .join(name)
-        .with_extension("ron")
-        .canonicalize()?)
+        .with_extension("ron"))
+}
+
+pub fn loop_path<P>(name: P) -> io::Result<PathBuf>
+where
+    P: AsRef<Path>,
+{
+    Ok(loops_dir()?
+        .canonicalize()?
+        .join(name)
+        .with_extension("cbor"))
 }

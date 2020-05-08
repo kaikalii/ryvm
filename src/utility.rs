@@ -7,14 +7,15 @@ use std::{
 };
 
 use crossbeam_utils::atomic::AtomicCell;
-
 use ryvm_spec::{Name, NAME_CAPACITY};
+use serde_derive::{Deserialize, Serialize};
 
 pub fn name_from_str(s: &str) -> Name {
     Name::from(&s[..s.len().min(NAME_CAPACITY)]).unwrap()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct Float(pub f32);
 
 impl Eq for Float {}

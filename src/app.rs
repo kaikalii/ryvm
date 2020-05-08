@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use ryvm_spec::Name;
 use structopt::StructOpt;
 
 /// A Ryvm CLI command
@@ -27,7 +28,7 @@ pub enum RyvmCommand {
     Stop {
         #[structopt(help = "The numbers of the loops to stop")]
         loops: Vec<u8>,
-        #[structopt(long, conflicts_with = "names", help = "Stop all loops")]
+        #[structopt(long, conflicts_with = "loops", help = "Stop all loops")]
         all: bool,
         #[structopt(
             long,
@@ -65,7 +66,7 @@ pub enum RyvmCommand {
     #[structopt(about = "Load a spec file")]
     Load {
         #[structopt(help = "The name of the spec")]
-        name: String,
+        name: Name,
         #[structopt(help = "The channel to load into")]
         channel: Option<u8>,
     },
@@ -73,6 +74,24 @@ pub enum RyvmCommand {
     Specs,
     #[structopt(about = "Open the samples folder")]
     Samples,
+    #[structopt(about = "Open the loops folder")]
+    Loops,
+    #[structopt(about = "Save a loop")]
+    LoopSave {
+        #[structopt(help = "The number of the loop to save")]
+        num: u8,
+        #[structopt(help = "The name to give the loop")]
+        name: Option<Name>,
+    },
+    #[structopt(about = "Load a loop")]
+    LoopLoad {
+        #[structopt(help = "The name of the loop to load")]
+        name: Name,
+        #[structopt(help = "The loop number to load the loop into")]
+        num: Option<u8>,
+        #[structopt(long, short, help = "Immediately start playing the loop")]
+        play: bool,
+    },
 }
 
 #[derive(Debug, StructOpt)]

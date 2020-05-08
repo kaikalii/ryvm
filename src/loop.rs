@@ -1,6 +1,23 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    mem::swap,
+};
+
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{Control, Float, Port};
+
+#[derive(Debug, Clone, Copy)]
+pub struct LoopMaster {
+    pub period: f32,
+    pub num: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoopDef {
+    pub controls: BTreeMap<Float, ControlsMap>,
+    pub length: f32,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopState {
@@ -11,7 +28,8 @@ pub enum LoopState {
 
 pub type ControlsMap = HashMap<(Port, u8), Vec<Control>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(from = "LoopDef", into = "LoopDef")]
 pub struct Loop {
     started: bool,
     pub controls: BTreeMap<Float, ControlsMap>,
@@ -20,6 +38,29 @@ pub struct Loop {
     pub loop_state: LoopState,
     i: f32,
     last_i: f32,
+}
+
+impl From<LoopDef> for Loop {
+    fn from(ld: LoopDef) -> Self {
+        Loop {
+            started: true,
+            controls: ld.controls,
+            note_ids: HashSet::new(),
+            length: ld.length,
+            loop_state: LoopState::Disabled,
+            i: 0.0,
+            last_i: 0.0,
+        }
+    }
+}
+
+impl From<Loop> for LoopDef {
+    fn from(lup: Loop) -> LoopDef {
+        LoopDef {
+            controls: lup.controls,
+            length: lup.length,
+        }
+    }
 }
 
 impl Loop {
@@ -33,6 +74,13 @@ impl Loop {
             i: 0.0,
             last_i: 0.0,
         }
+    }
+    pub fn i(&self) -> f32 {
+        self.i
+    }
+    pub fn set_i(&mut self, i: f32) {
+        self.i = i;
+        self.last_i = i;
     }
     pub fn record(&mut self, new_controls: ControlsMap) {
         if self.loop_state == LoopState::Recording {
@@ -100,6 +148,9 @@ impl Loop {
             0.0
         }
     }
+    pub fn base_period(&self) -> f32 {
+        self.period() / self.length
+    }
     pub fn finish(&mut self, period: Option<f32>) {
         if let LoopState::Recording = self.loop_state {
             self.loop_state = LoopState::Playing;
@@ -148,5 +199,14 @@ impl Loop {
     }
     pub fn note_ids(&self) -> impl Iterator<Item = u64> + '_ {
         self.note_ids.iter().map(|(id, _)| *id)
+    }
+    pub fn set_period(&mut self, new_period: f32) {
+        let base_period = self.base_period();
+        let mut new_controls = BTreeMap::new();
+        swap(&mut new_controls, &mut self.controls);
+        self.controls = new_controls
+            .into_iter()
+            .map(|(t, controls)| (Float(t.0 * new_period / base_period), controls))
+            .collect()
     }
 }

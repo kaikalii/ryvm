@@ -3,8 +3,8 @@ macro_rules! mods {
 }
 
 mods!(
-    app, channel, device, drum, envelope, error, gamepad, r#loop, midi, onfly, state, track,
-    utility
+    app, channel, device, drum, envelope, error, gamepad, library, r#loop, midi, onfly, state,
+    track, utility
 );
 
 use std::{

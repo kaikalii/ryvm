@@ -1,16 +1,9 @@
-use std::{
-    convert::Infallible,
-    env::{current_dir, current_exe},
-    fmt, fs,
-    path::Path,
-    str::FromStr,
-};
+use std::{convert::Infallible, fmt, fs, path::Path, str::FromStr};
 
-use find_folder::Search;
 use itertools::Itertools;
 use rodio::{Decoder, Source};
 
-use crate::{Frame, RyvmResult, Voice};
+use crate::{samples_dir, Frame, RyvmResult, Voice};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
@@ -40,12 +33,7 @@ impl Sample {
     where
         P: AsRef<Path>,
     {
-        let search = Search::KidsThenParents(2, 1);
-        let path = path.as_ref().to_string_lossy();
-        let path = search
-            .of(current_dir()?)
-            .for_folder(&path)
-            .or_else(|_| search.of(current_exe()?).for_folder(&path))?;
+        let path = samples_dir()?.join(path);
         let decoder = Decoder::new(fs::File::open(path)?)?;
         let sample_rate = decoder.sample_rate();
         let channels = decoder.channels();

@@ -17,9 +17,9 @@ use ryvm_spec::{Action, DynamicValue, Name, Spec, Supplied, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
-    name_from_str, parse_commands, Channel, CloneLock, Control, Device, FlyControl, Frame,
-    FrameCache, Loop, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult,
-    Sample, Voice,
+    name_from_str, parse_commands, samples_dir, spec_path, specs_dir, startup_path, Channel,
+    CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop, LoopState, Midi,
+    MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
 };
 
 #[derive(Default)]
@@ -70,6 +70,7 @@ impl State {
     ///
     /// Returns an error if it fails to load a startup spec
     pub fn new(main_file: Option<PathBuf>, sample_rate: u32) -> RyvmResult<(Self, StateInterface)> {
+        // Init watcher
         let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
         let watcher_queue_clone = Arc::clone(&watcher_queue);
         let watcher = RecommendedWatcher::new_immediate(move |event: notify::Result<Event>| {
@@ -77,6 +78,7 @@ impl State {
         })?;
         let (send, inter_recv) = mpmc::unbounded();
         let (inter_send, recv) = mpmc::unbounded();
+        // Init state
         let mut state = State {
             sample_rate,
             tempo: 1.0,
@@ -101,8 +103,13 @@ impl State {
             send,
             recv,
         };
-        state.load_spec_map_from_file(
-            main_file.unwrap_or_else(|| "specs/startup.ron".into()),
+        // Load startup
+        state.load_spec_map(
+            if let Some(main_file) = main_file {
+                main_file
+            } else {
+                startup_path()?
+            },
             None,
         )?;
         Ok((
@@ -240,15 +247,7 @@ impl State {
         }
         // Match over different spec types
         match spec {
-            Spec::Load(channel, path) => {
-                if self
-                    .tracked_spec_maps
-                    .get(&path.canonicalize()?)
-                    .map_or(true, |ch| ch != &Some(channel))
-                {
-                    self.load_spec_map_from_file(path, Some(channel))?;
-                }
-            }
+            Spec::Load(channel, path) => self.load_spec_map(path, Some(channel))?,
             Spec::Controller {
                 device,
                 gamepad,
@@ -442,7 +441,13 @@ impl State {
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
-                self.load_spec_map_or_on_fly(format!("specs/{}.ron", name), channel, false)?
+                self.load_spec_map_or_on_fly(name, channel, false)?
+            }
+            RyvmCommand::Specs => {
+                open::that(specs_dir()?)?;
+            }
+            RyvmCommand::Samples => {
+                open::that(samples_dir()?)?;
             }
         }
         Ok(())
@@ -452,11 +457,19 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if the file cannot be opened or parsed or if a spec load fails
-    pub fn load_spec_map_from_file<P>(&mut self, path: P, channel: Option<u8>) -> RyvmResult<()>
+    pub fn load_spec_map<P>(&mut self, name: P, channel: Option<u8>) -> RyvmResult<()>
     where
         P: AsRef<Path>,
     {
-        let path = path.as_ref().canonicalize()?;
+        let path = spec_path(name)?;
+        if self
+            .tracked_spec_maps
+            .get(&path)
+            .map_or(false, |ch| ch == &channel)
+        {
+            return Ok(());
+        }
+        let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
         println!("Loading {:?}", path);
         // Open the file
         let file = File::open(&path)?;
@@ -487,9 +500,7 @@ impl State {
     where
         P: AsRef<Path>,
     {
-        let path = path.as_ref().canonicalize()?;
-        let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
-        if let Err(e) = self.load_spec_map_from_file(&path, channel) {
+        if let Err(e) = self.load_spec_map(&path, channel) {
             match FlyControl::find(&path, channel, delay) {
                 Ok(Some(fly)) => {
                     println!("Activate the control you would like to map");

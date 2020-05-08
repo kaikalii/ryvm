@@ -69,6 +69,10 @@ pub enum RyvmCommand {
         #[structopt(help = "The channel to load into")]
         channel: Option<u8>,
     },
+    #[structopt(about = "Open the specs folder")]
+    Specs,
+    #[structopt(about = "Open the samples folder")]
+    Samples,
 }
 
 #[derive(Debug, StructOpt)]

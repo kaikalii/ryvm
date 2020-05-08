@@ -1,9 +1,0 @@
-{
-    "n": wave(
-        form: noise,
-    ),
-    "fil": filter(
-        input: "n",
-        value: control( number: 1, ),
-    ),
-}

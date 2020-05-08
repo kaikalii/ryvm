@@ -21,7 +21,7 @@ use serde_derive::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum Spec {
-    /// Load into the given channel the spec file with the given path
+    /// Load into the given channel the spec file with the given path (relative to the specs directory)
     Load(u8, PathBuf),
     /// A midi controller
     Controller {

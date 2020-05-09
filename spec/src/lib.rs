@@ -14,6 +14,7 @@ pub use parts::*;
 
 use std::{ops::Not, path::PathBuf};
 
+use indexmap::IndexMap;
 use serde_derive::{Deserialize, Serialize};
 
 /// A specification for a Ryvm item
@@ -21,12 +22,10 @@ use serde_derive::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case", deny_unknown_fields, tag = "type")]
 #[allow(clippy::large_enum_variant)]
 pub enum Spec {
-    /// Load into the given channel the spec file with the given path (relative to the specs directory)
+    /// Load spec file with the given paths (relative to the specs directory) into the given channels
     Load {
-        /// The channel
-        channel: u8,
-        /// The path
-        path: PathBuf,
+        /// The paths and the channels into which to load them
+        paths: IndexMap<PathBuf, u8>,
     },
     /// A midi controller
     Controller {

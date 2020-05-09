@@ -245,9 +245,11 @@ impl State {
         }
         // Match over different spec types
         match spec {
-            Spec::Load { channel, path } => {
+            Spec::Load { paths } => {
                 if do_load_specs {
-                    self.load_spec_map(path, Some(channel), true)?
+                    for (path, channel) in paths {
+                        self.load_spec_map(path, Some(channel), true)?;
+                    }
                 }
             }
             Spec::Controller {

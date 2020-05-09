@@ -12,15 +12,15 @@ use employer::{Employer, JobDescription};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use rodio::Source;
+use rodio::{DeviceTrait, Source};
 use ryvm_spec::{Action, ButtonsMap, DynamicValue, Name, SlidersMap, Spec, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
     loop_path, loops_dir, name_from_str, parse_commands, samples_dir, spec_path, specs_dir,
     startup_path, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, InputDevice,
-    InputManager, Loop, LoopMaster, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError,
-    RyvmResult, Sample, Voice,
+    InputError, InputManager, Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand,
+    OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
 };
 
 #[derive(Default)]
@@ -438,7 +438,13 @@ impl State {
                     midi.set_monitoring(!midi.monitoring());
                 }
             }
-            RyvmCommand::Loop { num, length } => self.start_loop(num, length),
+            RyvmCommand::Loop { num, length, sub } => match sub {
+                Some(LoopSubcommand::Save { num, name }) => self.save_loop(num, name)?,
+                Some(LoopSubcommand::Load { name, num, play }) => {
+                    self.load_loop(name, num, play)?
+                }
+                None => self.start_loop(num, length),
+            },
             RyvmCommand::Play { loops } => {
                 for (num, lup) in &mut self.loops {
                     if loops.contains(num) {
@@ -504,11 +510,17 @@ impl State {
             RyvmCommand::Loops => {
                 open::that(loops_dir()?)?;
             }
-            RyvmCommand::LoopSave { num, name } => self.save_loop(num, name)?,
-            RyvmCommand::LoopLoad { name, num, play } => self.load_loop(name, num, play)?,
             RyvmCommand::Inputs => {
                 for (i, name) in self.input_manager.device_names()?.into_iter().enumerate() {
                     println!("{}. {}", i, name);
+                }
+            }
+            RyvmCommand::Output(OutputSubcommand::List) => {
+                for (i, device) in rodio::output_devices()
+                    .map_err(InputError::from)?
+                    .enumerate()
+                {
+                    println!("{}. {}", i, device.name().map_err(InputError::from)?);
                 }
             }
         }

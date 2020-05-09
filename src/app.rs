@@ -18,6 +18,8 @@ pub enum RyvmCommand {
             help = "The length of the loop relative to the first one"
         )]
         length: Option<f32>,
+        #[structopt(subcommand)]
+        sub: Option<LoopSubcommand>,
     },
     #[structopt(about = "Start playing a loop")]
     Play {
@@ -58,7 +60,7 @@ pub enum RyvmCommand {
         )]
         recursive: bool,
     },
-    #[structopt(about = "List all available midi ports")]
+    #[structopt(about = "Manage midi ports")]
     Midi(MidiSubCommand),
     #[structopt(about = "Load a spec file")]
     Load {
@@ -73,24 +75,10 @@ pub enum RyvmCommand {
     Samples,
     #[structopt(about = "Open the loops folder")]
     Loops,
-    #[structopt(about = "Save a loop")]
-    LoopSave {
-        #[structopt(help = "The number of the loop to save")]
-        num: u8,
-        #[structopt(help = "The name to give the loop")]
-        name: Option<Name>,
-    },
-    #[structopt(about = "Load a loop")]
-    LoopLoad {
-        #[structopt(help = "The name of the loop to load")]
-        name: Name,
-        #[structopt(help = "The loop number to load the loop into")]
-        num: Option<u8>,
-        #[structopt(long, short, help = "Immediately start playing the loop")]
-        play: bool,
-    },
     #[structopt(about = "List all available audio input devices")]
     Inputs,
+    #[structopt(about = "Manage audio outputs")]
+    Output(OutputSubcommand),
 }
 
 #[derive(Debug, StructOpt)]
@@ -99,6 +87,32 @@ pub enum MidiSubCommand {
     List,
     #[structopt(about = "Monitor midi input. Use again to stop.")]
     Monitor,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum LoopSubcommand {
+    #[structopt(about = "Save a loop")]
+    Save {
+        #[structopt(help = "The number of the loop to save")]
+        num: u8,
+        #[structopt(help = "The name to give the loop")]
+        name: Option<Name>,
+    },
+    #[structopt(about = "Load a loop")]
+    Load {
+        #[structopt(help = "The name of the loop to load")]
+        name: Name,
+        #[structopt(help = "The loop number to load the loop into")]
+        num: Option<u8>,
+        #[structopt(long, short, help = "Immediately start playing the loop")]
+        play: bool,
+    },
+}
+
+#[derive(Debug, StructOpt)]
+pub enum OutputSubcommand {
+    #[structopt(about = "List all available output devices")]
+    List,
 }
 
 /// The command line argument parser for Ryvm

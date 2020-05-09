@@ -345,8 +345,8 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = device!(Wave, || Device::new_wave(form.0));
-                wave.form = form.0;
+                let wave = device!(Wave, || Device::new_wave(form));
+                wave.form = form;
                 wave.octave = octave.into();
                 wave.adsr.attack = attack;
                 wave.adsr.decay = decay;
@@ -366,14 +366,14 @@ impl State {
                 value,
                 filter: filter_type,
             } => {
-                let filter = device!(Filter, || Device::new_filter(input.0, value.0, filter_type));
-                filter.input = input.0;
-                filter.value = value.0;
+                let filter = device!(Filter, || Device::new_filter(input, value, filter_type));
+                filter.input = input;
+                filter.value = value;
                 filter.set_type(filter_type);
             }
             Spec::Balance { input, volume, pan } => {
-                let balance = device!(Balance, || Device::new_balance(input.0));
-                balance.input = input.0;
+                let balance = device!(Balance, || Device::new_balance(input));
+                balance.input = input;
                 balance.volume = volume;
                 balance.pan = pan;
             }
@@ -382,7 +382,7 @@ impl State {
                 size,
                 energy_mul,
             } => {
-                let reverb = device!(Reverb, || Device::new_reverb(input.0));
+                let reverb = device!(Reverb, || Device::new_reverb(input));
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
             }
@@ -694,10 +694,10 @@ impl State {
                     self.default_midi?
                 };
                 let midi = self.midis.get(&port)?;
-                let value = if midi.control_is_global(index.0) {
-                    *self.global_controls.get(&(port, index.0))?
+                let value = if midi.control_is_global(*index) {
+                    *self.global_controls.get(&(port, *index))?
                 } else {
-                    *self.controls.get(&(port, ch, index.0))?
+                    *self.controls.get(&(port, ch, *index))?
                 };
                 let (min, max) = bounds;
                 Some(f32::from(value) / 127.0 * (max - min) + min)

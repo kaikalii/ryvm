@@ -60,7 +60,7 @@ pub enum DynamicValue {
     /// A midi control mapping
     Control {
         /// The midi control index
-        index: Required<u8>,
+        index: u8,
         /// The name of the midi controller
         #[serde(default, skip_serializing_if = "Option::is_none")]
         controller: Option<Name>,
@@ -100,18 +100,5 @@ impl DynamicValue {
         } else {
             panic!("Called DynamicValue::unwrap_static on a non-static value")
         }
-    }
-}
-
-/// A value that is required
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct Required<T>(pub T);
-
-impl<T> From<T> for Required<T> {
-    fn from(val: T) -> Self {
-        Required(val)
     }
 }

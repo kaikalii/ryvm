@@ -57,7 +57,7 @@ impl FlyControl {
             // Create control value
             let value = DynamicValue::Control {
                 controller: name(),
-                index: i.into(),
+                index: i,
                 bounds: default::BOUNDS,
                 default: None,
             };

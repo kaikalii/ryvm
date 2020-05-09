@@ -2,8 +2,6 @@
 
 /*!
 This crate defines the Ryvm specification format. TOML files satisfying the `Spec` structure are used to program a Ryvm state.
-
-All named fields not marked `Required<..>` are optional. Most optional fields have sensible defaults chosen.
 */
 
 mod action;
@@ -102,7 +100,7 @@ pub enum Spec {
     /// A wave synthesizer
     Wave {
         /// The waveform
-        form: Required<WaveForm>,
+        form: WaveForm,
         /// The base octave
         #[serde(
             default = "default::octave",
@@ -145,9 +143,9 @@ pub enum Spec {
     /// A low-pass filter
     Filter {
         /// The name of the input device
-        input: Required<Name>,
+        input: Name,
         /// The value that determines the filter's shape
-        value: Required<DynamicValue>,
+        value: DynamicValue,
         /// The type of filter
         #[serde(
             default = "default::filter_type",
@@ -158,7 +156,7 @@ pub enum Spec {
     /// A volume and pan balancer
     Balance {
         /// The name of the input device
-        input: Required<Name>,
+        input: Name,
         /// The volume
         #[serde(
             default = "default::volume",
@@ -172,7 +170,7 @@ pub enum Spec {
     /// A reverb simulator
     Reverb {
         /// The name of the input device
-        input: Required<Name>,
+        input: Name,
         /// The simulated room size
         #[serde(
             default = "default::room_size",

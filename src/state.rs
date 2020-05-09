@@ -116,6 +116,7 @@ impl State {
                 startup_path()?
             },
             None,
+            true,
         )?;
         Ok((
             state,
@@ -225,7 +226,13 @@ impl State {
     }
     /// Load a spec into the state
     #[allow(clippy::cognitive_complexity)]
-    fn load_spec(&mut self, name: Name, spec: Spec, channel: Option<u8>) -> RyvmResult<()> {
+    fn load_spec(
+        &mut self,
+        name: Name,
+        spec: Spec,
+        channel: Option<u8>,
+        do_load_specs: bool,
+    ) -> RyvmResult<()> {
         let channel = channel.unwrap_or(self.curr_channel);
         // Macro for initializting devices
         macro_rules! device {
@@ -252,7 +259,11 @@ impl State {
         }
         // Match over different spec types
         match spec {
-            Spec::Load(channel, path) => self.load_spec_map(path, Some(channel))?,
+            Spec::Load(channel, path) => {
+                if do_load_specs {
+                    self.load_spec_map(path, Some(channel), true)?
+                }
+            }
             Spec::Controller {
                 device,
                 gamepad,
@@ -473,7 +484,7 @@ impl State {
             }
             RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
-                self.load_spec_map_or_on_fly(name.as_str(), channel, false)?
+                self.load_spec_map_or_on_fly(name.as_str(), channel, false, true)?
             }
             RyvmCommand::Specs => {
                 open::that(specs_dir()?)?;
@@ -499,18 +510,16 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if the file cannot be opened or parsed or if a spec load fails
-    pub fn load_spec_map<P>(&mut self, name: P, channel: Option<u8>) -> RyvmResult<()>
+    pub fn load_spec_map<P>(
+        &mut self,
+        name: P,
+        channel: Option<u8>,
+        do_load_specs: bool,
+    ) -> RyvmResult<()>
     where
         P: AsRef<Path>,
     {
         let path = spec_path(name)?;
-        if self
-            .tracked_spec_maps
-            .get(&path)
-            .map_or(false, |ch| ch == &channel)
-        {
-            return Ok(());
-        }
         let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
         println!("Loading {:?}", path);
         // Open the file
@@ -529,7 +538,7 @@ impl State {
         }
         // Load each spec
         for (name, spec) in specs {
-            self.load_spec(name, spec, channel)?;
+            self.load_spec(name, spec, channel, do_load_specs)?;
         }
         Ok(())
     }
@@ -538,11 +547,12 @@ impl State {
         path: P,
         channel: Option<u8>,
         delay: bool,
+        do_load_specs: bool,
     ) -> RyvmResult<()>
     where
         P: AsRef<Path>,
     {
-        if let Err(e) = self.load_spec_map(&path, channel) {
+        if let Err(e) = self.load_spec_map(&path, channel, do_load_specs) {
             match FlyControl::find(&path, channel, delay) {
                 Ok(Some(fly)) => {
                     println!("Activate the control you would like to map");
@@ -728,7 +738,7 @@ impl State {
             match event.kind {
                 EventKind::Modify(_) => {
                     for path in event.paths {
-                        self.load_spec_map_or_on_fly(path, None, false)?;
+                        self.load_spec_map_or_on_fly(path, None, false, false)?;
                     }
                 }
                 EventKind::Remove(_) => {}
@@ -854,6 +864,7 @@ impl Iterator for State {
                                 fly_control.file,
                                 fly_control.channel,
                                 true,
+                                false,
                             ) {
                                 println!("{}", e);
                             }

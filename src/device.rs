@@ -391,8 +391,10 @@ const MIN_ENERGY: f32 = 0.5;
 
 fn waveform_energy(form: WaveForm) -> f32 {
     match form {
-        WaveForm::Sine => FRAC_2_PI,
+        WaveForm::Sine => 0.5,
         WaveForm::Square => 1.0,
-        WaveForm::Saw | WaveForm::Triangle | WaveForm::Noise => 0.5,
+        WaveForm::Saw => 0.6,
+        WaveForm::Triangle => 0.5,
+        WaveForm::Noise => 0.5,
     }
 }

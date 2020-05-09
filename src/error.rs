@@ -1,5 +1,6 @@
 use std::io;
 
+use ryvm_spec::Name;
 use structopt::clap;
 use thiserror::Error;
 
@@ -40,7 +41,13 @@ pub enum RyvmError {
     StateDropped,
     /// An error with audio input
     #[error("Input error: {0}")]
-    Input(#[from] InputError),
+    InputDevice(#[from] InputError),
+    /// A device that requires input was not assigned it
+    #[error(
+        "No input specified for {0}. It must either have the \
+        'input' field specified or be listed after another device."
+    )]
+    NoInputSpecified(Name),
 }
 
 /// The Ryvm result type

@@ -143,7 +143,7 @@ pub enum Spec {
     /// A low-pass filter
     Filter {
         /// The name of the input device
-        input: Name,
+        input: Option<Name>,
         /// The value that determines the filter's shape
         value: DynamicValue,
         /// The type of filter
@@ -156,7 +156,7 @@ pub enum Spec {
     /// A volume and pan balancer
     Balance {
         /// The name of the input device
-        input: Name,
+        input: Option<Name>,
         /// The volume
         #[serde(
             default = "default::volume",
@@ -170,7 +170,7 @@ pub enum Spec {
     /// A reverb simulator
     Reverb {
         /// The name of the input device
-        input: Name,
+        input: Option<Name>,
         /// The simulated room size
         #[serde(
             default = "default::room_size",

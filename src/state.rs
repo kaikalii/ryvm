@@ -213,6 +213,7 @@ impl State {
         name: Name,
         spec: Spec,
         channel: Option<u8>,
+        last_name: Option<Name>,
         do_load_specs: bool,
     ) -> RyvmResult<()> {
         // Macro for initializting devices
@@ -242,6 +243,14 @@ impl State {
                     unreachable!()
                 }
             }};
+        }
+        // Macro for ensuring input is given
+        macro_rules! get_input {
+            ($input:expr) => {
+                $input
+                    .or(last_name)
+                    .ok_or(RyvmError::NoInputSpecified(name))?
+            };
         }
         // Match over different spec types
         match spec {
@@ -366,12 +375,14 @@ impl State {
                 value,
                 filter: filter_type,
             } => {
+                let input = get_input!(input);
                 let filter = device!(Filter, || Device::new_filter(input, value, filter_type));
                 filter.input = input;
                 filter.value = value;
                 filter.set_type(filter_type);
             }
             Spec::Balance { input, volume, pan } => {
+                let input = get_input!(input);
                 let balance = device!(Balance, || Device::new_balance(input));
                 balance.input = input;
                 balance.volume = volume;
@@ -382,6 +393,7 @@ impl State {
                 size,
                 energy_mul,
             } => {
+                let input = get_input!(input);
                 let reverb = device!(Reverb, || Device::new_reverb(input));
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
@@ -534,8 +546,10 @@ impl State {
             channel.retain(|name, _| specs.contains_key(name));
         }
         // Load each spec
+        let mut last_name = None;
         for (name, spec) in specs {
-            self.load_spec(name, spec, channel, do_load_specs)?;
+            self.load_spec(name, spec, channel, last_name, do_load_specs)?;
+            last_name = Some(name);
         }
         Ok(())
     }

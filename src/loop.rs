@@ -38,6 +38,7 @@ pub struct Loop {
     pub loop_state: LoopState,
     i: f32,
     last_i: f32,
+    speed: f32,
 }
 
 impl From<LoopDef> for Loop {
@@ -50,6 +51,7 @@ impl From<LoopDef> for Loop {
             loop_state: LoopState::Disabled,
             i: 0.0,
             last_i: 0.0,
+            speed: 1.0,
         }
     }
 }
@@ -73,6 +75,7 @@ impl Loop {
             loop_state: LoopState::Recording,
             i: 0.0,
             last_i: 0.0,
+            speed: 1.0,
         }
     }
     pub fn i(&self) -> f32 {
@@ -81,6 +84,9 @@ impl Loop {
     pub fn set_i(&mut self, i: f32) {
         self.i = i;
         self.last_i = i;
+    }
+    pub fn set_speed(&mut self, speed: f32) {
+        self.speed = speed;
     }
     pub fn record(&mut self, new_controls: ControlsMap) {
         if self.loop_state == LoopState::Recording {
@@ -100,9 +106,11 @@ impl Loop {
     /// Get the map of controls for the current frame
     pub fn controls(&mut self, state_tempo: f32, period: Option<f32>) -> Option<ControlsMap> {
         let res = if self.loop_state == LoopState::Playing {
+            let period = period.expect("Playing loop was not supplied a period");
+            let i = (self.i * self.speed) % period;
             let mut combined_map = HashMap::new();
-            if self.last_i <= self.i {
-                for (_, controls) in self.controls.range(Float(self.last_i)..Float(self.i)) {
+            if self.last_i <= i {
+                for (_, controls) in self.controls.range(Float(self.last_i)..Float(i)) {
                     for (key, list) in controls {
                         combined_map
                             .entry(*key)
@@ -114,7 +122,7 @@ impl Loop {
                 for (_, controls) in self
                     .controls
                     .range(Float(self.last_i)..)
-                    .chain(self.controls.range(..Float(self.i)))
+                    .chain(self.controls.range(..Float(i)))
                 {
                     for (key, list) in controls {
                         combined_map
@@ -129,7 +137,11 @@ impl Loop {
             None
         };
         if self.started {
-            self.last_i = self.i;
+            self.last_i = if let Some(period) = period {
+                (self.i * self.speed) % period
+            } else {
+                self.i
+            };
             self.i += state_tempo;
             let period = period.map(|p| p * self.length);
             if let Some(period) = period {

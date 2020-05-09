@@ -95,6 +95,14 @@ pub enum ValuedAction {
     Tempo,
     /// Sets the master volume
     MasterVolume,
+    /// Set the playback speed of a loop.
+    ///
+    /// Only uses multiples of 2.
+    /// 0-1 maps to 1-8
+    LoopSpeed {
+        /// The number of the loop
+        num: u8,
+    },
 }
 
 /// A slider or knob to map a valued action to

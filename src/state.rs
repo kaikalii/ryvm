@@ -657,7 +657,8 @@ impl State {
                 controller,
                 number,
                 bounds,
-            } => {
+                default,
+            } => (|| {
                 let port = if let Supplied(controller) = controller {
                     *self.midi_names.get(controller)?
                 } else {
@@ -671,7 +672,8 @@ impl State {
                 };
                 let (min, max) = bounds;
                 Some(f32::from(value) / 127.0 * (max - min) + min)
-            }
+            })()
+            .or_else(|| Option::from(*default)),
             DynamicValue::Output(name) => self
                 .channels
                 .get(&ch)

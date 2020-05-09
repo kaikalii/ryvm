@@ -70,6 +70,9 @@ pub enum DynamicValue {
             skip_serializing_if = "default::is_bounds"
         )]
         bounds: (f32, f32),
+        /// The default value that will be used before the control is touched
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        default: Optional<f32>,
     },
     /// The value output by another device
     Output(Name),

@@ -219,5 +219,3 @@ impl Iterator for ButtonRange {
 
 /// A mapping of action ranges
 pub type ButtonRanges = Vec<Mapping<ActionRange, ButtonRange>>;
-#[doc(hidden)]
-pub type ButtonRangesMap = BiMap<ActionRange, ButtonRange>;

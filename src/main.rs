@@ -4,7 +4,7 @@ macro_rules! mods {
 
 mods!(
     app, channel, device, drum, envelope, error, gamepad, input, library, r#loop, midi, onfly,
-    state, track, utility
+    spec, state, track, utility
 );
 
 use std::{

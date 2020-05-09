@@ -4,10 +4,12 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, PortInfoError, SendError,
 };
 use rand::random;
-use ryvm_spec::{Action, Button, ButtonsMap, Name, Slider, SlidersMap, ValuedAction};
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
+use crate::{
+    event_to_midi_message, Action, Button, ButtonsMap, CloneCell, CloneLock, Name, Slider,
+    SlidersMap, ValuedAction, GAMEPADS,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Port {

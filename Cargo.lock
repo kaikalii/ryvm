@@ -57,15 +57,6 @@ checksum = "1b20b618342cf9891c292c4f5ac2cde7287cc5c87e87e9c769d617793607dec1"
 
 [[package]]
 name = "base64"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b25d992356d2eb0ed82172f5248873db5560c4721f564b13cb5193bda5e668e"
-dependencies = [
- "byteorder",
-]
-
-[[package]]
-name = "base64"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b41b7ea54a0c9d92199de89e20e58d49f02f8e699814ef3fdf266f6f748d15c7"
@@ -77,7 +68,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "783204f24fd7724ea274d327619cfa6a6018047bb0561a68aadff6f56787591b"
 dependencies = [
  "cfg-if",
- "serde",
 ]
 
 [[package]]
@@ -1071,17 +1061,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ron"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ece421e0c4129b90e4a35b6f625e472e96c552136f5093a2f4fa2bbb75a62d5"
-dependencies = [
- "base64 0.10.1",
- "bitflags 1.2.1",
- "serde",
-]
-
-[[package]]
 name = "ropey"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1096,7 +1075,7 @@ version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bc8af4bda8e1ff4932523b94d3dd20ee30a87232323eda55903ffd71d2fb017"
 dependencies = [
- "base64 0.11.0",
+ "base64",
  "blake2b_simd",
  "constant_time_eq",
  "crossbeam-utils",
@@ -1138,6 +1117,8 @@ checksum = "ed3d612bc64430efeb3f7ee6ef26d590dce0c43249217bddc62112540c7941e1"
 name = "ryvm"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
+ "bimap",
  "cpal",
  "crossbeam-channel",
  "crossbeam-utils",
@@ -1153,25 +1134,12 @@ dependencies = [
  "rand 0.7.3",
  "rodio",
  "ropey",
- "ryvm_spec",
  "serde",
  "serde_cbor",
  "serde_derive",
  "structopt",
  "thiserror",
  "toml",
-]
-
-[[package]]
-name = "ryvm_spec"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "bimap",
- "indexmap",
- "ron",
- "serde",
- "serde_derive",
 ]
 
 [[package]]
@@ -1203,9 +1171,6 @@ name = "serde"
 version = "1.0.106"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36df6ac6412072f67cf767ebbde4133a5b2e88e76dc6187fa7104cd16f783399"
-dependencies = [
- "serde_derive",
-]
 
 [[package]]
 name = "serde_cbor"

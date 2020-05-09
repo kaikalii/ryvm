@@ -5,9 +5,8 @@ use std::{
 };
 
 use ropey::Rope;
-use ryvm_spec::{default, DynamicValue, Name};
 
-use crate::{Control, RyvmResult};
+use crate::{default, Control, DynamicValue, Name, RyvmResult};
 
 #[derive(Debug, Clone)]
 pub struct FlyControl {

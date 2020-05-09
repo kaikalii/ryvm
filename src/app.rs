@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use ryvm_spec::Name;
 use structopt::StructOpt;
+
+use crate::Name;
 
 /// A Ryvm CLI command
 #[derive(Debug, StructOpt)]

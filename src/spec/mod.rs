@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 /*!
 This crate defines the Ryvm specification format. TOML files satisfying the `Spec` structure are used to program a Ryvm state.
 */

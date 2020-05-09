@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use ryvm_spec::{default, DynamicValue};
-
-use crate::Control;
+use crate::{default, Control, DynamicValue};
 
 /// A set of values defining an attack-decay-sustain-release envelope
 #[derive(Debug, Clone, Copy, PartialEq)]

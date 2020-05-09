@@ -13,14 +13,14 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::{DeviceTrait, Source};
-use ryvm_spec::{Action, ButtonsMap, DynamicValue, Name, SlidersMap, Spec, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
     loop_path, loops_dir, name_from_str, parse_commands, samples_dir, spec_path, specs_dir,
-    startup_path, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, InputDevice,
-    InputError, InputManager, Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand,
-    OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, Voice,
+    startup_path, Action, ButtonsMap, Channel, CloneLock, Control, Device, DynamicValue,
+    FlyControl, Frame, FrameCache, InputDevice, InputError, InputManager, Loop, LoopMaster,
+    LoopState, LoopSubcommand, Midi, MidiSubCommand, Name, OutputSubcommand, Port, RyvmCommand,
+    RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
 };
 
 #[derive(Default)]

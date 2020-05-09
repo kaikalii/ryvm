@@ -1,10 +1,9 @@
 use std::io;
 
-use ryvm_spec::Name;
 use structopt::clap;
 use thiserror::Error;
 
-use crate::{InputError, MidiError};
+use crate::{InputError, MidiError, Name};
 
 /// The Ryvm error type
 #[derive(Debug, Error)]

@@ -4,9 +4,7 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use ryvm_spec::Name;
-
-use crate::{name_from_str, Control, Device, Port, State};
+use crate::{name_from_str, Control, Device, Name, Port, State};
 
 /// A midi channel that can contain many devices
 #[derive(Debug, Default)]

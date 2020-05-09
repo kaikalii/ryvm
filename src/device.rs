@@ -1,11 +1,10 @@
 use std::{collections::VecDeque, f32::consts::PI, iter::once, path::PathBuf};
 
 use rand::random;
-use ryvm_spec::{DynamicValue, FilterType, Name, WaveForm};
 
 use crate::{
-    ActiveSampling, Channel, CloneCell, CloneLock, Control, Enveloper, Frame, FrameCache, Letter,
-    State, Voice, ADSR,
+    ActiveSampling, Channel, CloneCell, CloneLock, Control, DynamicValue, Enveloper, FilterType,
+    Frame, FrameCache, Letter, Name, State, Voice, WaveForm, ADSR,
 };
 
 /// A virtual audio processing device

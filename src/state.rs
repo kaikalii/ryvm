@@ -363,6 +363,15 @@ impl State {
                 balance.volume = volume;
                 balance.pan = pan;
             }
+            Spec::Reverb {
+                input,
+                size,
+                energy_mul,
+            } => {
+                let reverb = device!(Reverb, || Device::new_reverb(input.0));
+                reverb.size = size;
+                reverb.energy_mul = energy_mul;
+            }
         }
         Ok(())
     }

@@ -84,3 +84,17 @@ default! {
     filter_type;
     is_filter_type;
 }
+
+default! {
+    /// The default reverb room size
+    const ROOM_SIZE: DynamicValue = DynamicValue::Static(1.0);
+    room_size;
+    is_room_size;
+}
+
+default! {
+    /// The default reverb room size
+    const ENERGY_MUL: DynamicValue = DynamicValue::Static(0.5);
+    energy_mul;
+    is_energy_mul;
+}

@@ -24,6 +24,8 @@ pub enum Device {
     Filter(Filter),
     /// A volume and pan balancer
     Balance(Balance),
+    /// A reverb simulator
+    Reverb(Reverb),
 }
 
 /// A wave synthesizer
@@ -112,6 +114,17 @@ pub struct Balance {
     pub pan: DynamicValue,
 }
 
+const SPEED_OF_SOUND: f32 = 340.27;
+
+/// A reverb simulator
+#[derive(Debug, Clone)]
+pub struct Reverb {
+    pub input: Name,
+    pub size: DynamicValue,
+    pub energy_mul: DynamicValue,
+    frames: CloneLock<VecDeque<Voice>>,
+}
+
 impl Device {
     /// Create a new wave
     #[must_use]
@@ -149,6 +162,16 @@ impl Device {
             input,
             volume: DynamicValue::Static(1.0),
             pan: DynamicValue::Static(0.0),
+        })
+    }
+    /// Create a new reverb
+    #[must_use]
+    pub fn new_reverb(input: Name) -> Self {
+        Device::Reverb(Reverb {
+            input,
+            size: DynamicValue::Static(1.0),
+            energy_mul: DynamicValue::Static(0.5),
+            frames: CloneLock::new(VecDeque::new()),
         })
     }
     pub fn next(
@@ -309,6 +332,29 @@ impl Device {
 
                 frame * pan * volume
             }
+            // Reverb
+            Device::Reverb(reverb) => {
+                let input_frame = channel.next_from(channel_num, &reverb.input, state, cache);
+                let size = state
+                    .resolve_dynamic_value(&reverb.size, channel_num, cache)
+                    .unwrap_or(1.0)
+                    * 10.0;
+                let energy_mul = state
+                    .resolve_dynamic_value(&reverb.energy_mul, channel_num, cache)
+                    .unwrap_or(0.5);
+                let return_time = size * 2.0 / SPEED_OF_SOUND;
+                let return_frame_count = (return_time * state.sample_rate as f32) as usize;
+                let mut frames = reverb.frames.lock();
+                let mut reverbed = Voice::SILENT;
+                while frames.len() > return_frame_count {
+                    if let Some(voice) = frames.pop_front() {
+                        reverbed = voice;
+                    }
+                }
+                let output = input_frame + reverbed;
+                frames.push_back(output * energy_mul);
+                output
+            }
         }
     }
     pub fn end_envelopes(&mut self, id: u64) {
@@ -331,6 +377,10 @@ impl Device {
                 .collect(),
             Device::Filter(filter) => once(filter.input.as_str())
                 .chain(filter.value.input())
+                .collect(),
+            Device::Reverb(reverb) => once(reverb.input.as_str())
+                .chain(reverb.size.input())
+                .chain(reverb.energy_mul.input())
                 .collect(),
             _ => Vec::new(),
         }

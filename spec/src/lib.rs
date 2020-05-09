@@ -154,4 +154,21 @@ pub enum Spec {
         #[serde(default = "default::pan", skip_serializing_if = "default::is_pan")]
         pan: DynamicValue,
     },
+    /// A reverb simulator
+    Reverb {
+        /// The name of the input device
+        input: Required<Name>,
+        /// The simulated room size
+        #[serde(
+            default = "default::room_size",
+            skip_serializing_if = "default::is_room_size"
+        )]
+        size: DynamicValue,
+        /// The simulated energy multiplier
+        #[serde(
+            default = "default::energy_mul",
+            skip_serializing_if = "default::is_energy_mul"
+        )]
+        energy_mul: DynamicValue,
+    },
 }

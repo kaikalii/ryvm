@@ -92,6 +92,8 @@ pub enum RyvmCommand {
         #[structopt(long, short, help = "Immediately start playing the loop")]
         play: bool,
     },
+    #[structopt(about = "List all available audio input devices")]
+    Inputs,
 }
 
 #[derive(Debug, StructOpt)]

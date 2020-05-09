@@ -3,7 +3,7 @@ use std::io;
 use structopt::clap;
 use thiserror::Error;
 
-use crate::MidiError;
+use crate::{InputError, MidiError};
 
 /// The Ryvm error type
 #[derive(Debug, Error)]
@@ -38,6 +38,9 @@ pub enum RyvmError {
     /// The Ryvm state was dropped
     #[error("Attempted to send a command to a dropped ryvm state")]
     StateDropped,
+    /// An error with audio input
+    #[error("Input error: {0}")]
+    Input(#[from] InputError),
 }
 
 /// The Ryvm result type

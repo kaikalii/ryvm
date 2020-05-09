@@ -1,9 +1,4 @@
-use std::{
-    collections::VecDeque,
-    f32::consts::{FRAC_2_PI, PI},
-    iter::once,
-    path::PathBuf,
-};
+use std::{collections::VecDeque, f32::consts::PI, iter::once, path::PathBuf};
 
 use rand::random;
 use ryvm_spec::{DynamicValue, FilterType, Name, WaveForm};

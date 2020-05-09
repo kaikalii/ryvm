@@ -87,6 +87,14 @@ pub enum Spec {
         #[serde(default, skip_serializing_if = "ButtonRanges::is_empty")]
         ranges: ButtonRanges,
     },
+    /// An audio input device
+    Input {
+        /// The name of the input device (devices can be listed with the `inputs` command)
+        ///
+        /// If this field is not specified, the default input device will be chosen
+        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
+        name: Optional<String>,
+    },
     /// A wave synthesizer
     Wave {
         /// The waveform

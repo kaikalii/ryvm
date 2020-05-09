@@ -18,9 +18,9 @@ use structopt::StructOpt;
 
 use crate::{
     loop_path, loops_dir, name_from_str, parse_commands, samples_dir, spec_path, specs_dir,
-    startup_path, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, Loop,
-    LoopMaster, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample,
-    Voice,
+    startup_path, Channel, CloneLock, Control, Device, FlyControl, Frame, FrameCache, InputDevice,
+    InputManager, Loop, LoopMaster, LoopState, Midi, MidiSubCommand, Port, RyvmCommand, RyvmError,
+    RyvmResult, Sample, Voice,
 };
 
 #[derive(Default)]
@@ -62,6 +62,8 @@ pub struct State {
     fly_control: Option<FlyControl>,
     send: mpmc::Sender<RyvmResult<bool>>,
     recv: mpmc::Receiver<String>,
+    input_manager: InputManager,
+    inputs: HashMap<Name, InputDevice>,
 }
 
 impl State {
@@ -103,6 +105,8 @@ impl State {
             fly_control: None,
             send,
             recv,
+            input_manager: InputManager::new(),
+            inputs: HashMap::new(),
         };
         // Load startup
         state.load_spec_map(
@@ -322,6 +326,10 @@ impl State {
                     self.default_midi = Some(port);
                 }
             }
+            Spec::Input { name: device_name } => {
+                let input = self.input_manager.add_device(device_name.into())?;
+                self.inputs.insert(name, input);
+            }
             Spec::Wave {
                 form,
                 octave,
@@ -469,6 +477,11 @@ impl State {
             }
             RyvmCommand::LoopSave { num, name } => self.save_loop(num, name)?,
             RyvmCommand::LoopLoad { name, num, play } => self.load_loop(name, num, play)?,
+            RyvmCommand::Inputs => {
+                for (i, name) in self.input_manager.device_names()?.into_iter().enumerate() {
+                    println!("{}. {}", i, name);
+                }
+            }
         }
         Ok(())
     }

@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::File,
+    fs::{self, File},
     iter::once,
     mem::{discriminant, swap},
     path::{Path, PathBuf},
@@ -13,7 +13,7 @@ use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use rodio::Source;
-use ryvm_spec::{Action, DynamicValue, Name, Spec, Supplied, ValuedAction};
+use ryvm_spec::{Action, ButtonsMap, DynamicValue, Name, SlidersMap, Spec, ValuedAction};
 use structopt::StructOpt;
 
 use crate::{
@@ -245,7 +245,7 @@ impl State {
         }
         // Match over different spec types
         match spec {
-            Spec::Load(channel, path) => {
+            Spec::Load { channel, path } => {
                 if do_load_specs {
                     self.load_spec_map(path, Some(channel), true)?
                 }
@@ -255,12 +255,16 @@ impl State {
                 gamepad,
                 output_channel,
                 non_globals,
-                mut buttons,
-                sliders,
-                ranges,
+                button,
+                slider,
+                range,
             } => {
-                for (button_range, action_range) in ranges {
-                    for (button, action) in button_range.zip(action_range) {
+                let mut buttons: ButtonsMap =
+                    button.into_iter().map(|m| (m.action, m.control)).collect();
+                let sliders: SlidersMap =
+                    slider.into_iter().map(|m| (m.action, m.control)).collect();
+                for mapping in range {
+                    for (button, action) in mapping.action.zip(mapping.control) {
                         buttons.insert(button, action);
                     }
                 }
@@ -269,14 +273,8 @@ impl State {
                     let port = Port::Gamepad(id);
                     let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
                     let removed = last_notes.is_some();
-                    let mut midi = Midi::new_gamepad(
-                        name,
-                        id,
-                        output_channel.into(),
-                        non_globals,
-                        buttons,
-                        sliders,
-                    );
+                    let mut midi =
+                        Midi::new_gamepad(name, id, output_channel, non_globals, buttons, sliders);
                     midi.last_notes = last_notes.unwrap_or_default();
                     println!(
                         "{}nitialized {} on port {:?}",
@@ -286,7 +284,7 @@ impl State {
                     );
                     (port, midi)
                 } else {
-                    let port_num = if let Supplied(device) = device {
+                    let port_num = if let Some(device) = device {
                         if let Some(port) = Midi::port_matching(&device)? {
                             port
                         } else {
@@ -301,7 +299,7 @@ impl State {
                     let mut midi = Midi::new(
                         name,
                         port_num,
-                        output_channel.into(),
+                        output_channel,
                         non_globals,
                         buttons,
                         sliders,
@@ -326,7 +324,7 @@ impl State {
             Spec::Input { name: device_name } => {
                 let input = self
                     .input_manager
-                    .add_device(device_name.into(), self.sample_rate)?;
+                    .add_device(device_name, self.sample_rate)?;
                 let removed = self.inputs.remove(&name).is_some();
                 println!(
                     "{}nitialized {} ({})",
@@ -354,7 +352,7 @@ impl State {
                 wave.adsr.release = release;
                 wave.pitch_bend_range = bend;
             }
-            Spec::Drums(paths) => {
+            Spec::Drums { paths } => {
                 let drums = device!(DrumMachine, || Device::new_drum_machine());
                 for path in paths.clone() {
                     self.sample_bank.start(path);
@@ -364,12 +362,12 @@ impl State {
             Spec::Filter {
                 input,
                 value,
-                r#type,
+                filter: filter_type,
             } => {
-                let filter = device!(Filter, || Device::new_filter(input.0, value.0, r#type));
+                let filter = device!(Filter, || Device::new_filter(input.0, value.0, filter_type));
                 filter.input = input.0;
                 filter.value = value.0;
-                filter.set_type(r#type);
+                filter.set_type(filter_type);
             }
             Spec::Balance { input, volume, pan } => {
                 let balance = device!(Balance, || Device::new_balance(input.0));
@@ -519,12 +517,12 @@ impl State {
         let path = spec_path(name)?;
         let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
         println!("Loading {:?}", path);
-        // Open the file
-        let file = File::open(&path)?;
+        // Load the bytes
+        let bytes = fs::read(&path)?;
         // The file at least exists, so the path can be added to the watcher
         self.watcher.watch(&path, RecursiveMode::NonRecursive)?;
         // Deserialize the data
-        let specs = ron::de::from_reader::<_, IndexMap<Name, Spec>>(file)?;
+        let specs = toml::from_slice::<IndexMap<Name, Spec>>(&bytes)?;
 
         // Add the path to the list of tracked maps
         self.tracked_spec_maps.insert(path, channel);
@@ -684,25 +682,25 @@ impl State {
             DynamicValue::Static(f) => Some(*f),
             DynamicValue::Control {
                 controller,
-                number,
+                index,
                 bounds,
                 default,
             } => (|| {
-                let port = if let Supplied(controller) = controller {
+                let port = if let Some(controller) = controller {
                     *self.midi_names.get(controller)?
                 } else {
                     self.default_midi?
                 };
                 let midi = self.midis.get(&port)?;
-                let value = if midi.control_is_global(number.0) {
-                    *self.global_controls.get(&(port, number.0))?
+                let value = if midi.control_is_global(index.0) {
+                    *self.global_controls.get(&(port, index.0))?
                 } else {
-                    *self.controls.get(&(port, ch, number.0))?
+                    *self.controls.get(&(port, ch, index.0))?
                 };
                 let (min, max) = bounds;
                 Some(f32::from(value) / 127.0 * (max - min) + min)
             })()
-            .or_else(|| Option::from(*default)),
+            .or(*default),
             DynamicValue::Output(name) => self
                 .channels
                 .get(&ch)
@@ -793,29 +791,29 @@ impl Iterator for State {
                         self.cancel_recording();
                         None
                     }
-                    Action::RecordLoop(num) => {
+                    Action::RecordLoop { num } => {
                         self.start_loop(Some(num), None);
                         None
                     }
-                    Action::PlayLoop(num) => {
+                    Action::PlayLoop { num } => {
                         if let Some(lup) = self.loops.get_mut(&num) {
                             lup.loop_state = LoopState::Playing;
                         }
                         None
                     }
-                    Action::StopLoop(num) => {
+                    Action::StopLoop { num } => {
                         self.stop_loop(num);
                         None
                     }
-                    Action::ToggleLoop(num) => {
+                    Action::ToggleLoop { num } => {
                         self.toggle_loop(num);
                         None
                     }
-                    Action::Drum(ch, num) => {
+                    Action::Drum { channel: ch, index } => {
                         channel = ch;
-                        Some(Control::Pad(num, vel))
+                        Some(Control::Pad(index, vel))
                     }
-                    Action::SetOutputChannel(name, ch) => {
+                    Action::SetOutputChannel { name, channel: ch } => {
                         if let Some(midi) = self
                             .midi_names
                             .get(&name)

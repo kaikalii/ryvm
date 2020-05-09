@@ -16,10 +16,10 @@ pub enum RyvmError {
     Midi(#[from] MidiError),
     /// A serialization error
     #[error("Fatal serilization error: {0}")]
-    Serialization(#[from] ron::ser::Error),
+    Serialization(#[from] toml::ser::Error),
     /// A deserialization error
     #[error("Syntax error: {0}")]
-    Deserialization(#[from] ron::de::Error),
+    Deserialization(#[from] toml::de::Error),
     /// A command line error
     #[error("{0}")]
     CLI(#[from] clap::Error),

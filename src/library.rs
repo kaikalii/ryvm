@@ -25,7 +25,7 @@ pub fn loops_dir() -> io::Result<PathBuf> {
 }
 
 pub fn startup_path() -> io::Result<PathBuf> {
-    let path = specs_dir()?.join("startup.ron");
+    let path = specs_dir()?.join("startup.toml");
     if !path.exists() {
         println!("Startup spec does not exists. Creating it...");
         fs::write(&path, b"{\n\t\n}\n")?;
@@ -49,7 +49,7 @@ where
     Ok(specs_dir()?
         .canonicalize()?
         .join(name)
-        .with_extension("ron"))
+        .with_extension("toml"))
 }
 
 pub fn loop_path<P>(name: P) -> io::Result<PathBuf>

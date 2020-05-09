@@ -5,7 +5,7 @@ use std::{
 };
 
 use ropey::Rope;
-use ryvm_spec::{default, DynamicValue, Name, Omitted};
+use ryvm_spec::{default, DynamicValue, Name};
 
 use crate::{Control, RyvmResult};
 
@@ -56,17 +56,15 @@ impl FlyControl {
         if let Control::Control(i, _) = control {
             // Create control value
             let value = DynamicValue::Control {
-                controller: name().into(),
-                number: i.into(),
+                controller: name(),
+                index: i.into(),
                 bounds: default::BOUNDS,
-                default: Omitted,
+                default: None,
             };
             // Serialize control value
-            let mut config = ron::ser::PrettyConfig::default();
-            config.new_line = " ".into();
-            config.indentor = "".into();
-            let mut value_str = ron::ser::to_string_pretty(&value, config)?;
-            value_str.push(',');
+            let mut value_str = "{ ".to_string();
+            value_str.push_str(&toml::to_string(&value)?.trim());
+            value_str.push_str(" }");
             // Insert control string
             self.rope
                 .remove(self.index..(self.index + FLY_PATTERN.len()));

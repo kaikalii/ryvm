@@ -4,7 +4,7 @@ use midir::{
     ConnectErrorKind, Ignore, InitError, MidiInput, MidiInputConnection, PortInfoError, SendError,
 };
 use rand::random;
-use ryvm_spec::{Action, Button, Buttons, Name, Slider, Sliders, ValuedAction};
+use ryvm_spec::{Action, Button, ButtonsMap, Name, Slider, SlidersMap, ValuedAction};
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{event_to_midi_message, CloneCell, CloneLock, GAMEPADS};
@@ -47,8 +47,8 @@ impl Control {
         port: usize,
         output_channel: Option<u8>,
         monitor: bool,
-        buttons: &Buttons,
-        sliders: &Sliders,
+        buttons: &ButtonsMap,
+        sliders: &SlidersMap,
     ) -> Option<(u8, Control)> {
         if data[0] == TIMING {
             return None;
@@ -99,8 +99,8 @@ impl Control {
 }
 
 fn check_buttons<F>(
-    buttons: &Buttons,
-    sliders: &Sliders,
+    buttons: &ButtonsMap,
+    sliders: &SlidersMap,
     status: u8,
     channel: u8,
     d1: u8,
@@ -111,23 +111,23 @@ where
     F: FnOnce() -> Control,
 {
     match (status, d1, d2) {
-        (CONTROL, n, v) => {
-            if let Some(action) = buttons.get_by_right(&Button::Control(n)) {
+        (CONTROL, index, v) => {
+            if let Some(action) = buttons.get_by_right(&Button::Control { index }) {
                 if v == 0 {
                     None
                 } else {
                     Some(Control::Action(*action, 0x7f))
                 }
-            } else if let Some(val_action) = sliders.get_by_right(&Slider::Control(n)) {
+            } else if let Some(val_action) = sliders.get_by_right(&Slider::Control { index }) {
                 Some(Control::ValuedAction(*val_action, v))
             } else {
                 Some(otherwise())
             }
         }
-        (NOTE_START, n, v) => {
+        (NOTE_START, index, v) => {
             if let Some(action) = buttons
-                .get_by_right(&Button::Note(n))
-                .or_else(|| buttons.get_by_right(&Button::ChannelNote(channel, n)))
+                .get_by_right(&Button::Note { index })
+                .or_else(|| buttons.get_by_right(&Button::ChannelNote { channel, index }))
             {
                 if v == 0 {
                     None
@@ -138,9 +138,9 @@ where
                 Some(otherwise())
             }
         }
-        (NOTE_END, n, _) => {
-            if buttons.contains_right(&Button::Note(n))
-                || buttons.contains_right(&Button::ChannelNote(channel, n))
+        (NOTE_END, index, _) => {
+            if buttons.contains_right(&Button::Note { index })
+                || buttons.contains_right(&Button::ChannelNote { channel, index })
             {
                 None
             } else {
@@ -199,8 +199,8 @@ struct MidiInputState {
     queue: ControlQueue,
     monitor: Arc<CloneCell<bool>>,
     output_channel: Option<Arc<CloneCell<u8>>>,
-    buttons: Buttons,
-    sliders: Sliders,
+    buttons: ButtonsMap,
+    sliders: SlidersMap,
 }
 
 enum GenericInput {
@@ -269,8 +269,8 @@ impl Midi {
         port: usize,
         output_channel: Option<u8>,
         non_globals: Vec<u8>,
-        buttons: Buttons,
-        sliders: Sliders,
+        buttons: ButtonsMap,
+        sliders: SlidersMap,
     ) -> Result<Midi, MidiError> {
         let mut midi_in = MidiInput::new(&format!("Ryvm - {}", name))?;
         midi_in.ignore(Ignore::Time);
@@ -322,8 +322,8 @@ impl Midi {
         port: usize,
         output_channel: Option<u8>,
         non_globals: Vec<u8>,
-        buttons: Buttons,
-        sliders: Sliders,
+        buttons: ButtonsMap,
+        sliders: SlidersMap,
     ) -> Midi {
         let state = MidiInputState {
             queue: ControlQueue::Gamepad(port),

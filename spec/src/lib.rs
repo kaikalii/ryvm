@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 
 /*!
-This crate defines the Ryvm specification format. RON files satisfying the `Spec` structure are used to program a Ryvm state.
+This crate defines the Ryvm specification format. TOML files satisfying the `Spec` structure are used to program a Ryvm state.
 
 All named fields not marked `Required<..>` are optional. Most optional fields have sensible defaults chosen.
 */
@@ -18,21 +18,26 @@ use serde_derive::{Deserialize, Serialize};
 
 /// A specification for a Ryvm item
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", deny_unknown_fields, tag = "type")]
 #[allow(clippy::large_enum_variant)]
 pub enum Spec {
     /// Load into the given channel the spec file with the given path (relative to the specs directory)
-    Load(u8, PathBuf),
+    Load {
+        /// The channel
+        channel: u8,
+        /// The path
+        path: PathBuf,
+    },
     /// A midi controller
     Controller {
         /// The name of the midi device
-        device: Optional<String>,
+        device: Option<String>,
         /// The midi channel to which this device should output.
         ///
         /// Only speficy this for devices which cannot select their own channels.
         /// This is evaluated before all other other channel mappings.
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        output_channel: Optional<u8>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        output_channel: Option<u8>,
         /// Set this to true if the controller is actually a gamepad
         ///
         /// Controls on the gamepad are mapped to midi controls.
@@ -79,21 +84,21 @@ pub enum Spec {
         non_globals: Vec<u8>,
         /// A mapping of buttons on this controller to Ryvm actions
         #[serde(default, skip_serializing_if = "Buttons::is_empty")]
-        buttons: Buttons,
+        button: Buttons,
         /// A mapping of sliders or knobs on this controller to Ryvm  valued actions
         #[serde(default, skip_serializing_if = "Sliders::is_empty")]
-        sliders: Sliders,
+        slider: Sliders,
         /// A mapping of button ranges on this controller to ranges of Ryvm actions
         #[serde(default, skip_serializing_if = "ButtonRanges::is_empty")]
-        ranges: ButtonRanges,
+        range: ButtonRanges,
     },
     /// An audio input device
     Input {
         /// The name of the input device (devices can be listed with the `inputs` command)
         ///
         /// If this field is not specified, the default input device will be chosen
-        #[serde(default, skip_serializing_if = "Optional::is_omitted")]
-        name: Optional<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     /// A wave synthesizer
     Wave {
@@ -134,7 +139,10 @@ pub enum Spec {
         bend: DynamicValue,
     },
     /// A drum machine with a list of paths to sample files
-    Drums(Vec<PathBuf>),
+    Drums {
+        /// The paths to the sample audio files (relative to the ryvm samples directory)
+        paths: Vec<PathBuf>,
+    },
     /// A low-pass filter
     Filter {
         /// The name of the input device
@@ -146,7 +154,7 @@ pub enum Spec {
             default = "default::filter_type",
             skip_serializing_if = "default::is_filter_type"
         )]
-        r#type: FilterType,
+        filter: FilterType,
     },
     /// A volume and pan balancer
     Balance {

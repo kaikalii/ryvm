@@ -111,7 +111,7 @@ impl InputManager {
         let device = if let Some(name) = name {
             self.host
                 .input_devices()?
-                .find(|dev| dev.name().unwrap() == name)
+                .find(|dev| dev.name().unwrap().contains(&name))
                 .ok_or_else(|| InputError::UnknownDevice(name))?
         } else {
             self.host

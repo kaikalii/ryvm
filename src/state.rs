@@ -42,7 +42,6 @@ pub struct State {
     pub sample_rate: u32,
     pub tempo: f32,
     pub master_volume: f32,
-    curr_channel: u8,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
@@ -87,7 +86,6 @@ impl State {
             tempo: 1.0,
             master_volume: 0.5,
             frame_queue: None,
-            curr_channel: 1,
             channels: HashMap::new(),
             command_queue: Vec::new(),
             i: 0,
@@ -125,22 +123,6 @@ impl State {
                 recv: inter_recv,
             },
         ))
-    }
-    /// Create a watcher queue to
-    /// Get the current channel id
-    pub fn curr_channel(&self) -> u8 {
-        self.curr_channel
-    }
-    /// Set the current channel id
-    pub fn set_curr_channel(&mut self, ch: u8) {
-        self.curr_channel = ch;
-        println!("Channel {}", ch);
-    }
-    /// Get a mutable reference to the current channel
-    pub fn channel(&mut self) -> &mut Channel {
-        self.channels
-            .entry(self.curr_channel)
-            .or_insert_with(Channel::default)
     }
     #[allow(dead_code)]
     fn is_debug_frame(&self) -> bool {
@@ -233,10 +215,14 @@ impl State {
         channel: Option<u8>,
         do_load_specs: bool,
     ) -> RyvmResult<()> {
-        let channel = channel.unwrap_or(self.curr_channel);
         // Macro for initializting devices
         macro_rules! device {
             ($variant:ident, $default:expr) => {{
+                let channel = if let Some(channel) = channel {
+                    channel
+                } else {
+                    return Ok(());
+                };
                 let entry = self
                     .channels
                     .entry(channel)
@@ -475,14 +461,25 @@ impl State {
                 }
                 self.print_loops();
             }
-            RyvmCommand::Rm { id, recursive } => {
-                self.channel().remove(&id, recursive);
+            RyvmCommand::Rm {
+                id,
+                channel,
+                recursive,
+            } => {
+                if let Some(ch) = channel {
+                    if let Some(channel) = self.channels.get_mut(&ch) {
+                        channel.remove(&id, recursive);
+                    }
+                } else {
+                    for channel in self.channels.values_mut() {
+                        channel.remove(&id, recursive);
+                    }
+                }
                 if let Ok(num) = id.parse::<u8>() {
                     self.stop_loop(num);
                     self.loops.remove(&num);
                 }
             }
-            RyvmCommand::Ch { channel } => self.set_curr_channel(channel),
             RyvmCommand::Load { name, channel } => {
                 self.load_spec_map_or_on_fly(name.as_str(), channel, false, true)?
             }

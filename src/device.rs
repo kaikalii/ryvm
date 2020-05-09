@@ -231,17 +231,15 @@ impl Device {
             Device::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
-                if channel_num == state.curr_channel() || cache.from_loop {
-                    for control in cache.all_controls() {
-                        if let Control::Pad(i, v) = control {
-                            let index = i as usize;
-                            if index < drums.samples.len() {
-                                samplings.push(ActiveSampling {
-                                    index,
-                                    i: 0,
-                                    velocity: f32::from(v) / 127.0,
-                                });
-                            }
+                for control in cache.all_controls() {
+                    if let Control::Pad(i, v) = control {
+                        let index = i as usize;
+                        if index < drums.samples.len() {
+                            samplings.push(ActiveSampling {
+                                index,
+                                i: 0,
+                                velocity: f32::from(v) / 127.0,
+                            });
                         }
                     }
                 }

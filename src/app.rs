@@ -49,17 +49,14 @@ pub enum RyvmCommand {
     Rm {
         #[structopt(help = "The name of the device to be removed")]
         id: String,
+        #[structopt(help = "The channel from which to remove the device")]
+        channel: Option<u8>,
         #[structopt(
             long,
             short,
             help = "Recursively remove all the device's unique inputs as well"
         )]
         recursive: bool,
-    },
-    #[structopt(about = "Set the current channel for manual-controlled devices")]
-    Ch {
-        #[structopt(help = "The channel to set")]
-        channel: u8,
     },
     #[structopt(about = "List all available midi ports")]
     Midi(MidiSubCommand),

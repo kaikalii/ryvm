@@ -1,12 +1,19 @@
-use std::{collections::HashMap, sync::Arc, thread};
+use std::{
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    thread,
+};
 
 use cpal::{
     traits::{DeviceTrait, EventLoopTrait, HostTrait},
-    DeviceNameError, DevicesError, EventLoop, Host, PlayStreamError, StreamData, StreamId,
-    SupportedFormatsError, UnknownTypeInputBuffer,
+    DeviceNameError, DevicesError, EventLoop, Format, Host, PlayStreamError, SampleRate,
+    StreamData, StreamId, SupportedFormatsError, UnknownTypeOutputBuffer,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use itertools::Itertools;
 use thiserror::Error;
+
+use crate::Voice;
 
 #[derive(Debug, Error)]
 pub enum InputError {
@@ -70,17 +77,17 @@ impl InputManager {
                 // Convert stream data
                 if let Some(sender) = senders.get(&stream_id) {
                     let buffer: Vec<StreamFrame> = match stream_data {
-                        StreamData::Input {
-                            buffer: UnknownTypeInputBuffer::U16(buffer),
+                        StreamData::Output {
+                            buffer: UnknownTypeOutputBuffer::U16(buffer),
                         } => buffer
                             .iter()
                             .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
                             .collect(),
-                        StreamData::Input {
-                            buffer: UnknownTypeInputBuffer::I16(buffer),
+                        StreamData::Output {
+                            buffer: UnknownTypeOutputBuffer::I16(buffer),
                         } => buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect(),
-                        StreamData::Input {
-                            buffer: UnknownTypeInputBuffer::F32(buffer),
+                        StreamData::Output {
+                            buffer: UnknownTypeOutputBuffer::F32(buffer),
                         } => buffer.iter().copied().collect(),
                         _ => Vec::new(),
                     };
@@ -96,7 +103,11 @@ impl InputManager {
             send_send,
         }
     }
-    pub fn add_device(&self, name: Option<String>) -> Result<InputDevice, InputError> {
+    pub fn add_device(
+        &self,
+        name: Option<String>,
+        sample_rate: u32,
+    ) -> Result<InputDevice, InputError> {
         let device = if let Some(name) = name {
             self.host
                 .input_devices()?
@@ -107,11 +118,17 @@ impl InputManager {
                 .default_input_device()
                 .ok_or(InputError::NoDefaultInput)?
         };
-        let mut supported_formats_range = device.supported_input_formats()?;
-        let format = supported_formats_range
-            .next()
-            .ok_or(InputError::NoFormats)?
-            .with_max_sample_rate();
+        let mut format = if let Some(format) = device
+            .supported_input_formats()?
+            .find(|format| format.channels == 2)
+        {
+            Some(format)
+        } else {
+            device.supported_input_formats()?.next()
+        }
+        .ok_or(InputError::NoFormats)?
+        .with_max_sample_rate();
+        format.sample_rate = SampleRate(sample_rate);
         let stream_id = self
             .event_loop
             .build_output_stream(&device, &format)
@@ -122,6 +139,8 @@ impl InputManager {
         Ok(InputDevice {
             name: device.name()?,
             recv: Arc::new(recv),
+            format,
+            queue: VecDeque::new(),
         })
     }
     pub fn device_names(&self) -> Result<Vec<String>, InputError> {
@@ -136,4 +155,27 @@ impl InputManager {
 pub struct InputDevice {
     name: String,
     recv: Arc<Receiver<Vec<f32>>>,
+    format: Format,
+    queue: VecDeque<Voice>,
+}
+
+impl InputDevice {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn sample(&mut self) -> Option<Voice> {
+        for buffer in self.recv.try_iter() {
+            match self.format.channels {
+                1 => self.queue.extend(buffer.into_iter().map(Voice::mono)),
+                2 => self.queue.extend(
+                    buffer
+                        .into_iter()
+                        .tuples()
+                        .map(|(l, r)| Voice::stereo(l, r)),
+                ),
+                _ => panic!("weird default input device channel count"),
+            }
+        }
+        self.queue.pop_front()
+    }
 }

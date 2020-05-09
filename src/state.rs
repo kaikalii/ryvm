@@ -327,7 +327,16 @@ impl State {
                 }
             }
             Spec::Input { name: device_name } => {
-                let input = self.input_manager.add_device(device_name.into())?;
+                let input = self
+                    .input_manager
+                    .add_device(device_name.into(), self.sample_rate)?;
+                let removed = self.inputs.remove(&name).is_some();
+                println!(
+                    "{}nitialized {} ({})",
+                    if removed { "Rei" } else { "I" },
+                    name,
+                    input.name()
+                );
                 self.inputs.insert(name, input);
             }
             Spec::Wave {
@@ -854,6 +863,12 @@ impl Iterator for State {
                 }
             }
         }
+        // Collect audio input samples
+        let audio_input: HashMap<Name, Voice> = self
+            .inputs
+            .iter_mut()
+            .map(|(name, input)| (*name, input.sample().unwrap_or(Voice::SILENT)))
+            .collect();
         // Record loops
         for lup in self.loops.values_mut() {
             if lup.loop_state == LoopState::Recording {
@@ -861,6 +876,9 @@ impl Iterator for State {
             }
         }
         let mut voice = Voice::SILENT;
+        for &input_voice in audio_input.values() {
+            voice += input_voice;
+        }
         // Collect loop controls
         let state_tempo = self.tempo;
         let loop_period = self.loop_master.map(|lm| lm.period);
@@ -883,6 +901,7 @@ impl Iterator for State {
             let mut cache = FrameCache {
                 voices: HashMap::new(),
                 controls,
+                audio_input: audio_input.clone(),
                 visited: HashSet::new(),
                 from_loop: i != 0,
             };

@@ -117,6 +117,7 @@ impl Channel {
 pub struct FrameCache {
     pub voices: HashMap<(u8, Name), Voice>,
     pub controls: HashMap<(Port, u8), Vec<Control>>,
+    pub audio_input: HashMap<Name, Voice>,
     pub visited: HashSet<(u8, Name)>,
     pub from_loop: bool,
 }

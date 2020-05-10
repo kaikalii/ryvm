@@ -2,9 +2,12 @@ macro_rules! mods {
     ($($vis:vis $m:ident),*) => ($(mod $m; $vis use $m::*;)*);
 }
 
+mod utility;
+use utility::*;
+
 mods!(
     app, channel, device, drum, envelope, error, gamepad, input, library, r#loop, midi, onfly,
-    spec, state, track, utility
+    spec, state, track
 );
 
 use std::{

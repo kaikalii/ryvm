@@ -7,7 +7,6 @@ use std::{
     sync::Arc,
 };
 
-use colored::Colorize;
 use crossbeam_channel as mpmc;
 use employer::{Employer, JobDescription};
 use indexmap::IndexMap;
@@ -17,11 +16,11 @@ use rodio::Source;
 use structopt::StructOpt;
 
 use crate::{
-    list_output_devices, loop_path, loops_dir, name_from_str, parse_commands, samples_dir,
-    spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel, CloneLock, Control, Device,
-    DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager, Loop, LoopMaster,
-    LoopState, LoopSubcommand, Midi, MidiSubCommand, Name, OutputSubcommand, Port, RyvmCommand,
-    RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
+    colorprintln, list_output_devices, loop_path, loops_dir, name_from_str, parse_commands,
+    samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel, CloneLock,
+    Control, Device, DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager, Loop,
+    LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, Name, OutputSubcommand, Port,
+    RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
 };
 
 #[derive(Default)]
@@ -32,7 +31,7 @@ impl JobDescription<PathBuf> for LoadSamples {
     fn work(&self, input: PathBuf) -> Self::Output {
         let res = Sample::open(input);
         if let Err(e) = &res {
-            println!("{}", e.to_string().bright_red());
+            colorprintln!("{}", bright_red, e)
         }
         res
     }
@@ -151,7 +150,7 @@ impl State {
         });
         self.loops
             .insert(loop_num, Loop::new(length.unwrap_or(1.0)));
-        println!("Loop {} ready", loop_num);
+        colorprintln!("Loop {} ready", cyan, loop_num);
     }
     /// Finish recording any loops
     pub fn finish_recording(&mut self) {
@@ -163,10 +162,10 @@ impl State {
                 let period = lup.period();
                 if period > 0.0 {
                     loop_master.get_or_insert(LoopMaster { period, num });
-                    println!("Finished recording {}", num);
+                    colorprintln!("Finished recording {}", bright_cyan, num);
                 } else {
                     loops_to_delete.push(num);
-                    println!("Cancelled recording {}", num)
+                    colorprintln!("Cancelled recording {}", bright_yellow, num)
                 }
             }
         }
@@ -177,9 +176,9 @@ impl State {
     }
     /// Cancel all loop recording
     pub fn cancel_recording(&mut self) {
-        self.loops.retain(|name, lup| {
+        self.loops.retain(|num, lup| {
             if let LoopState::Recording = lup.loop_state {
-                println!("Cancelled recording {:?}", name);
+                colorprintln!("Cancelled recording {}", bright_yellow, num);
                 false
             } else {
                 true
@@ -288,8 +287,9 @@ impl State {
                     let mut midi =
                         Midi::new_gamepad(name, id, output_channel, non_globals, buttons, sliders);
                     midi.last_notes = last_notes.unwrap_or_default();
-                    println!(
+                    colorprintln!(
                         "{}nitialized {} on port {:?}",
+                        bright_blue,
                         if removed { "Rei" } else { "I" },
                         midi.name(),
                         port
@@ -317,8 +317,9 @@ impl State {
                         sliders,
                     )?;
                     midi.last_notes = last_notes.unwrap_or_default();
-                    println!(
+                    colorprintln!(
                         "{}nitialized {} ({}) on port {:?}",
+                        bright_blue,
                         if removed { "Rei" } else { "I" },
                         midi.name(),
                         midi.device()
@@ -338,8 +339,9 @@ impl State {
                     .input_manager
                     .add_device(device_name, self.sample_rate)?;
                 let removed = self.inputs.remove(&name).is_some();
-                println!(
+                colorprintln!(
                     "{}nitialized {} ({})",
+                    bright_blue,
                     if removed { "Rei" } else { "I" },
                     name,
                     input.name()
@@ -431,7 +433,7 @@ impl State {
             RyvmCommand::Quit => {}
             RyvmCommand::Midi(MidiSubCommand::List) => {
                 for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
-                    println!("{}", format!("{}. {}", i, name).bright_cyan());
+                    colorprintln!("{}. {}", bright_cyan, i, name);
                 }
             }
             RyvmCommand::Midi(MidiSubCommand::Monitor) => {
@@ -513,7 +515,7 @@ impl State {
             }
             RyvmCommand::Inputs => {
                 for (i, name) in self.input_manager.device_names()?.into_iter().enumerate() {
-                    println!("{}", format!("{}. {}", i, name).bright_cyan());
+                    colorprintln!("{}. {}", bright_cyan, i, name);
                 }
             }
             RyvmCommand::Output(OutputSubcommand::List) => list_output_devices()?,
@@ -742,7 +744,7 @@ impl State {
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
                     if let Err(e) = self.process_command(command) {
-                        println!("{}", e.to_string().bright_red())
+                        colorprintln!("{}", bright_red, e)
                     }
                 }
             }
@@ -773,7 +775,7 @@ impl Iterator for State {
         self.check_cli_commands();
         // Check for file watcher events
         if let Err(e) = self.process_watcher() {
-            println!("{}", e.to_string().bright_red());
+            colorprintln!("{}", bright_red, e);
         }
         // Process delayed CLI commands
         self.process_delayed_cli_commands();
@@ -791,7 +793,7 @@ impl Iterator for State {
             .iter_mut()
             .filter_map(|(&port, midi)| {
                 midi.controls()
-                    .map_err(|e| println!("{}", e.to_string().bright_red()))
+                    .map_err(|e| colorprintln!("{}", bright_red, e))
                     .ok()
                     .map(|controls| (port, controls))
             })
@@ -888,11 +890,11 @@ impl Iterator for State {
                                 true,
                                 false,
                             ) {
-                                println!("{}", e.to_string().bright_red());
+                                colorprintln!("{}", bright_red, e);
                             }
                         }
                     }
-                    Some(Err(e)) => println!("{}", e.to_string().bright_red()),
+                    Some(Err(e)) => colorprintln!("{}", bright_red, e),
                 }
             }
         }

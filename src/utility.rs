@@ -6,16 +6,22 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
-use colored::Colorize;
 use crossbeam_utils::atomic::AtomicCell;
 use rodio::DeviceTrait;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{InputError, Name, NAME_CAPACITY};
 
+#[macro_export]
+macro_rules! colorprintln {
+    ($fmt:literal, $col:ident $(,$item:expr)* $(,)?) => {
+        println!("{}", colored::Colorize::$col(format!($fmt, $($item),*).as_str()))
+    };
+}
+
 pub fn list_output_devices() -> Result<(), InputError> {
     for (i, device) in rodio::output_devices()?.enumerate() {
-        println!("{}", format!("{}. {}", i, device.name()?).bright_cyan());
+        colorprintln!("{}. {}", bright_cyan, i, device.name()?);
     }
     Ok(())
 }

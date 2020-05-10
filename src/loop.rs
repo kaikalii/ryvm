@@ -5,7 +5,7 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{Control, Float, Port};
+use crate::{colorprintln, Control, Float, Port};
 
 #[derive(Debug, Clone, Copy)]
 pub struct LoopMaster {
@@ -92,7 +92,7 @@ impl Loop {
         if self.loop_state == LoopState::Recording {
             if !self.started && !new_controls.is_empty() {
                 self.started = true;
-                println!("Started recording");
+                colorprintln!("Started recording", bright_magenta);
             }
             if !self.started {
                 return;

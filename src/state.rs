@@ -107,15 +107,15 @@ impl State {
             inputs: HashMap::new(),
         };
         // Load startup
-        state.load_spec_map(
-            if let Some(main_file) = main_file {
-                main_file
-            } else {
-                startup_path()?
-            },
-            None,
-            true,
-        )?;
+        if let Err(e) = state.load_spec_map(startup_path()?, None, true) {
+            colorprintln!("{}", bright_red, e);
+        }
+        // Load main file
+        if let Some(main_file) = main_file {
+            if let Err(e) = state.load_spec_map(main_file, None, true) {
+                colorprintln!("{}", bright_red, e);
+            }
+        }
         Ok((
             state,
             StateInterface {
@@ -300,10 +300,10 @@ impl State {
                         if let Some(port) = Midi::port_matching(&device)? {
                             port
                         } else {
-                            Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                            Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
                         }
                     } else {
-                        Midi::first_device()?.ok_or(RyvmError::NoMidiPorts)?
+                        Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
                     };
                     let port = Port::Midi(port_num);
                     let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);

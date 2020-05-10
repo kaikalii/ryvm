@@ -33,8 +33,8 @@ pub enum RyvmError {
     #[error("Loop decoder error: {0}")]
     Loop(#[from] serde_cbor::Error),
     /// No available midi ports
-    #[error("There are no available midi ports")]
-    NoMidiPorts,
+    #[error("There are no available midi ports for {0:?}")]
+    NoMidiPorts(Name),
     /// The Ryvm state was dropped
     #[error("Attempted to send a command to a dropped ryvm state")]
     StateDropped,

@@ -275,8 +275,8 @@ impl State {
                 let sliders: SlidersMap =
                     slider.into_iter().map(|m| (m.action, m.control)).collect();
                 for mapping in range {
-                    for (button, action) in mapping.action.zip(mapping.control) {
-                        buttons.insert(button, action);
+                    for (action, button) in mapping.action.zip(mapping.control) {
+                        buttons.insert(action, button);
                     }
                 }
                 let (port, midi) = if gamepad {

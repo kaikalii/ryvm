@@ -122,7 +122,7 @@ pub type Sliders = Vec<Mapping<ValuedAction, Slider>>;
 pub type SlidersMap = BiMap<ValuedAction, Slider>;
 
 fn range_next(bounds: &mut (u8, u8)) -> Option<u8> {
-    let mut range = bounds.0..bounds.0;
+    let mut range = bounds.0..bounds.1;
     let res = range.next();
     bounds.0 = range.start;
     res

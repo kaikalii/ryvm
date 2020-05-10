@@ -6,10 +6,19 @@ use std::{
     sync::{Mutex, MutexGuard},
 };
 
+use colored::Colorize;
 use crossbeam_utils::atomic::AtomicCell;
+use rodio::DeviceTrait;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{Name, NAME_CAPACITY};
+use crate::{InputError, Name, NAME_CAPACITY};
+
+pub fn list_output_devices() -> Result<(), InputError> {
+    for (i, device) in rodio::output_devices()?.enumerate() {
+        println!("{}", format!("{}. {}", i, device.name()?).bright_cyan());
+    }
+    Ok(())
+}
 
 pub fn name_from_str(s: &str) -> Name {
     Name::from(&s[..s.len().min(NAME_CAPACITY)]).unwrap()

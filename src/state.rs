@@ -7,18 +7,19 @@ use std::{
     sync::Arc,
 };
 
+use colored::Colorize;
 use crossbeam_channel as mpmc;
 use employer::{Employer, JobDescription};
 use indexmap::IndexMap;
 use itertools::Itertools;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use rodio::{DeviceTrait, Source};
+use rodio::Source;
 use structopt::StructOpt;
 
 use crate::{
-    loop_path, loops_dir, name_from_str, parse_commands, samples_dir, spec_path, specs_dir,
-    startup_path, Action, ButtonsMap, Channel, CloneLock, Control, Device, DynamicValue,
-    FlyControl, Frame, FrameCache, InputDevice, InputError, InputManager, Loop, LoopMaster,
+    list_output_devices, loop_path, loops_dir, name_from_str, parse_commands, samples_dir,
+    spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel, CloneLock, Control, Device,
+    DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager, Loop, LoopMaster,
     LoopState, LoopSubcommand, Midi, MidiSubCommand, Name, OutputSubcommand, Port, RyvmCommand,
     RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
 };
@@ -31,7 +32,7 @@ impl JobDescription<PathBuf> for LoadSamples {
     fn work(&self, input: PathBuf) -> Self::Output {
         let res = Sample::open(input);
         if let Err(e) = &res {
-            println!("{}", e);
+            println!("{}", e.to_string().bright_red());
         }
         res
     }
@@ -430,7 +431,7 @@ impl State {
             RyvmCommand::Quit => {}
             RyvmCommand::Midi(MidiSubCommand::List) => {
                 for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
-                    println!("{}. {}", i, name);
+                    println!("{}", format!("{}. {}", i, name).bright_cyan());
                 }
             }
             RyvmCommand::Midi(MidiSubCommand::Monitor) => {
@@ -512,17 +513,10 @@ impl State {
             }
             RyvmCommand::Inputs => {
                 for (i, name) in self.input_manager.device_names()?.into_iter().enumerate() {
-                    println!("{}. {}", i, name);
+                    println!("{}", format!("{}. {}", i, name).bright_cyan());
                 }
             }
-            RyvmCommand::Output(OutputSubcommand::List) => {
-                for (i, device) in rodio::output_devices()
-                    .map_err(InputError::from)?
-                    .enumerate()
-                {
-                    println!("{}. {}", i, device.name().map_err(InputError::from)?);
-                }
-            }
+            RyvmCommand::Output(OutputSubcommand::List) => list_output_devices()?,
         }
         Ok(())
     }
@@ -748,7 +742,7 @@ impl State {
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
                     if let Err(e) = self.process_command(command) {
-                        println!("{}", e)
+                        println!("{}", e.to_string().bright_red())
                     }
                 }
             }
@@ -779,7 +773,7 @@ impl Iterator for State {
         self.check_cli_commands();
         // Check for file watcher events
         if let Err(e) = self.process_watcher() {
-            println!("{}", e);
+            println!("{}", e.to_string().bright_red());
         }
         // Process delayed CLI commands
         self.process_delayed_cli_commands();
@@ -797,7 +791,7 @@ impl Iterator for State {
             .iter_mut()
             .filter_map(|(&port, midi)| {
                 midi.controls()
-                    .map_err(|e| println!("{}", e))
+                    .map_err(|e| println!("{}", e.to_string().bright_red()))
                     .ok()
                     .map(|controls| (port, controls))
             })
@@ -894,11 +888,11 @@ impl Iterator for State {
                                 true,
                                 false,
                             ) {
-                                println!("{}", e);
+                                println!("{}", e.to_string().bright_red());
                             }
                         }
                     }
-                    Some(Err(e)) => println!("{}", e),
+                    Some(Err(e)) => println!("{}", e.to_string().bright_red()),
                 }
             }
         }

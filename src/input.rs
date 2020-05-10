@@ -4,6 +4,7 @@ use std::{
     thread,
 };
 
+use colored::Colorize;
 use cpal::{
     traits::{DeviceTrait, EventLoopTrait, HostTrait},
     DeviceNameError, DevicesError, EventLoop, Format, Host, PlayStreamError, SampleRate,
@@ -66,10 +67,12 @@ impl InputManager {
                 let stream_data = match stream_result {
                     Ok(data) => data,
                     Err(err) => {
-                        eprintln!(
+                        let s = format!(
                             "an error occurred on stream {:?}: {}. Closing all input devices...",
                             stream_id, err
-                        );
+                        )
+                        .bright_red();
+                        println!("{}", s);
                         return;
                     }
                 };

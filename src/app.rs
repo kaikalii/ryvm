@@ -117,17 +117,29 @@ pub enum OutputSubcommand {
 }
 
 /// The command line argument parser for Ryvm
-#[derive(Debug, Default, StructOpt)]
+#[derive(Debug, StructOpt)]
 pub struct RyvmApp {
     /// The file that is loaded at the beginning of the session
     #[structopt(help = "The main file to load")]
     pub file: Option<PathBuf>,
+    /// The sample rate for the session
     #[structopt(
         short = "r",
         long,
         default_value = "44100",
-        about = "List the available midi ports"
+        about = "The sample rate for the session"
     )]
-    /// The sample rate for the session
     pub sample_rate: u32,
+    /// The main audio output device to use
+    #[structopt(long, short, about = "The main audio output device to use")]
+    pub output: Option<String>,
+    /// A subcommand
+    #[structopt(subcommand)]
+    pub sub: Option<RyvmSubcommand>,
+}
+
+#[derive(Debug, StructOpt)]
+pub enum RyvmSubcommand {
+    #[structopt(about = "List all available output devices")]
+    OutputList,
 }

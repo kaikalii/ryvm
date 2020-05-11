@@ -396,12 +396,14 @@ impl State {
                 input,
                 value,
                 filter: filter_type,
+                adsr,
             } => {
                 let input = get_input!(input);
                 let filter = device!(Filter, || Device::new_filter(input, value, filter_type));
                 filter.input = input;
                 filter.value = value;
                 filter.set_type(filter_type);
+                filter.adsr = adsr;
             }
             Spec::Balance { input, volume, pan } => {
                 let input = get_input!(input);

@@ -101,3 +101,71 @@ impl DynamicValue {
         }
     }
 }
+
+/// A set of values defining an attack-decay-sustain-release envelope
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename = "snake_case", deny_unknown_fields, default)]
+pub struct ADSR<T> {
+    pub attack: T,
+    pub decay: T,
+    pub sustain: T,
+    pub release: T,
+}
+
+impl<T> ADSR<T> {
+    pub fn map<F, U>(&self, mut f: F) -> ADSR<U>
+    where
+        F: FnMut(&T) -> U,
+    {
+        ADSR {
+            attack: f(&self.attack),
+            decay: f(&self.decay),
+            sustain: f(&self.sustain),
+            release: f(&self.release),
+        }
+    }
+    pub fn map_or_default<F>(&self, mut f: F) -> ADSR<f32>
+    where
+        F: FnMut(&T) -> Option<f32>,
+    {
+        ADSR {
+            attack: f(&self.attack).unwrap_or_else(|| default::ATTACK.unwrap_static()),
+            decay: f(&self.decay).unwrap_or_else(|| default::DECAY.unwrap_static()),
+            sustain: f(&self.sustain).unwrap_or_else(|| default::SUSTAIN.unwrap_static()),
+            release: f(&self.release).unwrap_or_else(|| default::RELEASE.unwrap_static()),
+        }
+    }
+}
+
+impl Default for ADSR<f32> {
+    fn default() -> Self {
+        ADSR {
+            attack: default::ATTACK.unwrap_static(),
+            decay: default::DECAY.unwrap_static(),
+            sustain: default::SUSTAIN.unwrap_static(),
+            release: default::RELEASE.unwrap_static(),
+        }
+    }
+}
+
+impl Default for ADSR<DynamicValue> {
+    fn default() -> Self {
+        ADSR {
+            attack: default::ATTACK,
+            decay: default::DECAY,
+            sustain: default::SUSTAIN,
+            release: default::RELEASE,
+        }
+    }
+}
+
+impl ADSR<DynamicValue> {
+    pub fn inputs(&self) -> impl Iterator<Item = &str> {
+        self.attack
+            .input()
+            .into_iter()
+            .chain(self.decay.input())
+            .chain(self.sustain.input())
+            .chain(self.release.input())
+    }
+}

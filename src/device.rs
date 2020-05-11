@@ -4,7 +4,7 @@ use rand::random;
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, DynamicValue, Enveloper, FilterType,
-    Frame, FrameCache, Letter, Name, State, Voice, WaveForm, ADSR,
+    Float, Frame, FrameCache, Letter, Name, State, Voice, WaveForm, ADSR,
 };
 
 /// A virtual audio processing device
@@ -15,7 +15,7 @@ pub enum Device {
     /// A drum machine
     DrumMachine(DrumMachine),
     /// A low-pass filter
-    Filter(Filter),
+    Filter(Box<Filter>),
     /// A volume and pan balancer
     Balance(Balance),
     /// A reverb simulator
@@ -87,6 +87,9 @@ pub struct Filter {
     /// The value used to determine filter strength
     pub value: DynamicValue,
     state: FilterState,
+    /// The attack-decay-sustain-release envelope
+    pub adsr: Option<ADSR<DynamicValue>>,
+    enveloper: CloneLock<Enveloper>,
 }
 
 impl Filter {
@@ -143,11 +146,13 @@ impl Device {
     /// Create a new filter
     #[must_use]
     pub fn new_filter(input: Name, value: DynamicValue, ty: FilterType) -> Self {
-        Device::Filter(Filter {
+        Device::Filter(Box::new(Filter {
             input,
             value,
             state: ty.into(),
-        })
+            adsr: None,
+            enveloper: CloneLock::new(Enveloper::default()),
+        }))
     }
     /// Create a new balance
     #[must_use]
@@ -263,8 +268,24 @@ impl Device {
             Device::Filter(filter) => {
                 // Get the input channels
                 let frame = channel.next_from(channel_num, &filter.input, state, cache);
-                // Determine the factor used to maintain the running average
-                let value = state.resolve_dynamic_value(&filter.value, channel_num, cache);
+                // Determine the value for the filter shape
+                let value = if let Some(adsr) = &filter.adsr {
+                    let mut enveloper = filter.enveloper.lock();
+                    enveloper.register(cache.channel_controls(channel_num));
+                    let adsr = adsr.map_or_default(|value| {
+                        state.resolve_dynamic_value(value, channel_num, cache)
+                    });
+                    let value = enveloper
+                        .envelopes()
+                        .map(|env_frame| Float(env_frame.amplitude))
+                        .max()
+                        .map(|f| f.0);
+                    enveloper.progress(state.vars.sample_rate, adsr);
+                    value
+                } else {
+                    state.resolve_dynamic_value(&filter.value, channel_num, cache)
+                };
+
                 match &filter.state {
                     FilterState::LowPass(avg) => {
                         let avg_factor = value.unwrap_or(1.0).powf(2.0);

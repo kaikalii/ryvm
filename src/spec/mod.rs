@@ -152,6 +152,9 @@ pub enum Spec {
             skip_serializing_if = "default::is_filter_type"
         )]
         filter: FilterType,
+        /// The optional ADSR envelope
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        adsr: Option<ADSR<DynamicValue>>,
     },
     /// A volume and pan balancer
     Balance {

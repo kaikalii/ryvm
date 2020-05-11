@@ -19,8 +19,8 @@ use crate::{
     colorprintln, list_output_devices, loop_path, loops_dir, name_from_str, parse_commands,
     samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel, CloneLock,
     Control, Device, DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager, Loop,
-    LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, Name, OutputSubcommand, Port,
-    RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
+    LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType, Name, OutputSubcommand,
+    Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
 };
 
 #[derive(Default)]
@@ -276,6 +276,12 @@ impl State {
                 slider,
                 range,
             } => {
+                let ty = if gamepad {
+                    MidiType::Gamepad
+                } else {
+                    MidiType::Midi
+                };
+
                 let mut buttons: ButtonsMap =
                     button.into_iter().map(|m| (m.action, m.control)).collect();
                 let sliders: SlidersMap =
@@ -285,55 +291,47 @@ impl State {
                         buttons.insert(action, button);
                     }
                 }
-                let (port, midi) = if gamepad {
-                    let id = 0;
-                    let port = Port::Gamepad(id);
-                    let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
-                    let removed = last_notes.is_some();
-                    let mut midi =
-                        Midi::new_gamepad(name, id, output_channel, non_globals, buttons, sliders);
-                    midi.last_notes = last_notes.unwrap_or_default();
-                    colorprintln!(
-                        "{}nitialized {} on port {:?}",
-                        bright_blue,
-                        if removed { "Rei" } else { "I" },
-                        midi.name(),
-                        port
-                    );
-                    (port, midi)
-                } else {
-                    let port_num = if let Some(device) = device {
-                        if let Some(port) = Midi::port_matching(&device)? {
-                            port
+                let id = match ty {
+                    MidiType::Midi => {
+                        if let Some(device) = device {
+                            if let Some(port) = Midi::port_matching(&device)? {
+                                port
+                            } else {
+                                Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
+                            }
                         } else {
                             Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
                         }
-                    } else {
-                        Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
-                    };
-                    let port = Port::Midi(port_num);
-                    let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
-                    let removed = last_notes.is_some();
-                    let mut midi = Midi::new(
-                        name,
-                        port_num,
-                        output_channel,
-                        non_globals,
-                        buttons,
-                        sliders,
-                    )?;
-                    midi.last_notes = last_notes.unwrap_or_default();
-                    colorprintln!(
-                        "{}nitialized {} ({}) on port {:?}",
-                        bright_blue,
-                        if removed { "Rei" } else { "I" },
-                        midi.name(),
-                        midi.device()
-                            .expect("Real midi device initialized without a device name"),
-                        port
-                    );
-                    (port, midi)
+                    }
+                    MidiType::Gamepad => 0,
                 };
+                let port = Port { id, ty };
+                let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
+                let removed = last_notes.is_some();
+                let mut midi = Midi::new(
+                    port,
+                    name,
+                    output_channel,
+                    non_globals,
+                    0.0,
+                    buttons,
+                    sliders,
+                )?;
+                midi.last_notes = last_notes.unwrap_or_default();
+                colorprintln!(
+                    "{}nitialized {}{} on {:?} port {:?}",
+                    bright_blue,
+                    if removed { "Rei" } else { "I" },
+                    if let Some(device) = midi.device() {
+                        format!(" ({})", device)
+                    } else {
+                        String::new()
+                    },
+                    midi.name(),
+                    ty,
+                    id
+                );
+
                 self.midis.insert(port, midi);
                 self.midi_names.insert(name, port);
                 if self.default_midi.is_none() {
@@ -911,9 +909,10 @@ impl Iterator for State {
             .map(|(name, input)| (*name, input.sample().unwrap_or(Voice::SILENT)))
             .collect();
         // Record loops
+        let midis = &mut self.midis;
         for lup in self.loops.values_mut() {
             if lup.loop_state == LoopState::Recording {
-                lup.record(controls.clone());
+                lup.record(controls.clone(), |port| midis.get(&port).map(Midi::advance));
             }
         }
         let mut voice = Voice::SILENT;

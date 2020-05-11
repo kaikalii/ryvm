@@ -12,9 +12,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum Port {
-    Midi(usize),
-    Gamepad(usize),
+pub enum MidiType {
+    Midi,
+    Gamepad,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Port {
+    pub id: usize,
+    pub ty: MidiType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -219,6 +225,7 @@ pub struct Midi {
     state: MidiInputState,
     non_globals: Vec<u8>,
     pub last_notes: HashMap<u8, u64>,
+    advance: f32,
 }
 
 impl Midi {
@@ -227,6 +234,9 @@ impl Midi {
     }
     pub fn device(&self) -> Option<&str> {
         self.device.as_deref()
+    }
+    pub fn advance(&self) -> f32 {
+        self.advance
     }
     pub fn control_is_global(&self, control: u8) -> bool {
         !self.non_globals.contains(&control)
@@ -267,82 +277,74 @@ impl Midi {
         Ok(None)
     }
     pub fn new(
+        port: Port,
         name: Name,
-        port: usize,
         output_channel: Option<u8>,
         non_globals: Vec<u8>,
+        advance: f32,
         buttons: ButtonsMap,
         sliders: SlidersMap,
     ) -> Result<Midi, MidiError> {
-        let mut midi_in = MidiInput::new(&format!("Ryvm - {}", name))?;
-        midi_in.ignore(Ignore::Time);
-
-        let state = MidiInputState {
-            queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
-            monitor: Arc::new(CloneCell::new(false)),
-            output_channel: output_channel.map(CloneCell::new).map(Arc::new),
-            buttons,
-            sliders,
+        let state = match port.ty {
+            MidiType::Midi => MidiInputState {
+                queue: ControlQueue::Midi(Arc::new(CloneLock::new(Vec::new()))),
+                monitor: Arc::new(CloneCell::new(false)),
+                output_channel: output_channel.map(CloneCell::new).map(Arc::new),
+                buttons,
+                sliders,
+            },
+            MidiType::Gamepad => MidiInputState {
+                queue: ControlQueue::Gamepad(port.id),
+                monitor: Arc::new(CloneCell::new(false)),
+                output_channel: output_channel.map(CloneCell::new).map(Arc::new),
+                buttons,
+                sliders,
+            },
         };
 
-        let device = midi_in.port_name(port)?;
+        let (device, input) = match port.ty {
+            MidiType::Midi => {
+                let mut midi_in = MidiInput::new(&format!("Ryvm - {}", name))?;
+                midi_in.ignore(Ignore::Time);
 
-        let input = midi_in
-            .connect(
-                port,
-                &name,
-                move |_, data, state| {
-                    if let Some(control) = Control::decode(
-                        data,
-                        port,
-                        output_channel,
-                        state.monitor.load(),
-                        &state.buttons,
-                        &state.sliders,
-                    ) {
-                        if let ControlQueue::Midi(queue) = &state.queue {
-                            queue.lock().push(control);
-                        }
-                    }
-                },
-                state.clone(),
-            )
-            .map_err(|e| e.kind())?;
+                let device = midi_in.port_name(port.id)?;
+
+                let input = midi_in
+                    .connect(
+                        port.id,
+                        &name,
+                        move |_, data, state| {
+                            if let Some(control) = Control::decode(
+                                data,
+                                port.id,
+                                output_channel,
+                                state.monitor.load(),
+                                &state.buttons,
+                                &state.sliders,
+                            ) {
+                                if let ControlQueue::Midi(queue) = &state.queue {
+                                    queue.lock().push(control);
+                                }
+                            }
+                        },
+                        state.clone(),
+                    )
+                    .map_err(|e| e.kind())?;
+                (Some(device), GenericInput::Midi(input))
+            }
+            MidiType::Gamepad => (None, GenericInput::Gamepad),
+        };
 
         Ok(Midi {
-            port: Port::Midi(port),
+            port,
             name,
-            device: Some(device),
-            input: GenericInput::Midi(input),
+            device,
+            input,
             state,
             non_globals,
+            advance,
             last_notes: HashMap::new(),
         })
-    }
-    pub fn new_gamepad(
-        name: Name,
-        port: usize,
-        output_channel: Option<u8>,
-        non_globals: Vec<u8>,
-        buttons: ButtonsMap,
-        sliders: SlidersMap,
-    ) -> Midi {
-        let state = MidiInputState {
-            queue: ControlQueue::Gamepad(port),
-            monitor: Arc::new(CloneCell::new(false)),
-            output_channel: output_channel.map(CloneCell::new).map(Arc::new),
-            buttons,
-            sliders,
-        };
-        Midi {
-            port: Port::Gamepad(port),
-            name,
-            device: None,
-            input: GenericInput::Gamepad,
-            state,
-            non_globals,
-            last_notes: HashMap::new(),
-        }
     }
     pub fn controls(&mut self) -> Result<Vec<(u8, Control)>, SendError> {
         Ok(match &self.state.queue {

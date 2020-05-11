@@ -88,7 +88,10 @@ impl Loop {
     pub fn set_speed(&mut self, speed: f32) {
         self.speed = speed;
     }
-    pub fn record(&mut self, new_controls: ControlsMap) {
+    pub fn record<F>(&mut self, new_controls: ControlsMap, get_advance: F)
+    where
+        F: Fn(Port) -> Option<f32>,
+    {
         if self.loop_state == LoopState::Recording {
             if !self.started && !new_controls.is_empty() {
                 self.started = true;
@@ -99,7 +102,14 @@ impl Loop {
             }
 
             if !new_controls.is_empty() {
-                self.controls.insert(Float(self.i), new_controls);
+                for ((port, ch), controls) in new_controls {
+                    let advance = get_advance(port).unwrap_or(0.0);
+                    let i = self.i - advance;
+                    self.controls
+                        .entry(Float(i))
+                        .or_insert_with(HashMap::new)
+                        .insert((port, ch), controls);
+                }
             }
         }
     }

@@ -39,6 +39,7 @@ pub struct Loop {
     i: f32,
     last_i: f32,
     speed: f32,
+    speed_queue: Option<f32>,
 }
 
 impl From<LoopDef> for Loop {
@@ -52,6 +53,7 @@ impl From<LoopDef> for Loop {
             i: 0.0,
             last_i: 0.0,
             speed: 1.0,
+            speed_queue: None,
         }
     }
 }
@@ -69,13 +71,11 @@ impl Loop {
     pub fn new(length: f32) -> Self {
         Loop {
             started: false,
-            controls: BTreeMap::new(),
-            note_ids: HashSet::new(),
-            length,
             loop_state: LoopState::Recording,
-            i: 0.0,
-            last_i: 0.0,
-            speed: 1.0,
+            ..Loop::from(LoopDef {
+                controls: BTreeMap::new(),
+                length,
+            })
         }
     }
     pub fn i(&self) -> f32 {
@@ -86,7 +86,7 @@ impl Loop {
         self.last_i = i;
     }
     pub fn set_speed(&mut self, speed: f32) {
-        self.speed = speed;
+        self.speed_queue = Some(speed);
     }
     pub fn record<F>(&mut self, new_controls: ControlsMap, get_advance: F)
     where
@@ -117,6 +117,11 @@ impl Loop {
     pub fn controls(&mut self, state_tempo: f32, period: Option<f32>) -> Option<ControlsMap> {
         let res = if self.loop_state == LoopState::Playing {
             let period = period.expect("Playing loop was not supplied a period");
+            if self.last_i > self.i {
+                if let Some(new_speed) = self.speed_queue.take() {
+                    self.speed = new_speed;
+                }
+            }
             let i = (self.i * self.speed) % period;
             let mut combined_map = HashMap::new();
             if self.last_i <= i {

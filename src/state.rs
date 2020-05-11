@@ -860,7 +860,9 @@ impl Iterator for State {
                         }
                         ValuedAction::LoopSpeed { num } => {
                             if let Some(lup) = self.loops.get_mut(&num) {
-                                lup.set_speed(2_f32.powf(f32::from(val) / 0x7f as f32 * 3.0));
+                                lup.set_speed(
+                                    2_f32.powf((f32::from(val) / 0x7f as f32 * 3.0).round()),
+                                );
                             }
                         }
                     }

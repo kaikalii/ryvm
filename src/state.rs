@@ -16,11 +16,12 @@ use rodio::Source;
 use structopt::StructOpt;
 
 use crate::{
-    colorprintln, list_output_devices, loop_path, loops_dir, name_from_str, parse_commands,
-    samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel, CloneLock,
-    Control, Device, DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager, Loop,
-    LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType, Name, OutputSubcommand,
-    Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec, ValuedAction, Voice,
+    colorprintln, list_input_devices, list_output_devices, loop_path, loops_dir, name_from_str,
+    parse_commands, samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel,
+    CloneLock, Control, Device, DynamicValue, FlyControl, Frame, FrameCache, InputDevice,
+    InputManager, Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType,
+    Name, OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec,
+    ValuedAction, Voice,
 };
 
 #[derive(Default)]
@@ -322,12 +323,12 @@ impl State {
                     "{}nitialized {}{} on {:?} port {:?}",
                     bright_blue,
                     if removed { "Rei" } else { "I" },
+                    midi.name(),
                     if let Some(device) = midi.device() {
                         format!(" ({})", device)
                     } else {
                         String::new()
                     },
-                    midi.name(),
                     ty,
                     id
                 );
@@ -338,17 +339,17 @@ impl State {
                     self.default_midi = Some(port);
                 }
             }
-            Spec::Input { name: device_name } => {
+            Spec::Input { device } => {
                 let input = self
                     .input_manager
-                    .add_device(device_name, self.vars.sample_rate)?;
+                    .add_device(device, self.vars.sample_rate)?;
                 let removed = self.inputs.remove(&name).is_some();
                 colorprintln!(
                     "{}nitialized {} ({})",
                     bright_blue,
                     if removed { "Rei" } else { "I" },
                     name,
-                    input.name()
+                    input.device()
                 );
                 self.inputs.insert(name, input);
             }
@@ -540,11 +541,7 @@ impl State {
             RyvmCommand::Loops => {
                 open::that(loops_dir()?)?;
             }
-            RyvmCommand::Inputs => {
-                for (i, name) in self.input_manager.device_names()?.into_iter().enumerate() {
-                    colorprintln!("{}. {}", bright_cyan, i, name);
-                }
-            }
+            RyvmCommand::Inputs => list_input_devices()?,
             RyvmCommand::Output(OutputSubcommand::List) => list_output_devices()?,
         }
         Ok(())

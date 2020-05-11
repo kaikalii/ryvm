@@ -8,7 +8,7 @@ use colored::Colorize;
 use cpal::{
     traits::{DeviceTrait, EventLoopTrait, HostTrait},
     DeviceNameError, DevicesError, EventLoop, Format, Host, PlayStreamError, SampleRate,
-    StreamData, StreamId, SupportedFormatsError, UnknownTypeOutputBuffer,
+    StreamData, StreamId, SupportedFormatsError, UnknownTypeInputBuffer, UnknownTypeOutputBuffer,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
@@ -80,20 +80,33 @@ impl InputManager {
                 // Convert stream data
                 if let Some(sender) = senders.get(&stream_id) {
                     let buffer: Vec<StreamFrame> = match stream_data {
-                        StreamData::Output {
-                            buffer: UnknownTypeOutputBuffer::U16(buffer),
-                        } => buffer
-                            .iter()
-                            .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
-                            .collect(),
-                        StreamData::Output {
-                            buffer: UnknownTypeOutputBuffer::I16(buffer),
-                        } => buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect(),
-                        StreamData::Output {
-                            buffer: UnknownTypeOutputBuffer::F32(buffer),
-                        } => buffer.iter().copied().collect(),
-                        _ => Vec::new(),
+                        StreamData::Output { buffer } => match buffer {
+                            UnknownTypeOutputBuffer::U16(buffer) => buffer
+                                .iter()
+                                .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
+                                .collect(),
+                            UnknownTypeOutputBuffer::I16(buffer) => {
+                                buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect()
+                            }
+                            UnknownTypeOutputBuffer::F32(buffer) => {
+                                buffer.iter().copied().collect()
+                            }
+                        },
+                        StreamData::Input { buffer } => match buffer {
+                            UnknownTypeInputBuffer::U16(buffer) => buffer
+                                .iter()
+                                .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
+                                .collect(),
+                            UnknownTypeInputBuffer::I16(buffer) => {
+                                buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect()
+                            }
+                            UnknownTypeInputBuffer::F32(buffer) => buffer.iter().copied().collect(),
+                        },
                     };
+                    println!(
+                        "{:?}",
+                        buffer.iter().max_by_key(|f| (f.abs() * 1000.0) as u32)
+                    );
                     // Send stream data to device interface
                     let _ = sender.send(buffer);
                 }
@@ -140,31 +153,25 @@ impl InputManager {
         let (send, recv) = unbounded();
         let _ = self.send_send.send((stream_id, send));
         Ok(InputDevice {
-            name: device.name()?,
+            device: device.name()?,
             recv: Arc::new(recv),
             format,
             queue: VecDeque::new(),
         })
     }
-    pub fn device_names(&self) -> Result<Vec<String>, InputError> {
-        self.host
-            .input_devices()?
-            .map(|dev| dev.name().map_err(Into::into))
-            .collect()
-    }
 }
 
 #[derive(Debug)]
 pub struct InputDevice {
-    name: String,
+    device: String,
     recv: Arc<Receiver<Vec<f32>>>,
     format: Format,
     queue: VecDeque<Voice>,
 }
 
 impl InputDevice {
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn device(&self) -> &str {
+        &self.device
     }
     pub fn sample(&mut self) -> Option<Voice> {
         for buffer in self.recv.try_iter() {

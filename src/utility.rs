@@ -26,6 +26,13 @@ pub fn list_output_devices() -> Result<(), InputError> {
     Ok(())
 }
 
+pub fn list_input_devices() -> Result<(), InputError> {
+    for (i, device) in rodio::input_devices()?.enumerate() {
+        colorprintln!("{}. {}", bright_cyan, i, device.name()?);
+    }
+    Ok(())
+}
+
 pub fn name_from_str(s: &str) -> Name {
     Name::from(&s[..s.len().min(NAME_CAPACITY)]).unwrap()
 }

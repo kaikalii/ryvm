@@ -95,7 +95,7 @@ pub enum Spec {
         ///
         /// If this field is not specified, the default input device will be chosen
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
+        device: Option<String>,
     },
     /// A wave synthesizer
     Wave {

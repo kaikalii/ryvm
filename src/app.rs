@@ -142,4 +142,6 @@ pub struct RyvmApp {
 pub enum RyvmSubcommand {
     #[structopt(about = "List all available output devices")]
     OutputList,
+    #[structopt(about = "List all available input devices")]
+    InputList,
 }

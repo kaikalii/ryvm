@@ -47,6 +47,18 @@ pub enum RyvmError {
         'input' field specified or be listed after another device."
     )]
     NoInputSpecified(Name),
+    /// No device matching search
+    #[error("No device found matching {0}")]
+    NoMatchingDevice(String),
+    /// No default output device
+    #[error("No default output device available")]
+    NoDefaultOutputDevice,
+    /// Unable to initialize audio device
+    #[error("Unable to initialize audio device")]
+    UnableToInitializeDevice,
+    /// Audio devices error
+    #[error("Audio devices error: {0}")]
+    Devices(#[from] rodio::DevicesError),
 }
 
 /// The Ryvm result type

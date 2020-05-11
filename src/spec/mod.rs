@@ -136,7 +136,9 @@ pub enum Spec {
     /// A drum machine with a list of paths to sample files
     Drums {
         /// The paths to the sample audio files (relative to the ryvm samples directory)
-        paths: Vec<PathBuf>,
+        paths: Option<Vec<PathBuf>>,
+        /// The path to a folder containing audio files (relative to the ryvm samples directory)
+        folder: Option<PathBuf>,
     },
     /// A low-pass filter
     Filter {

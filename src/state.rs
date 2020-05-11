@@ -370,8 +370,23 @@ impl State {
                 wave.adsr.release = release;
                 wave.pitch_bend_range = bend;
             }
-            Spec::Drums { paths } => {
+            Spec::Drums { paths, folder } => {
                 let drums = device!(DrumMachine, || Device::new_drum_machine());
+                let paths = if let Some(folder) = folder {
+                    let folder = samples_dir()?.join(folder);
+                    let mut paths = Vec::new();
+                    for entry in fs::read_dir(&folder)?.filter_map(Result::ok) {
+                        let path = entry.path();
+                        if path.extension().map_or(false, |ext| ext == "wav") {
+                            paths.push(path);
+                        }
+                    }
+                    paths
+                } else if let Some(paths) = paths {
+                    paths
+                } else {
+                    Vec::new()
+                };
                 for path in paths.clone() {
                     self.sample_bank.start(path);
                 }

@@ -201,7 +201,7 @@ impl Device {
                             return Voice::SILENT;
                         }
                         // spc = samples per cycle
-                        let spc = state.sample_rate as f32 / freq;
+                        let spc = state.vars.sample_rate as f32 / freq;
                         let t = *i as f32 / spc;
                         let s = match wave.form {
                             WaveForm::Sine => (t * 2.0 * PI).sin(),
@@ -223,7 +223,7 @@ impl Device {
                     })
                     .fold(Voice::SILENT, |acc, v| acc + v);
 
-                enveloper.progress(state.sample_rate, adsr);
+                enveloper.progress(state.vars.sample_rate, adsr);
                 voice
             }
             // Drum Machine
@@ -248,8 +248,8 @@ impl Device {
                     let ActiveSampling { index, i, velocity } = &mut samplings[ms];
                     if let Some(res) = state.sample_bank.get(&drums.samples[*index]).finished() {
                         if let Ok(sample) = &*res {
-                            if *i < sample.len(state.sample_rate) {
-                                mixed += *sample.voice(*i, state.sample_rate) * *velocity;
+                            if *i < sample.len(state.vars.sample_rate) {
+                                mixed += *sample.voice(*i, state.vars.sample_rate) * *velocity;
                                 *i += 1;
                             } else {
                                 samplings.remove(ms);
@@ -335,7 +335,7 @@ impl Device {
                     .resolve_dynamic_value(&reverb.energy_mul, channel_num, cache)
                     .unwrap_or(0.5);
                 let return_time = size * 2.0 / SPEED_OF_SOUND;
-                let return_frame_count = (return_time * state.sample_rate as f32) as usize;
+                let return_frame_count = (return_time * state.vars.sample_rate as f32) as usize;
                 let mut frames = reverb.frames.lock();
                 let mut reverbed = Voice::SILENT;
                 while frames.len() > return_frame_count {

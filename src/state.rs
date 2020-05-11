@@ -37,16 +37,20 @@ impl JobDescription<PathBuf> for LoadSamples {
     }
 }
 
-/// The main Ryvm state manager
-pub struct State {
+#[derive(Debug, Clone, Copy)]
+pub struct StateVars {
     pub sample_rate: u32,
     pub tempo: f32,
     pub master_volume: f32,
+    pub i: Frame,
+}
+
+/// The main Ryvm state manager
+pub struct State {
+    pub vars: StateVars,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
     command_queue: Vec<RyvmCommand>,
-    /// The index of the current frame
-    pub i: Frame,
     pub loop_master: Option<LoopMaster>,
     pub sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
     pub midis: HashMap<Port, Midi>,
@@ -82,13 +86,15 @@ impl State {
         let (inter_send, recv) = mpmc::unbounded();
         // Init state
         let mut state = State {
-            sample_rate,
-            tempo: 1.0,
-            master_volume: 0.5,
+            vars: StateVars {
+                sample_rate,
+                tempo: 1.0,
+                master_volume: 0.5,
+                i: 0,
+            },
             frame_queue: None,
             channels: HashMap::new(),
             command_queue: Vec::new(),
-            i: 0,
             loop_master: None,
             sample_bank: Employer::default(),
             midis: HashMap::new(),
@@ -127,9 +133,9 @@ impl State {
     #[allow(dead_code)]
     fn is_debug_frame(&self) -> bool {
         if let Some(master) = self.loop_master {
-            self.i % (master.period as Frame / 10) == 0
+            self.vars.i % (master.period as Frame / 10) == 0
         } else {
-            self.i % (self.sample_rate as Frame / 5) == 0
+            self.vars.i % (self.vars.sample_rate as Frame / 5) == 0
         }
     }
     /// Start a loop
@@ -165,7 +171,7 @@ impl State {
                     colorprintln!("Finished recording {}", bright_cyan, num);
                 } else {
                     loops_to_delete.push(num);
-                    colorprintln!("Cancelled recording {}", bright_yellow, num)
+                    colorprintln!("Cancelled recording {}", bright_yellow, num);
                 }
             }
         }
@@ -337,7 +343,7 @@ impl State {
             Spec::Input { name: device_name } => {
                 let input = self
                     .input_manager
-                    .add_device(device_name, self.sample_rate)?;
+                    .add_device(device_name, self.vars.sample_rate)?;
                 let removed = self.inputs.remove(&name).is_some();
                 colorprintln!(
                     "{}nitialized {} ({})",
@@ -739,7 +745,7 @@ impl State {
     }
     fn process_delayed_cli_commands(&mut self) {
         if let Some(master) = self.loop_master {
-            if self.i % master.period as Frame == 0 && self.frame_queue.is_none() {
+            if self.vars.i % master.period as Frame == 0 && self.frame_queue.is_none() {
                 let mut commands = Vec::new();
                 swap(&mut commands, &mut self.command_queue);
                 for command in commands {
@@ -783,7 +789,7 @@ impl Iterator for State {
         // Get next frame
         // Try the queue
         if let Some(voice) = self.frame_queue.take() {
-            self.i += 1;
+            self.vars.i += 1;
             return Some(voice);
         }
         // Calculate next frame
@@ -850,9 +856,9 @@ impl Iterator for State {
                 },
                 Control::ValuedAction(action, val) => {
                     match action {
-                        ValuedAction::Tempo => self.tempo = f32::from(val) / 0x3f as f32,
+                        ValuedAction::Tempo => self.vars.tempo = f32::from(val) / 0x3f as f32,
                         ValuedAction::MasterVolume => {
-                            self.master_volume = f32::from(val) / 0x7f as f32
+                            self.vars.master_volume = f32::from(val) / 0x7f as f32
                         }
                         ValuedAction::LoopSpeed { num } => {
                             if let Some(lup) = self.loops.get_mut(&num) {
@@ -915,7 +921,7 @@ impl Iterator for State {
             voice += input_voice;
         }
         // Collect loop controls
-        let state_tempo = self.tempo;
+        let state_tempo = self.vars.tempo;
         let loop_period = self.loop_master.map(|lm| lm.period);
         let loop_controls: Vec<_> = self
             .loops
@@ -946,7 +952,7 @@ impl Iterator for State {
                 for name in outputs {
                     cache.visited.clear();
                     voice += channel.next_from(channel_num, &name, self, &mut cache)
-                        * self.master_volume;
+                        * self.vars.master_volume;
                 }
             }
         }
@@ -963,7 +969,7 @@ impl Source for State {
         2
     }
     fn sample_rate(&self) -> u32 {
-        self.sample_rate
+        self.vars.sample_rate
     }
     fn total_duration(&self) -> std::option::Option<std::time::Duration> {
         None

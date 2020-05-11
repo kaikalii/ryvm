@@ -1,7 +1,8 @@
-use std::{convert::Infallible, fmt, fs, path::Path, str::FromStr};
+use std::{convert::Infallible, fmt, fs, path::Path, path::PathBuf, str::FromStr};
 
 use itertools::Itertools;
 use rodio::{Decoder, Source};
+use serde_derive::{Deserialize, Serialize};
 
 use crate::{samples_dir, Frame, RyvmResult, Voice};
 
@@ -12,8 +13,15 @@ pub struct ActiveSampling {
     pub velocity: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SampleDef {
+    pub path: PathBuf,
+    pub loop_start: f32,
+    pub pitch: f32,
+}
+
 /// Data for an audio sample
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Sample {
     sample_rate: u32,
     samples: Vec<Voice>,
@@ -58,13 +66,21 @@ impl Sample {
             samples,
         })
     }
-    pub fn voice(&self, index: Frame, sample_rate: u32) -> &Voice {
+    pub fn voice(&self, index: Frame, sample_rate: u32) -> Voice {
         let adjusted = index as usize * self.sample_rate as usize / sample_rate as usize;
-        &self.samples[adjusted as usize]
+        self.samples[adjusted as usize]
     }
     pub fn len(&self, sample_rate: u32) -> Frame {
         (u64::from(sample_rate) * self.samples.len() as Frame / Frame::from(self.sample_rate))
             as Frame
+    }
+    pub fn dur_seconds(&self) -> f32 {
+        self.samples.len() as f32 / self.sample_rate as f32
+    }
+    pub fn voice_at_time(&self, t: f32, sample_rate: u32) -> Voice {
+        let adjusted = t * self.sample_rate as f32 / sample_rate as f32;
+        let i = (adjusted / self.dur_seconds() * self.samples.len() as f32) as usize;
+        self.samples[i]
     }
 }
 

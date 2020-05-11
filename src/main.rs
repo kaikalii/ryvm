@@ -6,7 +6,7 @@ mod utility;
 use utility::*;
 
 mods!(
-    app, channel, device, drum, envelope, error, gamepad, input, library, r#loop, midi, onfly,
+    app, channel, device, envelope, error, gamepad, input, library, r#loop, midi, onfly, sample,
     spec, state, track
 );
 

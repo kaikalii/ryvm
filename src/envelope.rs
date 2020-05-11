@@ -17,6 +17,7 @@ struct NoteEnvelope {
     state: EnvelopeState,
     velocity: u8,
     amplitude: f32,
+    t: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -24,6 +25,7 @@ pub struct EnvelopeFrame {
     pub note: u8,
     pub amplitude: f32,
     pub pitch_bend: f32,
+    pub t: f32,
 }
 
 /// Keeps track of the key states of an input device
@@ -50,6 +52,7 @@ impl Enveloper {
                             state: EnvelopeState::Attack,
                             velocity: v,
                             amplitude: 0.0,
+                            t: 0.0,
                         },
                     );
                 }
@@ -71,6 +74,7 @@ impl Enveloper {
                     note: ne.note,
                     pitch_bend: self.pitch_bend,
                     amplitude: ne.amplitude,
+                    t: ne.t,
                 })
             } else {
                 None
@@ -110,6 +114,7 @@ impl Enveloper {
                 }
                 EnvelopeState::Done => panic!("EnvelopeState::Done not purged"),
             }
+            ne.t += 1.0 / sample_rate as f32;
         }
         self.envelopes
             .retain(|_, ne| !matches!(ne.state, EnvelopeState::Done));

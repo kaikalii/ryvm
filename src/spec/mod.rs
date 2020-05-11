@@ -13,8 +13,10 @@ use std::{ops::Not, path::PathBuf};
 use indexmap::IndexMap;
 use serde_derive::{Deserialize, Serialize};
 
+use crate::SampleDef;
+
 /// A specification for a Ryvm item
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields, tag = "type")]
 #[allow(clippy::large_enum_variant)]
 pub enum Spec {
@@ -186,5 +188,16 @@ pub enum Spec {
             skip_serializing_if = "default::is_energy_mul"
         )]
         energy_mul: DynamicValue,
+    },
+    /// A pitch-changing sampler
+    Sampler {
+        /// The sample definition
+        def: SampleDef,
+        /// The optional ADSR envelope
+        #[serde(
+            default = "default::adsr_env",
+            skip_serializing_if = "default::is_adsr_env"
+        )]
+        adsr: ADSR<DynamicValue>,
     },
 }

@@ -1,5 +1,5 @@
 //! All the Ryvm spec default values
-use crate::{DynamicValue, FilterType};
+use crate::{DynamicValue, FilterType, ADSR};
 
 macro_rules! default {
     (#[$attr:meta] const $constant:ident: $type:ty = $val:expr; $def_fn_name:ident; $is_def_fn_name:ident;) => {
@@ -97,4 +97,16 @@ default! {
     const ENERGY_MUL: DynamicValue = DynamicValue::Static(0.5);
     energy_mul;
     is_energy_mul;
+}
+
+default! {
+    /// The default ADSR envelope
+    const ADSR_ENV: ADSR<DynamicValue> = ADSR {
+        attack: ATTACK,
+        decay: DECAY,
+        sustain: SUSTAIN,
+        release: RELEASE,
+    };
+    adsr_env;
+    is_adsr_env;
 }

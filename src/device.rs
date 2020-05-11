@@ -4,7 +4,7 @@ use rand::random;
 
 use crate::{
     ActiveSampling, Channel, CloneCell, CloneLock, Control, DynamicValue, Enveloper, FilterType,
-    Float, Frame, FrameCache, Letter, Name, State, Voice, WaveForm, ADSR,
+    Float, Frame, FrameCache, Letter, Name, SampleDef, State, Voice, WaveForm, ADSR,
 };
 
 /// A virtual audio processing device
@@ -20,6 +20,8 @@ pub enum Device {
     Balance(Balance),
     /// A reverb simulator
     Reverb(Reverb),
+    /// A pitch-changing sampler
+    Sampler(Box<Sampler>),
 }
 
 /// A wave synthesizer
@@ -122,6 +124,15 @@ pub struct Reverb {
     frames: CloneLock<VecDeque<Voice>>,
 }
 
+/// A pitch-changing sampler
+#[derive(Debug, Clone)]
+pub struct Sampler {
+    pub def: SampleDef,
+    /// The attack-decay-sustain-release envelope
+    pub adsr: ADSR<DynamicValue>,
+    enveloper: CloneLock<Enveloper>,
+}
+
 impl Device {
     /// Create a new wave
     #[must_use]
@@ -172,6 +183,15 @@ impl Device {
             energy_mul: DynamicValue::Static(0.5),
             frames: CloneLock::new(VecDeque::new()),
         })
+    }
+    /// Create a new reverb
+    #[must_use]
+    pub fn new_sampler(def: SampleDef) -> Self {
+        Device::Sampler(Box::new(Sampler {
+            def,
+            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
+            enveloper: CloneLock::new(Enveloper::default()),
+        }))
     }
     pub fn next(
         &self,
@@ -254,7 +274,7 @@ impl Device {
                     if let Some(res) = state.sample_bank.get(&drums.samples[*index]).finished() {
                         if let Ok(sample) = &*res {
                             if *i < sample.len(state.vars.sample_rate) {
-                                mixed += *sample.voice(*i, state.vars.sample_rate) * *velocity;
+                                mixed += sample.voice(*i, state.vars.sample_rate) * *velocity;
                                 *i += 1;
                             } else {
                                 samplings.remove(ms);
@@ -366,6 +386,37 @@ impl Device {
                 }
                 let output = input_frame + reverbed;
                 frames.push_back(output * energy_mul);
+                output
+            }
+            // Sampler
+            Device::Sampler(sampler) => {
+                let mut enveloper = sampler.enveloper.lock();
+                enveloper.register(cache.channel_controls(channel_num));
+                let adsr = sampler
+                    .adsr
+                    .map_or_default(|value| state.resolve_dynamic_value(value, channel_num, cache));
+                let output = enveloper
+                    .envelopes()
+                    .fold(Voice::SILENT, |mut acc, env_frame| {
+                        if let Some(sample) = state.sample_bank.get(&sampler.def.path).finished() {
+                            if let Ok(sample) = &*sample {
+                                let (l, o) = Letter::from_u8(env_frame.note);
+                                let freq = l.freq(o);
+                                let t = env_frame.t * freq / sampler.def.pitch;
+                                let t = if t < sampler.def.loop_start {
+                                    t
+                                } else {
+                                    sampler.def.loop_start
+                                        + (t - sampler.def.loop_start)
+                                            % (sample.dur_seconds() - sampler.def.loop_start)
+                                };
+                                let voice = sample.voice_at_time(t, state.vars.sample_rate);
+                                acc += voice * env_frame.amplitude;
+                            }
+                        }
+                        acc
+                    });
+                enveloper.progress(state.vars.sample_rate, adsr);
                 output
             }
         }

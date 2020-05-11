@@ -422,6 +422,12 @@ impl State {
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
             }
+            Spec::Sampler { def, adsr } => {
+                self.sample_bank.start(def.path.clone());
+                let sampler = device!(Sampler, || Device::new_sampler(def.clone()));
+                sampler.def = def;
+                sampler.adsr = adsr;
+            }
         }
         Ok(())
     }

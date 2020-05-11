@@ -20,8 +20,11 @@ pub static GAMEPADS: Lazy<Gamepads> = Lazy::new(|| {
             }
             Err(GilrsError::Other(e)) => panic!("Platform-specific gamepad error: {}", e),
         };
-        while let Some(event) = gil.next_event() {
-            let _ = send.send(event);
+        println!("Gamepads initialized");
+        loop {
+            if let Some(event) = gil.next_event() {
+                let _ = send.send(event);
+            }
         }
     });
     Gamepads {

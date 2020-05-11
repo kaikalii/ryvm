@@ -180,6 +180,9 @@ impl Loop {
     }
     pub fn finish(&mut self, period: Option<f32>) {
         if let LoopState::Recording = self.loop_state {
+            if self.controls.is_empty() {
+                return;
+            }
             self.loop_state = LoopState::Playing;
             // Collect a set of all port-channel-id-note quartets
             let mut note_midi_channels = HashSet::new();

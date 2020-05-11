@@ -78,7 +78,11 @@ impl Control {
 
         let control = match (status, d1, d2) {
             (NOTE_START, n, v) => check_buttons(buttons, sliders, status, channel, d1, d2, || {
-                Control::NoteStart(random::<u64>() % 1_000_000, n, v)
+                if v == 0 {
+                    Control::NoteEnd(0, n)
+                } else {
+                    Control::NoteStart(random::<u64>() % 1_000_000, n, v)
+                }
             }),
             (NOTE_END, n, _) => check_buttons(buttons, sliders, status, channel, d1, d2, || {
                 Control::NoteEnd(0, n)

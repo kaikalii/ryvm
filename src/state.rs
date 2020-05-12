@@ -651,7 +651,7 @@ impl State {
         if let Some(master) = self.loop_master {
             lup.set_period(master.period);
             if let Some(master) = self.loops.get(&master.num) {
-                lup.set_i(master.i());
+                lup.set_t(master.t());
             }
         } else {
             self.loop_master = Some(LoopMaster {

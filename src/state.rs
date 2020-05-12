@@ -277,7 +277,7 @@ impl State {
                 slider,
                 range,
             } => {
-                let ty = if gamepad {
+                let ty = if gamepad.is_some() {
                     MidiType::Gamepad
                 } else {
                     MidiType::Midi
@@ -304,7 +304,7 @@ impl State {
                             Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
                         }
                     }
-                    MidiType::Gamepad => 0,
+                    MidiType::Gamepad => gamepad.unwrap_or(0),
                 };
                 let port = Port { id, ty };
                 let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);

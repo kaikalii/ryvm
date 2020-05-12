@@ -8,7 +8,7 @@ mod parts;
 pub use action::*;
 pub use parts::*;
 
-use std::{ops::Not, path::PathBuf};
+use std::path::PathBuf;
 
 use indexmap::IndexMap;
 use serde_derive::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ pub enum Spec {
         /// This is evaluated before all other other channel mappings.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output_channel: Option<u8>,
-        /// Set this to true if the controller is actually a gamepad
+        /// Set this to a gamepad index if this controller is a gamepad
         ///
         /// Controls on the gamepad are mapped to midi controls.
         /// Buttons work like normal midi controller buttons.
@@ -63,8 +63,8 @@ pub enum Spec {
         /// - DPadRight: 17
         /// - L3: 18
         /// - R3: 19
-        #[serde(default, skip_serializing_if = "Not::not")]
-        gamepad: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        gamepad: Option<usize>,
         /// A list of the controls that are not global
         ///
         /// By default, every control on a midi controller is set to global.

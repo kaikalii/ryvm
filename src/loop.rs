@@ -5,7 +5,7 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{colorprintln, Control, Float, Name, Port, Voice};
+use crate::{colorprintln, Control, Float, Port};
 
 #[derive(Debug, Clone, Copy)]
 pub struct LoopMaster {
@@ -27,7 +27,6 @@ pub enum LoopState {
 }
 
 pub type ControlsMap = HashMap<(Port, u8), Vec<Control>>;
-pub type SamplesMap = HashMap<Name, Voice>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "LoopDef", into = "LoopDef")]

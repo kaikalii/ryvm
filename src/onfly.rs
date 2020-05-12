@@ -17,7 +17,7 @@ pub struct FlyControl {
     start: Option<Instant>,
 }
 
-const FLY_PATTERN: &str = "#";
+const FLY_PATTERN: &str = "##";
 
 impl FlyControl {
     pub fn find<P>(path: P, channel: Option<u8>, delay: bool) -> RyvmResult<Option<Self>>

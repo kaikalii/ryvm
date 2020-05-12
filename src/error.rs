@@ -40,23 +40,23 @@ pub enum RyvmError {
     StateDropped,
     /// An error with audio input
     #[error("Input error: {0}")]
-    InputDevice(#[from] InputError),
-    /// A device that requires input was not assigned it
+    InputNode(#[from] InputError),
+    /// A node that requires input was not assigned it
     #[error(
         "No input specified for {0}. It must either have the \
-        'input' field specified or be listed after another device."
+        'input' field specified or be listed after another node."
     )]
     NoInputSpecified(Name),
-    /// No device matching search
-    #[error("No device found matching {0}")]
-    NoMatchingDevice(String),
-    /// No default output device
-    #[error("No default output device available")]
-    NoDefaultOutputDevice,
-    /// Unable to initialize audio device
-    #[error("Unable to initialize audio device")]
-    UnableToInitializeDevice,
-    /// No default input device
+    /// No node matching search
+    #[error("No node found matching {0}")]
+    NoMatchingNode(String),
+    /// No default output node
+    #[error("No default output node available")]
+    NoDefaultOutputNode,
+    /// Unable to initialize audio node
+    #[error("Unable to initialize audio node")]
+    UnableToInitializeNode,
+    /// No default input node
     #[error("Tried to create an input-pass, but there is no audio input specified")]
     NoAudioInputForPass,
 }

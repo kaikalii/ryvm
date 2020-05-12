@@ -4,7 +4,7 @@ use serde_derive::{Deserialize, Serialize};
 /// The total number of bytes that can be in a name
 pub const NAME_CAPACITY: usize = 20;
 
-/// The name of a controller or device
+/// The name of a controller or node
 pub type Name = ArrayString<[u8; NAME_CAPACITY]>;
 
 use crate::default;
@@ -50,7 +50,7 @@ impl Default for FilterType {
 }
 
 /// A value that can be either a static number, mapped to a midi control,
-/// or mapped to a device output
+/// or mapped to a node output
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields, untagged)]
 pub enum DynamicValue {
@@ -73,7 +73,7 @@ pub enum DynamicValue {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         default: Option<f32>,
     },
-    /// The value output by another device
+    /// The value output by another node
     Output(Name),
 }
 

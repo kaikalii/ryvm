@@ -42,15 +42,15 @@ macro_rules! colorprintln {
 }
 
 pub fn list_output_devices() -> Result<(), InputError> {
-    for (i, device) in rodio::output_devices()?.enumerate() {
-        colorprintln!("{}. {}", bright_cyan, i, device.name()?);
+    for (i, devices) in rodio::output_devices()?.enumerate() {
+        colorprintln!("{}. {}", bright_cyan, i, devices.name()?);
     }
     Ok(())
 }
 
 pub fn list_input_devices() -> Result<(), InputError> {
-    for (i, device) in rodio::input_devices()?.enumerate() {
-        colorprintln!("{}. {}", bright_cyan, i, device.name()?);
+    for (i, devices) in rodio::input_devices()?.enumerate() {
+        colorprintln!("{}. {}", bright_cyan, i, devices.name()?);
     }
     Ok(())
 }

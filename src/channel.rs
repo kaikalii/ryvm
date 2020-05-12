@@ -4,83 +4,83 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use crate::{name_from_str, Control, Device, Name, Port, State};
+use crate::{name_from_str, Control, Node, Name, Port, State};
 
-/// A midi channel that can contain many devices
+/// A midi channel that can contain many nodes
 #[derive(Debug, Default)]
 pub struct Channel {
-    devices: HashMap<Name, Device>,
+    nodes: HashMap<Name, Node>,
 }
 
 impl Channel {
-    /// Get a device by name
+    /// Get a node by name
     #[must_use]
-    pub fn get(&self, name: &str) -> Option<&Device> {
-        self.devices.get(name)
+    pub fn get(&self, name: &str) -> Option<&Node> {
+        self.nodes.get(name)
     }
-    /// Get a device map entry
-    pub fn entry(&mut self, name: Name) -> hash_map::Entry<Name, Device> {
-        self.devices.entry(name)
+    /// Get a node map entry
+    pub fn entry(&mut self, name: Name) -> hash_map::Entry<Name, Node> {
+        self.nodes.entry(name)
     }
-    /// Get an iterator over the device names
+    /// Get an iterator over the node names
     #[must_use]
-    pub fn device_names(&self) -> hash_map::Keys<Name, Device> {
-        self.devices.keys()
+    pub fn node_names(&self) -> hash_map::Keys<Name, Node> {
+        self.nodes.keys()
     }
-    /// Get an iterator over the devices
+    /// Get an iterator over the nodes
     #[must_use]
-    pub fn devices(&self) -> hash_map::Values<Name, Device> {
-        self.devices.values()
+    pub fn nodes(&self) -> hash_map::Values<Name, Node> {
+        self.nodes.values()
     }
-    /// Get an iterator over mutable references to the devices
+    /// Get an iterator over mutable references to the nodes
     #[must_use]
-    pub fn devices_mut(&mut self) -> hash_map::ValuesMut<Name, Device> {
-        self.devices.values_mut()
+    pub fn nodes_mut(&mut self) -> hash_map::ValuesMut<Name, Node> {
+        self.nodes.values_mut()
     }
-    /// Get an iterator over names and devices
+    /// Get an iterator over names and nodes
     #[must_use]
-    pub fn names_devices(&self) -> hash_map::Iter<Name, Device> {
-        self.devices.iter()
+    pub fn names_nodes(&self) -> hash_map::Iter<Name, Node> {
+        self.nodes.iter()
     }
-    // /// Get an iterator over names and mutable references to the devices
+    // /// Get an iterator over names and mutable references to the nodes
     // #[must_use]
-    // pub fn names_devices_mut(&mut self) -> hash_map::IterMut<Name, Device> {
-    //     self.devices.iter_mut()
+    // pub fn names_nodes_mut(&mut self) -> hash_map::IterMut<Name, Node> {
+    //     self.nodes.iter_mut()
     // }
-    /// Get an iterator over the names of devices in this channel that should be output
+    /// Get an iterator over the names of nodes in this channel that should be output
     pub fn outputs(&self) -> impl Iterator<Item = &str> + '_ {
-        self.device_names()
+        self.node_names()
             .map(AsRef::as_ref)
-            .filter(move |name| !self.devices().any(|device| device.inputs().contains(name)))
+            .filter(move |name| !self.nodes().any(|node| node.inputs().contains(name)))
     }
-    /// Retain devices that satisfy the predicate
+    /// Retain nodes that satisfy the predicate
     pub fn retain<F>(&mut self, f: F)
     where
-        F: FnMut(&Name, &mut Device) -> bool,
+        F: FnMut(&Name, &mut Node) -> bool,
     {
-        self.devices.retain(f)
+        self.nodes.retain(f)
     }
-    // /// Clear all devices
+    // /// Clear all nodes
     // pub fn clear(&mut self) {
-    //     self.devices.clear();
+    //     self.nodes.clear();
     // }
-    /// Remove a device and optionally recursively delete all of its unique inputs
+    /// Remove a node and optionally recursively delete all of its unique inputs
     pub fn remove(&mut self, name: &str, recursive: bool) {
-        if let Some(device) = self.get(name) {
+        if let Some(node) = self.get(name) {
             if recursive {
-                let inputs: Vec<Name> = device.inputs().into_iter().map(name_from_str).collect();
+                let inputs: Vec<Name> = node.inputs().into_iter().map(name_from_str).collect();
                 for input in inputs {
                     if !self
-                        .devices
+                        .nodes
                         .iter()
                         .filter(|(i, _)| i != &name)
-                        .any(|(_, device)| device.inputs().contains(&&*input))
+                        .any(|(_, node)| node.inputs().contains(&&*input))
                     {
                         self.remove(&input, recursive);
                     }
                 }
             }
-            self.devices.remove(name);
+            self.nodes.remove(name);
         }
     }
     #[must_use]
@@ -97,11 +97,11 @@ impl Channel {
             Voice::mono(0.0)
         } else {
             cache.visited.insert(full_name.clone());
-            if let Some(device) = self.get(name) {
+            if let Some(node) = self.get(name) {
                 if let Some(voice) = cache.voices.get(&full_name) {
                     *voice
                 } else {
-                    let voice = device.next(channel_num, self, state, cache, name);
+                    let voice = node.next(channel_num, self, state, cache, name);
                     cache.voices.insert(full_name, voice);
                     voice
                 }

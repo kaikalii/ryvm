@@ -41,23 +41,23 @@ pub enum RyvmCommand {
         )]
         reset: bool,
     },
-    #[structopt(about = "List all devices")]
+    #[structopt(about = "List all nodes")]
     Ls {
         #[structopt(long, short, help = "Do not sort list")]
         unsorted: bool,
     },
-    #[structopt(about = "Print a tree of all output devices")]
+    #[structopt(about = "Print a tree of all output nodes")]
     Tree,
-    #[structopt(about = "Remove an device", alias = "remove")]
+    #[structopt(about = "Remove an node", alias = "remove")]
     Rm {
-        #[structopt(help = "The name of the device to be removed")]
+        #[structopt(help = "The name of the node to be removed")]
         id: String,
-        #[structopt(help = "The channel from which to remove the device")]
+        #[structopt(help = "The channel from which to remove the node")]
         channel: Option<u8>,
         #[structopt(
             long,
             short,
-            help = "Recursively remove all the device's unique inputs as well"
+            help = "Recursively remove all the node's unique inputs as well"
         )]
         recursive: bool,
     },
@@ -76,7 +76,7 @@ pub enum RyvmCommand {
     Samples,
     #[structopt(about = "Open the loops folder")]
     Loops,
-    #[structopt(about = "List all available audio input devices")]
+    #[structopt(about = "List all available audio input nodes")]
     Inputs,
     #[structopt(about = "Manage audio outputs")]
     Output(OutputSubcommand),
@@ -112,7 +112,7 @@ pub enum LoopSubcommand {
 
 #[derive(Debug, StructOpt)]
 pub enum OutputSubcommand {
-    #[structopt(about = "List all available output devices")]
+    #[structopt(about = "List all available output nodes")]
     List,
 }
 
@@ -130,8 +130,8 @@ pub struct RyvmApp {
         about = "The sample rate for the session"
     )]
     pub sample_rate: u32,
-    /// The main audio output device to use
-    #[structopt(long, short, about = "The main audio output device to use")]
+    /// The main audio output node to use
+    #[structopt(long, short, about = "The main audio output node to use")]
     pub output: Option<String>,
     /// Don't suppress stderr
     #[structopt(long, about = "Don't suppress stderr")]
@@ -143,8 +143,8 @@ pub struct RyvmApp {
 
 #[derive(Debug, StructOpt)]
 pub enum RyvmSubcommand {
-    #[structopt(about = "List all available output devices")]
+    #[structopt(about = "List all available output nodes")]
     OutputList,
-    #[structopt(about = "List all available input devices")]
+    #[structopt(about = "List all available input nodes")]
     InputList,
 }

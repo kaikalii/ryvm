@@ -6,7 +6,7 @@ mod utility;
 use utility::*;
 
 mods!(
-    app, channel, device, envelope, error, gamepad, input, library, r#loop, midi, onfly, sample,
+    app, channel, envelope, error, gamepad, input, library, r#loop, midi, node, onfly, sample,
     spec, state, track
 );
 
@@ -61,14 +61,14 @@ fn run() -> RyvmResult<()> {
         {
             device
         } else {
-            return Err(RyvmError::NoMatchingDevice(output));
+            return Err(RyvmError::NoMatchingNode(output));
         }
     } else {
-        rodio::default_output_device().ok_or(RyvmError::NoDefaultOutputDevice)?
+        rodio::default_output_device().ok_or(RyvmError::NoDefaultOutputNode)?
     };
 
     let sink = std::panic::catch_unwind(|| rodio::Sink::new(&device))
-        .map_err(|_| RyvmError::UnableToInitializeDevice)?;
+        .map_err(|_| RyvmError::UnableToInitializeNode)?;
 
     println!(
         "{}",

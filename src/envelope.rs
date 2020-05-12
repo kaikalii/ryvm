@@ -28,7 +28,7 @@ pub struct EnvelopeFrame {
     pub t: f32,
 }
 
-/// Keeps track of the key states of an input device
+/// Keeps track of the key states of an input node
 /// and applies an ADSR envelope to them
 #[derive(Debug, Clone, Default)]
 pub struct Enveloper {

@@ -18,9 +18,9 @@ use structopt::StructOpt;
 use crate::{
     colorprintln, list_input_devices, list_output_devices, loop_path, loops_dir, name_from_str,
     parse_commands, samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel,
-    CloneLock, Control, Device, DynamicValue, FlyControl, Frame, FrameCache, InputDevice,
-    InputManager, Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType,
-    Name, OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec,
+    CloneLock, Control, DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager,
+    Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType, Name, Node,
+    OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec,
     ValuedAction, Voice,
 };
 
@@ -198,8 +198,8 @@ impl State {
     fn stop_loop(&mut self, num: u8) {
         if let Some(lup) = self.loops.get_mut(&num) {
             for id in lup.note_ids() {
-                for device in self.channels.values_mut().flat_map(Channel::devices_mut) {
-                    device.end_envelopes(id);
+                for node in self.channels.values_mut().flat_map(Channel::nodes_mut) {
+                    node.end_envelopes(id);
                 }
             }
             lup.loop_state = LoopState::Disabled;
@@ -225,8 +225,8 @@ impl State {
         last_name: Option<Name>,
         do_load_specs: bool,
     ) -> RyvmResult<()> {
-        // Macro for initializting devices
-        macro_rules! device {
+        // Macro for initializting nodes
+        macro_rules! node {
             ($variant:ident, $default:expr) => {{
                 let channel = if let Some(channel) = channel {
                     channel
@@ -239,15 +239,15 @@ impl State {
                     .or_insert_with(Channel::default)
                     .entry(name);
                 #[allow(clippy::redundant_closure)]
-                let device = entry.or_insert_with($default);
-                if !matches!(device, Device::$variant(_)) {
+                let node = entry.or_insert_with($default);
+                if !matches!(node, Node::$variant(_)) {
                     #[allow(clippy::redundant_closure_call)]
                     {
-                        *device = ($default)();
+                        *node = ($default)();
                     }
                 }
-                if let Device::$variant(device) = device {
-                    device
+                if let Node::$variant(node) = node {
+                    node
                 } else {
                     unreachable!()
                 }
@@ -358,7 +358,7 @@ impl State {
                 let input = input
                     .or(self.default_input)
                     .ok_or(RyvmError::NoAudioInputForPass)?;
-                let pass = device!(InputPass, || Device::new_input_pass(input));
+                let pass = node!(InputPass, || Node::new_input_pass(input));
                 pass.input = input;
             }
             Spec::Wave {
@@ -370,7 +370,7 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = device!(Wave, || Device::new_wave(form));
+                let wave = node!(Wave, || Node::new_wave(form));
                 wave.form = form;
                 wave.octave = octave.into();
                 wave.adsr.attack = attack;
@@ -380,7 +380,7 @@ impl State {
                 wave.pitch_bend_range = bend;
             }
             Spec::Drums { paths, folder } => {
-                let drums = device!(DrumMachine, || Device::new_drum_machine());
+                let drums = node!(DrumMachine, || Node::new_drum_machine());
                 let paths = if let Some(folder) = folder {
                     let folder = samples_dir()?.join(folder);
                     let mut paths = Vec::new();
@@ -408,7 +408,7 @@ impl State {
                 adsr,
             } => {
                 let input = get_input!(input);
-                let filter = device!(Filter, || Device::new_filter(input, value, filter_type));
+                let filter = node!(Filter, || Node::new_filter(input, value, filter_type));
                 filter.input = input;
                 filter.value = value;
                 filter.set_type(filter_type);
@@ -416,7 +416,7 @@ impl State {
             }
             Spec::Balance { input, volume, pan } => {
                 let input = get_input!(input);
-                let balance = device!(Balance, || Device::new_balance(input));
+                let balance = node!(Balance, || Node::new_balance(input));
                 balance.input = input;
                 balance.volume = volume;
                 balance.pan = pan;
@@ -427,13 +427,13 @@ impl State {
                 energy_mul,
             } => {
                 let input = get_input!(input);
-                let reverb = device!(Reverb, || Device::new_reverb(input));
+                let reverb = node!(Reverb, || Node::new_reverb(input));
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
             }
             Spec::Sampler { def, adsr } => {
                 self.sample_bank.start(def.path.clone());
-                let sampler = device!(Sampler, || Device::new_sampler(def.clone()));
+                let sampler = node!(Sampler, || Node::new_sampler(def.clone()));
                 sampler.def = def;
                 sampler.adsr = adsr;
             }
@@ -675,11 +675,11 @@ impl State {
         for (ch, channel) in self.channels.iter().sorted_by_key(|(ch, _)| *ch) {
             println!("~~~~ Channel {} ~~~~", ch);
             if unsorted {
-                print(&mut channel.device_names());
+                print(&mut channel.node_names());
             } else {
                 print(
                     &mut channel
-                        .names_devices()
+                        .names_nodes()
                         .sorted_by(|(a_id, a_dev), (b_id, b_dev)| {
                             format!("{:?}", discriminant(*a_dev)).as_bytes()[14..]
                                 .cmp(&format!("{:?}", discriminant(*b_dev)).as_bytes()[14..])

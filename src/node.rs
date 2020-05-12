@@ -7,9 +7,9 @@ use crate::{
     Float, Frame, FrameCache, Letter, Name, SampleDef, State, Voice, WaveForm, ADSR,
 };
 
-/// A virtual audio processing device
+/// A virtual audio processing node
 #[derive(Debug)]
-pub enum Device {
+pub enum Node {
     /// A wave synthesizer
     Wave(Box<Wave>),
     /// A drum machine
@@ -86,7 +86,7 @@ impl PartialEq<FilterType> for FilterState {
 /// A low-pass filter
 #[derive(Debug, Clone)]
 pub struct Filter {
-    /// The name of the input device
+    /// The name of the input node
     pub input: Name,
     /// The value used to determine filter strength
     pub value: DynamicValue,
@@ -107,7 +107,7 @@ impl Filter {
 /// A volume and pan balancer
 #[derive(Debug, Clone)]
 pub struct Balance {
-    /// The name of the input device
+    /// The name of the input node
     pub input: Name,
     /// The volume
     pub volume: DynamicValue,
@@ -135,17 +135,17 @@ pub struct Sampler {
     enveloper: CloneLock<Enveloper>,
 }
 
-/// A channel-bound input device
+/// A channel-bound input node
 #[derive(Debug, Clone)]
 pub struct InputPass {
     pub input: Name,
 }
 
-impl Device {
+impl Node {
     /// Create a new wave
     #[must_use]
     pub fn new_wave(form: WaveForm) -> Self {
-        Device::Wave(Box::new(Wave {
+        Node::Wave(Box::new(Wave {
             form,
             octave: None,
             pitch_bend_range: DynamicValue::Static(12.0),
@@ -157,7 +157,7 @@ impl Device {
     /// Create a new drum machine
     #[must_use]
     pub fn new_drum_machine() -> Self {
-        Device::DrumMachine(DrumMachine {
+        Node::DrumMachine(DrumMachine {
             samples: Vec::new(),
             samplings: CloneLock::new(Vec::new()),
         })
@@ -165,7 +165,7 @@ impl Device {
     /// Create a new filter
     #[must_use]
     pub fn new_filter(input: Name, value: DynamicValue, ty: FilterType) -> Self {
-        Device::Filter(Box::new(Filter {
+        Node::Filter(Box::new(Filter {
             input,
             value,
             state: ty.into(),
@@ -176,7 +176,7 @@ impl Device {
     /// Create a new balance
     #[must_use]
     pub fn new_balance(input: Name) -> Self {
-        Device::Balance(Balance {
+        Node::Balance(Balance {
             input,
             volume: DynamicValue::Static(1.0),
             pan: DynamicValue::Static(0.0),
@@ -185,7 +185,7 @@ impl Device {
     /// Create a new reverb
     #[must_use]
     pub fn new_reverb(input: Name) -> Self {
-        Device::Reverb(Reverb {
+        Node::Reverb(Reverb {
             input,
             size: DynamicValue::Static(1.0),
             energy_mul: DynamicValue::Static(0.5),
@@ -195,7 +195,7 @@ impl Device {
     /// Create a new reverb
     #[must_use]
     pub fn new_sampler(def: SampleDef) -> Self {
-        Device::Sampler(Box::new(Sampler {
+        Node::Sampler(Box::new(Sampler {
             def,
             adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
             enveloper: CloneLock::new(Enveloper::default()),
@@ -204,7 +204,7 @@ impl Device {
     /// Create a new InputPass
     #[must_use]
     pub fn new_input_pass(input: Name) -> Self {
-        Device::InputPass(InputPass { input })
+        Node::InputPass(InputPass { input })
     }
     pub fn next(
         &self,
@@ -216,7 +216,7 @@ impl Device {
     ) -> Voice {
         match self {
             // Waves
-            Device::Wave(wave) => {
+            Node::Wave(wave) => {
                 let mut waves = wave.waves.lock();
 
                 let mut enveloper = wave.enveloper.lock();
@@ -265,7 +265,7 @@ impl Device {
                 voice
             }
             // Drum Machine
-            Device::DrumMachine(drums) => {
+            Node::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
                 for control in cache.all_controls() {
@@ -298,7 +298,7 @@ impl Device {
                 mixed
             }
             // Filters
-            Device::Filter(filter) => {
+            Node::Filter(filter) => {
                 // Get the input channels
                 let frame = channel.next_from(channel_num, &filter.input, state, cache);
                 // Determine the value for the filter shape
@@ -362,7 +362,7 @@ impl Device {
                 }
             }
             // Balance
-            Device::Balance(bal) => {
+            Node::Balance(bal) => {
                 let frame = channel.next_from(channel_num, &bal.input, state, cache);
 
                 let volume = state
@@ -378,7 +378,7 @@ impl Device {
                 frame * pan * volume
             }
             // Reverb
-            Device::Reverb(reverb) => {
+            Node::Reverb(reverb) => {
                 let input_frame = channel.next_from(channel_num, &reverb.input, state, cache);
                 let size = state
                     .resolve_dynamic_value(&reverb.size, channel_num, cache)
@@ -401,7 +401,7 @@ impl Device {
                 output
             }
             // Sampler
-            Device::Sampler(sampler) => {
+            Node::Sampler(sampler) => {
                 let mut enveloper = sampler.enveloper.lock();
                 enveloper.register(cache.channel_controls(channel_num));
                 let adsr = sampler
@@ -432,7 +432,7 @@ impl Device {
                 output
             }
             // InputPass
-            Device::InputPass(pass) => cache
+            Node::InputPass(pass) => cache
                 .audio_input
                 .get(&pass.input)
                 .copied()
@@ -440,27 +440,27 @@ impl Device {
         }
     }
     pub fn end_envelopes(&mut self, id: u64) {
-        if let Device::Wave(wave) = self {
+        if let Node::Wave(wave) = self {
             wave.enveloper.lock().end_notes(id);
         }
     }
-    /// Get a list of this device's input devices
+    /// Get a list of this node's input nodes
     pub fn inputs(&self) -> Vec<&str> {
         match self {
-            Device::Wave(wave) => wave
+            Node::Wave(wave) => wave
                 .pitch_bend_range
                 .input()
                 .into_iter()
                 .chain(wave.adsr.inputs())
                 .collect(),
-            Device::Balance(bal) => once(bal.input.as_str())
+            Node::Balance(bal) => once(bal.input.as_str())
                 .chain(bal.volume.input())
                 .chain(bal.pan.input())
                 .collect(),
-            Device::Filter(filter) => once(filter.input.as_str())
+            Node::Filter(filter) => once(filter.input.as_str())
                 .chain(filter.value.input())
                 .collect(),
-            Device::Reverb(reverb) => once(reverb.input.as_str())
+            Node::Reverb(reverb) => once(reverb.input.as_str())
                 .chain(reverb.size.input())
                 .chain(reverb.energy_mul.input())
                 .collect(),

@@ -35,6 +35,7 @@ fn run() -> RyvmResult<()> {
         Some(shh::stderr())
     };
 
+    // Check subcommand
     match app.sub {
         Some(RyvmSubcommand::OutputList) => {
             list_output_devices()?;
@@ -50,6 +51,7 @@ fn run() -> RyvmResult<()> {
     print!("Initializing...\r");
     stdout().flush().unwrap();
 
+    // Initialize device
     let device = if let Some(output) = app.output {
         if let Some(device) = rodio::output_devices()
             .map_err(InputError::from)?
@@ -67,18 +69,17 @@ fn run() -> RyvmResult<()> {
         rodio::default_output_device().ok_or(RyvmError::NoDefaultOutputNode)?
     };
 
+    // Create the audio sync
     let sink = std::panic::catch_unwind(|| rodio::Sink::new(&device))
         .map_err(|_| RyvmError::UnableToInitializeNode)?;
 
-    println!(
-        "{}",
-        format!(
-            "Using audio output device {:?}",
-            device.name().expect("Error getting device name")
-        )
-        .bright_cyan()
+    colorprintln!(
+        "Using audio output device {:?}",
+        bright_cyan,
+        device.name().expect("Error getting device name")
     );
 
+    // Initialize state
     let (state, interface) = State::new(app.file, app.sample_rate)?;
 
     sink.append(state);

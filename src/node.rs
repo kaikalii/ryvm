@@ -268,7 +268,7 @@ impl Node {
             Node::DrumMachine(drums) => {
                 let mut samplings = drums.samplings.lock();
                 // Process controls
-                for control in cache.all_controls() {
+                for control in cache.channel_controls(channel_num) {
                     if let Control::Pad(i, v) = control {
                         let index = i as usize;
                         if index < drums.samples.len() {

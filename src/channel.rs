@@ -4,7 +4,7 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use crate::{name_from_str, Control, Node, Name, Port, State};
+use crate::{name_from_str, Control, Name, Node, Port, State};
 
 /// A midi channel that can contain many nodes
 #[derive(Debug, Default)]
@@ -121,9 +121,9 @@ pub struct FrameCache {
 }
 
 impl FrameCache {
-    pub fn all_controls(&self) -> impl Iterator<Item = Control> + '_ {
-        self.controls.values().flat_map(|v| v.iter().copied())
-    }
+    // pub fn all_controls(&self) -> impl Iterator<Item = Control> + '_ {
+    //     self.controls.values().flat_map(|v| v.iter().copied())
+    // }
     pub fn channel_controls(&self, channel: u8) -> impl Iterator<Item = Control> + '_ {
         self.controls
             .iter()

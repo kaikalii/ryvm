@@ -1,20 +1,19 @@
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
-    thread,
+    thread::Builder,
 };
 
-use colored::Colorize;
 use cpal::{
     traits::{DeviceTrait, EventLoopTrait, HostTrait},
     DeviceNameError, DevicesError, EventLoop, Format, Host, PlayStreamError, SampleRate,
-    StreamData, StreamId, SupportedFormatsError, UnknownTypeInputBuffer, UnknownTypeOutputBuffer,
+    StreamData, StreamId, SupportedFormatsError, UnknownTypeInputBuffer,
 };
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
 use thiserror::Error;
 
-use crate::Voice;
+use crate::{colorprintln, SampleRange, Voice};
 
 #[derive(Debug, Error)]
 pub enum InputError {
@@ -54,64 +53,53 @@ impl InputManager {
         // Channel for sending device data senders to the event loop thread
         let (send_send, send_recv) = unbounded::<NewInputDevice>();
 
-        thread::spawn(move || {
-            let send_recv = send_recv;
-            let mut senders = HashMap::new();
-            event_loop_clone.run(move |stream_id, stream_result| {
-                // Get new device connections
-                for (id, sender) in send_recv.try_iter() {
-                    senders.insert(id, sender);
-                }
-
-                // Unwrap stream data
-                let stream_data = match stream_result {
-                    Ok(data) => data,
-                    Err(err) => {
-                        let s = format!(
-                            "an error occurred on stream {:?}: {}. Closing all input devices...",
-                            stream_id, err
-                        )
-                        .bright_red();
-                        println!("{}", s);
-                        return;
+        Builder::new()
+            .name("audio input".into())
+            .spawn(move || {
+                let send_recv = send_recv;
+                let mut senders = HashMap::new();
+                event_loop_clone.run(move |stream_id, stream_result| {
+                    // Get new device connections
+                    for (id, sender) in send_recv.try_iter() {
+                        senders.insert(id, sender);
                     }
-                };
 
-                // Convert stream data
-                if let Some(sender) = senders.get(&stream_id) {
-                    let buffer: Vec<StreamFrame> = match stream_data {
-                        StreamData::Output { buffer } => match buffer {
-                            UnknownTypeOutputBuffer::U16(buffer) => buffer
-                                .iter()
-                                .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
-                                .collect(),
-                            UnknownTypeOutputBuffer::I16(buffer) => {
-                                buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect()
-                            }
-                            UnknownTypeOutputBuffer::F32(buffer) => {
-                                buffer.iter().copied().collect()
-                            }
-                        },
-                        StreamData::Input { buffer } => match buffer {
-                            UnknownTypeInputBuffer::U16(buffer) => buffer
-                                .iter()
-                                .map(|&u| (u as f32 / u16::MAX as f32) * 2.0 - 1.0)
-                                .collect(),
-                            UnknownTypeInputBuffer::I16(buffer) => {
-                                buffer.iter().map(|&i| i as f32 / i16::MAX as f32).collect()
-                            }
-                            UnknownTypeInputBuffer::F32(buffer) => buffer.iter().copied().collect(),
-                        },
+                    // Unwrap stream data
+                    let stream_data = match stream_result {
+                        Ok(data) => data,
+                        Err(err) => {
+                            colorprintln!(
+                                "An error occurred on stream {:?}: {}.",
+                                bright_red,
+                                stream_id,
+                                err
+                            );
+                            return;
+                        }
                     };
-                    println!(
-                        "{:?}",
-                        buffer.iter().max_by_key(|f| (f.abs() * 1000.0) as u32)
-                    );
-                    // Send stream data to device interface
-                    let _ = sender.send(buffer);
-                }
+
+                    // Convert stream data
+                    if let Some(sender) = senders.get(&stream_id) {
+                        let buffer: Vec<StreamFrame> = match stream_data {
+                            StreamData::Output { .. } => panic!("input stream using output buffer"),
+                            StreamData::Input { buffer } => match buffer {
+                                UnknownTypeInputBuffer::U16(buffer) => {
+                                    buffer.iter().copied().map(SampleRange::to_f32).collect()
+                                }
+                                UnknownTypeInputBuffer::I16(buffer) => {
+                                    buffer.iter().copied().map(SampleRange::to_f32).collect()
+                                }
+                                UnknownTypeInputBuffer::F32(buffer) => {
+                                    buffer.iter().copied().collect()
+                                }
+                            },
+                        };
+                        // Send stream data to device interface
+                        let _ = sender.send(buffer);
+                    }
+                })
             })
-        });
+            .expect("failed to spawn audio input thread");
 
         InputManager {
             host: Arc::clone(&host),
@@ -147,7 +135,7 @@ impl InputManager {
         format.sample_rate = SampleRate(sample_rate);
         let stream_id = self
             .event_loop
-            .build_output_stream(&device, &format)
+            .build_input_stream(&device, &format)
             .unwrap();
         self.event_loop.play_stream(stream_id.clone())?;
         let (send, recv) = unbounded();

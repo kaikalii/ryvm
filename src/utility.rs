@@ -12,6 +12,28 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{InputError, Name, NAME_CAPACITY};
 
+pub trait SampleRange {
+    fn to_f32(self) -> f32;
+}
+
+impl SampleRange for f32 {
+    fn to_f32(self) -> f32 {
+        self
+    }
+}
+
+impl SampleRange for i16 {
+    fn to_f32(self) -> f32 {
+        self as f32 / i16::MAX as f32
+    }
+}
+
+impl SampleRange for u16 {
+    fn to_f32(self) -> f32 {
+        self as f32 / u16::MAX as f32 * 2.0 - 1.0
+    }
+}
+
 #[macro_export]
 macro_rules! colorprintln {
     ($fmt:literal, $col:ident $(,$item:expr)* $(,)?) => {

@@ -133,6 +133,9 @@ pub struct RyvmApp {
     /// The main audio output device to use
     #[structopt(long, short, about = "The main audio output device to use")]
     pub output: Option<String>,
+    /// Don't suppress stderr
+    #[structopt(long, about = "Don't suppress stderr")]
+    pub nosuppress: bool,
     /// A subcommand
     #[structopt(subcommand)]
     pub sub: Option<RyvmSubcommand>,

@@ -26,10 +26,14 @@ fn main() {
 }
 
 fn run() -> RyvmResult<()> {
-    // Supress stderr
-    let shh = shh::stderr();
-
     let app = RyvmApp::from_args();
+
+    // Supress stderr
+    let shh = if app.nosuppress {
+        None
+    } else {
+        Some(shh::stderr())
+    };
 
     match app.sub {
         Some(RyvmSubcommand::OutputList) => {

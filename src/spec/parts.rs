@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use arrayvec::ArrayString;
 use serde_derive::{Deserialize, Serialize};
 
@@ -48,6 +50,74 @@ impl Default for FilterType {
         FilterType::LowPass
     }
 }
+/// A type of filter
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GamepadControl {
+    South,
+    East,
+    West,
+    North,
+    Start,
+    Select,
+    L1,
+    R1,
+    L2,
+    R2,
+    L3,
+    R3,
+    LeftStickX,
+    LeftStickY,
+    RightStickX,
+    RightStickY,
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
+}
+
+impl From<GamepadControl> for u8 {
+    fn from(gc: GamepadControl) -> u8 {
+        gc as u8
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", untagged)]
+pub enum GenericControl {
+    Midi(u8),
+    Gamepad(GamepadControl),
+}
+
+impl From<GenericControl> for u8 {
+    fn from(gc: GenericControl) -> Self {
+        match gc {
+            GenericControl::Midi(i) => i,
+            GenericControl::Gamepad(gc) => gc.into(),
+        }
+    }
+}
+
+impl From<u8> for GenericControl {
+    fn from(u: u8) -> Self {
+        GenericControl::Midi(u)
+    }
+}
+
+impl PartialEq for GenericControl {
+    fn eq(&self, other: &Self) -> bool {
+        u8::from(*self) == u8::from(*other)
+    }
+}
+
+impl Hash for GenericControl {
+    fn hash<H>(&self, hasher: &mut H)
+    where
+        H: Hasher,
+    {
+        hasher.write_u8(u8::from(*self));
+    }
+}
 
 /// A value that can be either a static number, mapped to a midi control,
 /// or mapped to a node output
@@ -58,8 +128,8 @@ pub enum DynamicValue {
     Static(f32),
     /// A midi control mapping
     Control {
-        /// The midi control index
-        index: u8,
+        /// The midi control
+        index: GenericControl,
         /// The name of the midi controller
         #[serde(default, skip_serializing_if = "Option::is_none")]
         controller: Option<Name>,

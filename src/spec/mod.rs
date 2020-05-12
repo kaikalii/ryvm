@@ -40,29 +40,6 @@ pub enum Spec {
         /// Controls on the gamepad are mapped to midi controls.
         /// Buttons work like normal midi controller buttons.
         /// Stick and trigger axis work like midi controller knobs.
-        ///
-        /// The mappings are as follows:
-        ///
-        /// - Start: 0
-        /// - Select: 1
-        /// - South: 2
-        /// - East: 3
-        /// - West: 4
-        /// - North: 5
-        /// - L1: 6
-        /// - R1: 7
-        /// - L2: 8
-        /// - R2: 9
-        /// - LeftStickX: 10
-        /// - LeftStickY: 11
-        /// - RightStickX: 12
-        /// - RightStickY: 13
-        /// - DPadUp: 14
-        /// - DPadDown: 15
-        /// - DPadLeft: 16
-        /// - DPadRight: 17
-        /// - L3: 18
-        /// - R3: 19
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gamepad: Option<usize>,
         /// A list of the controls that are not global

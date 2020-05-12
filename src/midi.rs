@@ -124,13 +124,17 @@ where
 {
     match (status, d1, d2) {
         (CONTROL, index, v) => {
-            if let Some(action) = buttons.get_by_right(&Button::Control { index }) {
+            if let Some(action) = buttons.get_by_right(&Button::Control {
+                index: index.into(),
+            }) {
                 if v == 0 {
                     None
                 } else {
                     Some(Control::Action(*action, 0x7f))
                 }
-            } else if let Some(val_action) = sliders.get_by_right(&Slider::Control { index }) {
+            } else if let Some(val_action) = sliders.get_by_right(&Slider::Control {
+                index: index.into(),
+            }) {
                 Some(Control::ValuedAction(*val_action, v))
             } else {
                 Some(otherwise())
@@ -138,8 +142,15 @@ where
         }
         (NOTE_START, index, v) => {
             if let Some(action) = buttons
-                .get_by_right(&Button::Note { index })
-                .or_else(|| buttons.get_by_right(&Button::ChannelNote { channel, index }))
+                .get_by_right(&Button::Note {
+                    index: index.into(),
+                })
+                .or_else(|| {
+                    buttons.get_by_right(&Button::ChannelNote {
+                        channel,
+                        index: index.into(),
+                    })
+                })
             {
                 if v == 0 {
                     None
@@ -151,9 +162,12 @@ where
             }
         }
         (NOTE_END, index, _) => {
-            if buttons.contains_right(&Button::Note { index })
-                || buttons.contains_right(&Button::ChannelNote { channel, index })
-            {
+            if buttons.contains_right(&Button::Note {
+                index: index.into(),
+            }) || buttons.contains_right(&Button::ChannelNote {
+                channel,
+                index: index.into(),
+            }) {
                 None
             } else {
                 Some(otherwise())

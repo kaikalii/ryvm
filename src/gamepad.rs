@@ -4,7 +4,7 @@ use crossbeam_channel::{unbounded, Receiver};
 use gilrs::{Axis, Button, Error as GilrsError, Event, EventType, Gilrs};
 use once_cell::sync::Lazy;
 
-use crate::{CloneLock, CONTROL};
+use crate::{CloneLock, GamepadControl, CONTROL};
 
 pub static GAMEPADS: Lazy<Gamepads> = Lazy::new(|| {
     let (send, recv) = unbounded();
@@ -62,23 +62,28 @@ impl Gamepads {
 }
 
 fn button_to_control(button: Button) -> Option<u8> {
-    Some(match button {
-        Button::Start => 0,
-        Button::Select => 1,
-        Button::South => 2,
-        Button::East => 3,
-        Button::West => 4,
-        Button::North => 5,
-        Button::LeftTrigger => 6,
-        Button::RightTrigger => 7,
-        Button::DPadUp => 14,
-        Button::DPadDown => 15,
-        Button::DPadLeft => 16,
-        Button::DPadRight => 17,
-        Button::LeftThumb => 18,
-        Button::RightThumb => 19,
-        _ => return None,
-    })
+    Some(
+        match button {
+            Button::Start => GamepadControl::Start,
+            Button::Select => GamepadControl::Select,
+            Button::South => GamepadControl::South,
+            Button::East => GamepadControl::East,
+            Button::West => GamepadControl::West,
+            Button::North => GamepadControl::North,
+            Button::LeftTrigger => GamepadControl::L1,
+            Button::LeftTrigger2 => GamepadControl::L2,
+            Button::RightTrigger => GamepadControl::R1,
+            Button::RightTrigger2 => GamepadControl::R2,
+            Button::DPadUp => GamepadControl::DPadUp,
+            Button::DPadDown => GamepadControl::DPadDown,
+            Button::DPadLeft => GamepadControl::DPadLeft,
+            Button::DPadRight => GamepadControl::DPadRight,
+            Button::LeftThumb => GamepadControl::L3,
+            Button::RightThumb => GamepadControl::R3,
+            _ => return None,
+        }
+        .into(),
+    )
 }
 
 fn stick_val_to_u8(val: f32) -> u8 {

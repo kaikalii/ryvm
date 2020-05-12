@@ -6,7 +6,7 @@ use std::{
 
 use ropey::Rope;
 
-use crate::{default, Control, DynamicValue, Name, RyvmResult};
+use crate::{default, Control, DynamicValue, GenericControl, Name, RyvmResult};
 
 #[derive(Debug, Clone)]
 pub struct FlyControl {
@@ -56,7 +56,7 @@ impl FlyControl {
             // Create control value
             let value = DynamicValue::Control {
                 controller: name(),
-                index: i,
+                index: GenericControl::Midi(i),
                 bounds: default::BOUNDS,
                 default: None,
             };

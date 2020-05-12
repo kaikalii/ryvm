@@ -742,16 +742,17 @@ impl State {
                 bounds,
                 default,
             } => (|| {
+                let index = u8::from(*index);
                 let port = if let Some(controller) = controller {
                     *self.midi_names.get(controller)?
                 } else {
                     self.default_midi?
                 };
                 let midi = self.midis.get(&port)?;
-                let value = if midi.control_is_global(*index) {
-                    *self.global_controls.get(&(port, *index))?
+                let value = if midi.control_is_global(index) {
+                    *self.global_controls.get(&(port, index))?
                 } else {
-                    *self.controls.get(&(port, ch, *index))?
+                    *self.controls.get(&(port, ch, index))?
                 };
                 let (min, max) = bounds;
                 Some(f32::from(value) / 127.0 * (max - min) + min)
@@ -867,7 +868,7 @@ impl Iterator for State {
                     }
                     Action::Drum { channel: ch, index } => {
                         channel = ch;
-                        Some(Control::Pad(index, vel))
+                        Some(Control::Pad(index.into(), vel))
                     }
                     Action::SetOutputChannel { name, channel: ch } => {
                         if let Some(midi) = self

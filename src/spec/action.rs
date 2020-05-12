@@ -1,7 +1,7 @@
 use bimap::BiMap;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::Name;
+use crate::{GenericControl, Name};
 
 /// A mapping from an action to a control type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -48,7 +48,7 @@ pub enum Action {
         /// The channel
         channel: u8,
         /// The sample index
-        index: u8,
+        index: GenericControl,
     },
     /// Set the output channel of a controller
     SetOutputChannel {
@@ -66,19 +66,19 @@ pub enum Button {
     /// A button triggered by a control midi message
     Control {
         /// The index of the control
-        index: u8,
+        index: GenericControl,
     },
     /// A button triggered by a note start midi message
     Note {
         /// The index of the note
-        index: u8,
+        index: GenericControl,
     },
     /// A button triggered by a note start midi message on a particular channel (channel, note_index)
     ChannelNote {
         /// The channel
         channel: u8,
         /// The index of the note
-        index: u8,
+        index: GenericControl,
     },
 }
 
@@ -112,7 +112,7 @@ pub enum Slider {
     /// A slider triggered by a control midi message
     Control {
         /// The index of the control
-        index: u8,
+        index: GenericControl,
     },
 }
 
@@ -172,7 +172,7 @@ impl Iterator for ActionRange {
             }
             ActionRange::Drum { channel, bounds } => range_next(bounds).map(|i| Action::Drum {
                 channel: *channel,
-                index: i,
+                index: GenericControl::Midi(i),
             }),
             ActionRange::SetOutputChannel { name, bounds } => {
                 range_next(bounds).map(|ch| Action::SetOutputChannel {
@@ -211,14 +211,16 @@ impl Iterator for ButtonRange {
     type Item = Button;
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            ButtonRange::Control { bounds } => {
-                range_next(bounds).map(|i| Button::Control { index: i })
-            }
-            ButtonRange::Note { bounds } => range_next(bounds).map(|i| Button::Note { index: i }),
+            ButtonRange::Control { bounds } => range_next(bounds).map(|i| Button::Control {
+                index: GenericControl::Midi(i),
+            }),
+            ButtonRange::Note { bounds } => range_next(bounds).map(|i| Button::Note {
+                index: GenericControl::Midi(i),
+            }),
             ButtonRange::ChannelNote { channel, bounds } => {
                 range_next(bounds).map(|i| Button::ChannelNote {
                     channel: *channel,
-                    index: i,
+                    index: GenericControl::Midi(i),
                 })
             }
         }

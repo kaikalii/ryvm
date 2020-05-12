@@ -22,6 +22,8 @@ pub enum Device {
     Reverb(Reverb),
     /// A pitch-changing sampler
     Sampler(Box<Sampler>),
+    /// A channel-bound input interface
+    InputPass(InputPass),
 }
 
 /// A wave synthesizer
@@ -133,6 +135,12 @@ pub struct Sampler {
     enveloper: CloneLock<Enveloper>,
 }
 
+/// A channel-bound input device
+#[derive(Debug, Clone)]
+pub struct InputPass {
+    pub input: Name,
+}
+
 impl Device {
     /// Create a new wave
     #[must_use]
@@ -192,6 +200,11 @@ impl Device {
             adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
             enveloper: CloneLock::new(Enveloper::default()),
         }))
+    }
+    /// Create a new InputPass
+    #[must_use]
+    pub fn new_input_pass(input: Name) -> Self {
+        Device::InputPass(InputPass { input })
     }
     pub fn next(
         &self,
@@ -361,7 +374,6 @@ impl Device {
 
                 let pan =
                     Voice::stereo((1.0 + pan).min(1.0).max(0.0), (1.0 - pan).min(1.0).max(0.0));
-                let volume = volume.min(1.0).max(-1.0);
 
                 frame * pan * volume
             }
@@ -419,6 +431,12 @@ impl Device {
                 enveloper.progress(state.vars.sample_rate, adsr);
                 output
             }
+            // InputPass
+            Device::InputPass(pass) => cache
+                .audio_input
+                .get(&pass.input)
+                .copied()
+                .unwrap_or(Voice::SILENT),
         }
     }
     pub fn end_envelopes(&mut self, id: u64) {

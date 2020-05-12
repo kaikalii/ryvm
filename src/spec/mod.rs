@@ -91,11 +91,17 @@ pub enum Spec {
     },
     /// An audio input device
     Input {
-        /// The name of the input device (devices can be listed with the `inputs` command)
+        /// The system-supplied name of the input device (devices can be listed with the `inputs` command)
         ///
         /// If this field is not specified, the default input device will be chosen
         #[serde(default, skip_serializing_if = "Option::is_none")]
         device: Option<String>,
+    },
+    /// A channel-bound interface for an audio input device
+    InputPass {
+        /// The user-supplied name of the input device
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input: Option<Name>,
     },
     /// A wave synthesizer
     Wave {

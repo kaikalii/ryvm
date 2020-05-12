@@ -51,11 +51,14 @@ fn run() -> RyvmResult<()> {
     stdout().flush().unwrap();
 
     let device = if let Some(output) = app.output {
-        if let Some(device) = rodio::output_devices()?.find(|dev| {
-            dev.name()
-                .expect("Error getting device name")
-                .contains(&output)
-        }) {
+        if let Some(device) = rodio::output_devices()
+            .map_err(InputError::from)?
+            .find(|dev| {
+                dev.name()
+                    .expect("Error getting device name")
+                    .contains(&output)
+            })
+        {
             device
         } else {
             return Err(RyvmError::NoMatchingDevice(output));

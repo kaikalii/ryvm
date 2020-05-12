@@ -68,6 +68,7 @@ pub struct State {
     recv: mpmc::Receiver<String>,
     input_manager: InputManager,
     inputs: HashMap<Name, InputDevice>,
+    default_input: Option<Name>,
 }
 
 impl State {
@@ -112,6 +113,7 @@ impl State {
             recv,
             input_manager: InputManager::new(),
             inputs: HashMap::new(),
+            default_input: None,
         };
         // Load startup
         if let Err(e) = state.load_spec_map(startup_path()?, None, true) {
@@ -335,9 +337,7 @@ impl State {
 
                 self.midis.insert(port, midi);
                 self.midi_names.insert(name, port);
-                if self.default_midi.is_none() {
-                    self.default_midi = Some(port);
-                }
+                self.default_midi.get_or_insert(port);
             }
             Spec::Input { device } => {
                 let input = self
@@ -352,6 +352,14 @@ impl State {
                     input.device()
                 );
                 self.inputs.insert(name, input);
+                self.default_input.get_or_insert(name);
+            }
+            Spec::InputPass { input } => {
+                let input = input
+                    .or(self.default_input)
+                    .ok_or(RyvmError::NoAudioInputForPass)?;
+                let pass = device!(InputPass, || Device::new_input_pass(input));
+                pass.input = input;
             }
             Spec::Wave {
                 form,
@@ -937,10 +945,6 @@ impl Iterator for State {
                 lup.record(controls.clone(), |port| midis.get(&port).map(Midi::advance));
             }
         }
-        let mut voice = Voice::SILENT;
-        for &input_voice in audio_input.values() {
-            voice += input_voice;
-        }
         // Collect loop controls
         let state_tempo = self.vars.tempo;
         let loop_period = self.loop_master.map(|lm| lm.period);
@@ -949,6 +953,8 @@ impl Iterator for State {
             .values_mut()
             .filter_map(|lup| lup.controls(state_tempo, loop_period))
             .collect();
+        // Initialize voice for this frame
+        let mut voice = Voice::SILENT;
         // Iterator through the main controls as well as all playing loop controls
         for (i, controls) in once(controls).chain(loop_controls).enumerate() {
             for (&(port, channel), controls) in &controls {

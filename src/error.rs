@@ -56,9 +56,9 @@ pub enum RyvmError {
     /// Unable to initialize audio device
     #[error("Unable to initialize audio device")]
     UnableToInitializeDevice,
-    /// Audio devices error
-    #[error("Audio devices error: {0}")]
-    Devices(#[from] rodio::DevicesError),
+    /// No default input device
+    #[error("Tried to create an input-pass, but there is no audio input specified")]
+    NoAudioInputForPass,
 }
 
 /// The Ryvm result type

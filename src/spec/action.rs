@@ -21,6 +21,8 @@ pub enum Action {
     Record,
     /// Stop recording and discard anything not already in a loop
     StopRecording,
+    /// Delete the most recently recorded loop
+    DeleteLastLoop,
     /// Start recording a specific loop. This discard any loop
     /// currently being recorded as well as any previous content
     /// of this loop

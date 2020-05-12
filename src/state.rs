@@ -57,7 +57,7 @@ pub struct State {
     pub midis: HashMap<Port, Midi>,
     midi_names: HashMap<Name, Port>,
     pub default_midi: Option<Port>,
-    loops: HashMap<u8, Loop>,
+    loops: IndexMap<u8, Loop>,
     controls: HashMap<(Port, u8, u8), u8>,
     global_controls: HashMap<(Port, u8), u8>,
     tracked_spec_maps: HashMap<PathBuf, Option<u8>>,
@@ -102,7 +102,7 @@ impl State {
             midis: HashMap::new(),
             midi_names: HashMap::new(),
             default_midi: None,
-            loops: HashMap::new(),
+            loops: IndexMap::new(),
             controls: HashMap::new(),
             global_controls: HashMap::new(),
             tracked_spec_maps: HashMap::new(),
@@ -157,6 +157,7 @@ impl State {
                 i += 1;
             }
         });
+        self.loops.remove(&loop_num);
         self.loops
             .insert(loop_num, Loop::new(length.unwrap_or(1.0)));
         colorprintln!("Loop {} ready", cyan, loop_num);
@@ -535,6 +536,9 @@ impl State {
                 if let Ok(num) = id.parse::<u8>() {
                     self.stop_loop(num);
                     self.loops.remove(&num);
+                    if self.loops.is_empty() {
+                        self.loop_master = None;
+                    }
                 }
             }
             RyvmCommand::Load { name, channel } => {
@@ -846,6 +850,14 @@ impl Iterator for State {
                     }
                     Action::StopRecording => {
                         self.cancel_recording();
+                        None
+                    }
+                    Action::DeleteLastLoop => {
+                        self.cancel_recording();
+                        self.loops.pop();
+                        if self.loops.is_empty() {
+                            self.loop_master = None;
+                        }
                         None
                     }
                     Action::RecordLoop { num } => {

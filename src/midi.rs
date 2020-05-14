@@ -7,8 +7,10 @@ use rand::random;
 use serde_derive::{Deserialize, Serialize};
 
 use crate::{
-    event_to_midi_message, Action, Button, ButtonsMap, CloneCell, CloneLock, Name, Slider,
-    SlidersMap, ValuedAction, GAMEPADS,
+    gamepad::GAMEPADS,
+    spec::{Action, Button, ButtonsMap, Slider, SlidersMap, ValuedAction},
+    ty::Name,
+    utility::{CloneCell, CloneLock},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -392,7 +394,7 @@ impl Midi {
             ControlQueue::Gamepad(id) => GAMEPADS
                 .events_for(*id)
                 .into_iter()
-                .filter_map(event_to_midi_message)
+                .filter_map(crate::gamepad::event_to_midi_message)
                 .filter_map(|data| {
                     Control::decode(
                         &data,

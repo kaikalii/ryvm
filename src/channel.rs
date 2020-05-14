@@ -4,7 +4,12 @@ use std::{
     ops::{Add, AddAssign, Mul},
 };
 
-use crate::{name_from_str, Control, Name, Node, Port, State};
+use crate::{
+    node::Node,
+    state::State,
+    ty::{Control, Name, Port},
+    utility,
+};
 
 /// A midi channel that can contain many nodes
 #[derive(Debug, Default)]
@@ -68,7 +73,11 @@ impl Channel {
     pub fn remove(&mut self, name: &str, recursive: bool) {
         if let Some(node) = self.get(name) {
             if recursive {
-                let inputs: Vec<Name> = node.inputs().into_iter().map(name_from_str).collect();
+                let inputs: Vec<Name> = node
+                    .inputs()
+                    .into_iter()
+                    .map(utility::name_from_str)
+                    .collect();
                 for input in inputs {
                     if !self
                         .nodes
@@ -91,7 +100,7 @@ impl Channel {
         state: &State,
         cache: &mut FrameCache,
     ) -> Voice {
-        let full_name = (channel_num, name_from_str(name));
+        let full_name = (channel_num, utility::name_from_str(name));
         if cache.visited.contains(&full_name) {
             // Avoid infinite loops
             Voice::mono(0.0)

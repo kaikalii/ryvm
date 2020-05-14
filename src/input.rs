@@ -13,7 +13,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use itertools::Itertools;
 use thiserror::Error;
 
-use crate::{colorprintln, SampleRange, Voice};
+use crate::{colorprintln, ty::Voice, utility::SampleRange};
 
 #[derive(Debug, Error)]
 pub enum InputError {

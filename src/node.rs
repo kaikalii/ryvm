@@ -3,8 +3,13 @@ use std::{collections::VecDeque, f32::consts::PI, iter::once, path::PathBuf};
 use rand::random;
 
 use crate::{
-    ActiveSampling, Channel, CloneCell, CloneLock, Control, DynamicValue, Enveloper, FilterType,
-    Float, Frame, FrameCache, Letter, Name, SampleDef, State, Voice, WaveForm, ADSR,
+    channel::{Channel, FrameCache},
+    envelope::Enveloper,
+    sample::ActiveSampling,
+    spec::{DynamicValue, FilterType, SampleDef, WaveForm, ADSR},
+    state::State,
+    ty::{Control, Float, Frame, Letter, Name, Voice},
+    utility::{CloneCell, CloneLock},
 };
 
 /// A virtual audio processing node
@@ -41,11 +46,37 @@ pub struct Wave {
     enveloper: CloneLock<Enveloper>,
 }
 
+impl Wave {
+    /// Create a new wave
+    #[must_use]
+    pub fn new(form: WaveForm) -> Self {
+        Wave {
+            form,
+            octave: None,
+            pitch_bend_range: DynamicValue::Static(12.0),
+            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
+            enveloper: CloneLock::new(Enveloper::default()),
+            waves: CloneLock::new(vec![0; 10]),
+        }
+    }
+}
+
 /// A drum machine
 #[derive(Debug, Clone, Default)]
 pub struct DrumMachine {
     pub samples: Vec<PathBuf>,
     pub samplings: CloneLock<Vec<ActiveSampling>>,
+}
+
+impl DrumMachine {
+    /// Create a new drum machine
+    #[must_use]
+    pub fn new() -> Self {
+        DrumMachine {
+            samples: Vec::new(),
+            samplings: CloneLock::new(Vec::new()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -97,6 +128,17 @@ pub struct Filter {
 }
 
 impl Filter {
+    /// Create a new filter
+    #[must_use]
+    pub fn new(input: Name, value: DynamicValue, ty: FilterType) -> Self {
+        Filter {
+            input,
+            value,
+            state: ty.into(),
+            adsr: None,
+            enveloper: CloneLock::new(Enveloper::default()),
+        }
+    }
     pub fn set_type(&mut self, ty: FilterType) {
         if self.state != ty {
             self.state = ty.into();
@@ -115,6 +157,18 @@ pub struct Balance {
     pub pan: DynamicValue,
 }
 
+impl Balance {
+    /// Create a new balance
+    #[must_use]
+    pub fn new(input: Name) -> Self {
+        Balance {
+            input,
+            volume: DynamicValue::Static(1.0),
+            pan: DynamicValue::Static(0.0),
+        }
+    }
+}
+
 const SPEED_OF_SOUND: f32 = 340.27;
 
 /// A reverb simulator
@@ -126,6 +180,19 @@ pub struct Reverb {
     frames: CloneLock<VecDeque<Voice>>,
 }
 
+impl Reverb {
+    /// Create a new reverb
+    #[must_use]
+    pub fn new(input: Name) -> Self {
+        Reverb {
+            input,
+            size: DynamicValue::Static(1.0),
+            energy_mul: DynamicValue::Static(0.5),
+            frames: CloneLock::new(VecDeque::new()),
+        }
+    }
+}
+
 /// A pitch-changing sampler
 #[derive(Debug, Clone)]
 pub struct Sampler {
@@ -135,77 +202,33 @@ pub struct Sampler {
     enveloper: CloneLock<Enveloper>,
 }
 
+impl Sampler {
+    /// Create a new sampler
+    #[must_use]
+    pub fn new(def: SampleDef) -> Self {
+        Sampler {
+            def,
+            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
+            enveloper: CloneLock::new(Enveloper::default()),
+        }
+    }
+}
+
 /// A channel-bound input node
 #[derive(Debug, Clone)]
 pub struct InputPass {
     pub input: Name,
 }
 
-impl Node {
-    /// Create a new wave
-    #[must_use]
-    pub fn new_wave(form: WaveForm) -> Self {
-        Node::Wave(Box::new(Wave {
-            form,
-            octave: None,
-            pitch_bend_range: DynamicValue::Static(12.0),
-            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
-            enveloper: CloneLock::new(Enveloper::default()),
-            waves: CloneLock::new(vec![0; 10]),
-        }))
-    }
-    /// Create a new drum machine
-    #[must_use]
-    pub fn new_drum_machine() -> Self {
-        Node::DrumMachine(DrumMachine {
-            samples: Vec::new(),
-            samplings: CloneLock::new(Vec::new()),
-        })
-    }
-    /// Create a new filter
-    #[must_use]
-    pub fn new_filter(input: Name, value: DynamicValue, ty: FilterType) -> Self {
-        Node::Filter(Box::new(Filter {
-            input,
-            value,
-            state: ty.into(),
-            adsr: None,
-            enveloper: CloneLock::new(Enveloper::default()),
-        }))
-    }
-    /// Create a new balance
-    #[must_use]
-    pub fn new_balance(input: Name) -> Self {
-        Node::Balance(Balance {
-            input,
-            volume: DynamicValue::Static(1.0),
-            pan: DynamicValue::Static(0.0),
-        })
-    }
-    /// Create a new reverb
-    #[must_use]
-    pub fn new_reverb(input: Name) -> Self {
-        Node::Reverb(Reverb {
-            input,
-            size: DynamicValue::Static(1.0),
-            energy_mul: DynamicValue::Static(0.5),
-            frames: CloneLock::new(VecDeque::new()),
-        })
-    }
-    /// Create a new reverb
-    #[must_use]
-    pub fn new_sampler(def: SampleDef) -> Self {
-        Node::Sampler(Box::new(Sampler {
-            def,
-            adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
-            enveloper: CloneLock::new(Enveloper::default()),
-        }))
-    }
+impl InputPass {
     /// Create a new InputPass
     #[must_use]
-    pub fn new_input_pass(input: Name) -> Self {
-        Node::InputPass(InputPass { input })
+    pub fn new(input: Name) -> Self {
+        InputPass { input }
     }
+}
+
+impl Node {
     pub fn next(
         &self,
         channel_num: u8,
@@ -480,3 +503,28 @@ fn waveform_energy(form: WaveForm) -> f32 {
         WaveForm::Noise => 0.5,
     }
 }
+
+macro_rules! node_from {
+    ($variant:ident) => {
+        impl From<$variant> for Node {
+            fn from(n: $variant) -> Self {
+                Node::$variant(n)
+            }
+        }
+    };
+    (box $variant:ident) => {
+        impl From<$variant> for Node {
+            fn from(n: $variant) -> Self {
+                Node::$variant(Box::new(n))
+            }
+        }
+    };
+}
+
+node_from!(box Wave);
+node_from!(DrumMachine);
+node_from!(box Filter);
+node_from!(Balance);
+node_from!(Reverb);
+node_from!(box Sampler);
+node_from!(InputPass);

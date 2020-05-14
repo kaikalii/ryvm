@@ -1,7 +1,7 @@
 use bimap::BiMap;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{GenericControl, Name};
+use super::{GenericControl, Name};
 
 /// A mapping from an action to a control type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

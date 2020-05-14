@@ -3,7 +3,7 @@ use std::io;
 use structopt::clap;
 use thiserror::Error;
 
-use crate::{InputError, MidiError, Name};
+use crate::{input::InputError, midi::MidiError, ty::Name};
 
 /// The Ryvm error type
 #[derive(Debug, Error)]

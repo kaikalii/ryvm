@@ -1,23 +1,15 @@
-use std::{convert::Infallible, fmt, fs, path::Path, path::PathBuf, str::FromStr};
+use std::{convert::Infallible, fmt, fs, path::Path, str::FromStr};
 
 use itertools::Itertools;
 use rodio::{Decoder, Source};
-use serde_derive::{Deserialize, Serialize};
 
-use crate::{samples_dir, Frame, RyvmResult, Voice};
+use crate::ty::{Frame, Voice};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActiveSampling {
     pub index: usize,
     pub i: Frame,
     pub velocity: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SampleDef {
-    pub path: PathBuf,
-    pub loop_start: f32,
-    pub pitch: f32,
 }
 
 /// Data for an audio sample
@@ -37,11 +29,11 @@ impl Default for Sample {
 }
 
 impl Sample {
-    pub fn open<P>(path: P) -> RyvmResult<Self>
+    pub fn open<P>(path: P) -> crate::Result<Self>
     where
         P: AsRef<Path>,
     {
-        let path = samples_dir()?.join(path);
+        let path = crate::library::samples_dir()?.join(path);
         let decoder = Decoder::new(fs::File::open(path)?)?;
         let sample_rate = decoder.sample_rate();
         let channels = decoder.channels();

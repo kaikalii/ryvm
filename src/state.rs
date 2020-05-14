@@ -16,21 +16,23 @@ use rodio::Source;
 use structopt::StructOpt;
 
 use crate::{
-    colorprintln, list_input_devices, list_output_devices, loop_path, loops_dir, name_from_str,
-    parse_commands, samples_dir, spec_path, specs_dir, startup_path, Action, ButtonsMap, Channel,
-    CloneLock, Control, DynamicValue, FlyControl, Frame, FrameCache, InputDevice, InputManager,
-    Loop, LoopMaster, LoopState, LoopSubcommand, Midi, MidiSubCommand, MidiType, Name, Node,
-    OutputSubcommand, Port, RyvmCommand, RyvmError, RyvmResult, Sample, SlidersMap, Spec,
-    ValuedAction, Voice,
+    app,
+    channel::{Channel, FrameCache},
+    colorprintln, input, library, midi, node, onfly,
+    r#loop::{Loop, LoopMaster, LoopState},
+    sample,
+    spec::{self, Spec},
+    ty::{Control, Frame, Name, Port, Voice},
+    utility,
 };
 
 #[derive(Default)]
 pub struct LoadSamples;
 
 impl JobDescription<PathBuf> for LoadSamples {
-    type Output = RyvmResult<Sample>;
+    type Output = crate::Result<sample::Sample>;
     fn work(&self, input: PathBuf) -> Self::Output {
-        let res = Sample::open(input);
+        let res = sample::Sample::open(input);
         if let Err(e) = &res {
             colorprintln!("{}", bright_red, e)
         }
@@ -51,10 +53,10 @@ pub struct State {
     pub vars: StateVars,
     frame_queue: Option<f32>,
     channels: HashMap<u8, Channel>,
-    command_queue: Vec<RyvmCommand>,
+    command_queue: Vec<app::RyvmCommand>,
     pub loop_master: Option<LoopMaster>,
-    pub sample_bank: Employer<PathBuf, RyvmResult<Sample>, LoadSamples>,
-    pub midis: HashMap<Port, Midi>,
+    pub sample_bank: Employer<PathBuf, crate::Result<sample::Sample>, LoadSamples>,
+    pub midis: HashMap<Port, midi::Midi>,
     midi_names: HashMap<Name, Port>,
     pub default_midi: Option<Port>,
     loops: IndexMap<u8, Loop>,
@@ -62,12 +64,12 @@ pub struct State {
     global_controls: HashMap<(Port, u8), u8>,
     tracked_spec_maps: HashMap<PathBuf, Option<u8>>,
     watcher: RecommendedWatcher,
-    watcher_queue: Arc<CloneLock<Vec<notify::Result<Event>>>>,
-    fly_control: Option<FlyControl>,
-    send: mpmc::Sender<RyvmResult<bool>>,
+    watcher_queue: Arc<utility::CloneLock<Vec<notify::Result<Event>>>>,
+    fly_control: Option<onfly::FlyControl>,
+    send: mpmc::Sender<crate::Result<bool>>,
     recv: mpmc::Receiver<String>,
-    input_manager: InputManager,
-    inputs: HashMap<Name, InputDevice>,
+    input_manager: input::InputManager,
+    inputs: HashMap<Name, input::InputDevice>,
     default_input: Option<Name>,
 }
 
@@ -77,9 +79,12 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if it fails to load a startup spec
-    pub fn new(main_file: Option<PathBuf>, sample_rate: u32) -> RyvmResult<(Self, StateInterface)> {
+    pub fn new(
+        main_file: Option<PathBuf>,
+        sample_rate: u32,
+    ) -> crate::Result<(Self, StateInterface)> {
         // Init watcher
-        let watcher_queue = Arc::new(CloneLock::new(Vec::new()));
+        let watcher_queue = Arc::new(utility::CloneLock::new(Vec::new()));
         let watcher_queue_clone = Arc::clone(&watcher_queue);
         let watcher = RecommendedWatcher::new_immediate(move |event: notify::Result<Event>| {
             watcher_queue_clone.lock().push(event);
@@ -111,12 +116,12 @@ impl State {
             fly_control: None,
             send,
             recv,
-            input_manager: InputManager::new(),
+            input_manager: input::InputManager::new(),
             inputs: HashMap::new(),
             default_input: None,
         };
         // Load startup
-        if let Err(e) = state.load_spec_map(startup_path()?, None, true) {
+        if let Err(e) = state.load_spec_map(library::startup_path()?, None, true) {
             colorprintln!("{}", bright_red, e);
         }
         // Load main file
@@ -225,7 +230,7 @@ impl State {
         channel: Option<u8>,
         last_name: Option<Name>,
         do_load_specs: bool,
-    ) -> RyvmResult<()> {
+    ) -> crate::Result<()> {
         // Macro for initializting nodes
         macro_rules! node {
             ($variant:ident, $default:expr) => {{
@@ -240,14 +245,14 @@ impl State {
                     .or_insert_with(Channel::default)
                     .entry(name);
                 #[allow(clippy::redundant_closure)]
-                let node = entry.or_insert_with($default);
-                if !matches!(node, Node::$variant(_)) {
+                let node = entry.or_insert_with(|| $default().into());
+                if !matches!(node, node::Node::$variant(_)) {
                     #[allow(clippy::redundant_closure_call)]
                     {
-                        *node = ($default)();
+                        *node = ($default)().into();
                     }
                 }
-                if let Node::$variant(node) = node {
+                if let node::Node::$variant(node) = node {
                     node
                 } else {
                     unreachable!()
@@ -259,7 +264,7 @@ impl State {
             ($input:expr) => {
                 $input
                     .or(last_name)
-                    .ok_or(RyvmError::NoInputSpecified(name))?
+                    .ok_or(crate::Error::NoInputSpecified(name))?
             };
         }
         // Match over different spec types
@@ -281,14 +286,14 @@ impl State {
                 range,
             } => {
                 let ty = if gamepad.is_some() {
-                    MidiType::Gamepad
+                    midi::MidiType::Gamepad
                 } else {
-                    MidiType::Midi
+                    midi::MidiType::Midi
                 };
 
-                let mut buttons: ButtonsMap =
+                let mut buttons: spec::ButtonsMap =
                     button.into_iter().map(|m| (m.action, m.control)).collect();
-                let sliders: SlidersMap =
+                let sliders: spec::SlidersMap =
                     slider.into_iter().map(|m| (m.action, m.control)).collect();
                 for mapping in range {
                     for (action, button) in mapping.action.zip(mapping.control) {
@@ -296,23 +301,25 @@ impl State {
                     }
                 }
                 let id = match ty {
-                    MidiType::Midi => {
+                    midi::MidiType::Midi => {
                         if let Some(device) = device {
-                            if let Some(port) = Midi::port_matching(&device)? {
+                            if let Some(port) = midi::Midi::port_matching(&device)? {
                                 port
                             } else {
-                                Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
+                                midi::Midi::first_device()?
+                                    .ok_or_else(|| crate::Error::NoMidiPorts(name))?
                             }
                         } else {
-                            Midi::first_device()?.ok_or_else(|| RyvmError::NoMidiPorts(name))?
+                            midi::Midi::first_device()?
+                                .ok_or_else(|| crate::Error::NoMidiPorts(name))?
                         }
                     }
-                    MidiType::Gamepad => gamepad.unwrap_or(0),
+                    midi::MidiType::Gamepad => gamepad.unwrap_or(0),
                 };
                 let port = Port { id, ty };
                 let last_notes = self.midis.remove(&port).map(|midi| midi.last_notes);
                 let removed = last_notes.is_some();
-                let mut midi = Midi::new(
+                let mut midi = midi::Midi::new(
                     port,
                     name,
                     output_channel,
@@ -358,8 +365,8 @@ impl State {
             Spec::InputPass { input } => {
                 let input = input
                     .or(self.default_input)
-                    .ok_or(RyvmError::NoAudioInputForPass)?;
-                let pass = node!(InputPass, || Node::new_input_pass(input));
+                    .ok_or(crate::Error::NoAudioInputForPass)?;
+                let pass = node!(InputPass, || node::InputPass::new(input));
                 pass.input = input;
             }
             Spec::Wave {
@@ -371,7 +378,7 @@ impl State {
                 release,
                 bend,
             } => {
-                let wave = node!(Wave, || Node::new_wave(form));
+                let wave = node!(Wave, || node::Wave::new(form));
                 wave.form = form;
                 wave.octave = octave.into();
                 wave.adsr.attack = attack;
@@ -381,9 +388,9 @@ impl State {
                 wave.pitch_bend_range = bend;
             }
             Spec::Drums { paths, folder } => {
-                let drums = node!(DrumMachine, || Node::new_drum_machine());
+                let drums = node!(DrumMachine, || node::DrumMachine::new());
                 let paths = if let Some(folder) = folder {
-                    let folder = samples_dir()?.join(folder);
+                    let folder = library::samples_dir()?.join(folder);
                     let mut paths = Vec::new();
                     for entry in fs::read_dir(&folder)?.filter_map(Result::ok) {
                         let path = entry.path();
@@ -409,7 +416,7 @@ impl State {
                 adsr,
             } => {
                 let input = get_input!(input);
-                let filter = node!(Filter, || Node::new_filter(input, value, filter_type));
+                let filter = node!(Filter, || node::Filter::new(input, value, filter_type));
                 filter.input = input;
                 filter.value = value;
                 filter.set_type(filter_type);
@@ -417,7 +424,7 @@ impl State {
             }
             Spec::Balance { input, volume, pan } => {
                 let input = get_input!(input);
-                let balance = node!(Balance, || Node::new_balance(input));
+                let balance = node!(Balance, || node::Balance::new(input));
                 balance.input = input;
                 balance.volume = volume;
                 balance.pan = pan;
@@ -428,13 +435,13 @@ impl State {
                 energy_mul,
             } => {
                 let input = get_input!(input);
-                let reverb = node!(Reverb, || Node::new_reverb(input));
+                let reverb = node!(Reverb, || node::Reverb::new(input));
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
             }
             Spec::Sampler { def, adsr } => {
                 self.sample_bank.start(def.path.clone());
-                let sampler = node!(Sampler, || Node::new_sampler(def.clone()));
+                let sampler = node!(Sampler, || node::Sampler::new(def.clone()));
                 sampler.def = def;
                 sampler.adsr = adsr;
             }
@@ -446,11 +453,11 @@ impl State {
     /// # Errors
     ///
     /// Returns an error if it failes to parse or process the command
-    pub fn queue_command(&mut self, text: &str) -> RyvmResult<bool> {
-        if let Some(commands) = parse_commands(&text) {
+    pub fn queue_command(&mut self, text: &str) -> crate::Result<bool> {
+        if let Some(commands) = utility::parse_commands(&text) {
             for (delay, args) in commands {
-                match RyvmCommand::from_iter_safe(&args)? {
-                    RyvmCommand::Quit => return Ok(false),
+                match app::RyvmCommand::from_iter_safe(&args)? {
+                    app::RyvmCommand::Quit => return Ok(false),
                     command => {
                         if delay {
                             self.command_queue.push(command);
@@ -465,34 +472,34 @@ impl State {
         }
         Ok(true)
     }
-    fn process_command(&mut self, command: RyvmCommand) -> RyvmResult<()> {
+    fn process_command(&mut self, command: app::RyvmCommand) -> crate::Result<()> {
         match command {
-            RyvmCommand::Quit => {}
-            RyvmCommand::Midi(MidiSubCommand::List) => {
-                for (i, name) in Midi::ports_list()?.into_iter().enumerate() {
+            app::RyvmCommand::Quit => {}
+            app::RyvmCommand::Midi(app::MidiSubCommand::List) => {
+                for (i, name) in midi::Midi::ports_list()?.into_iter().enumerate() {
                     colorprintln!("{}. {}", bright_cyan, i, name);
                 }
             }
-            RyvmCommand::Midi(MidiSubCommand::Monitor) => {
+            app::RyvmCommand::Midi(app::MidiSubCommand::Monitor) => {
                 for midi in self.midis.values() {
                     midi.set_monitoring(!midi.monitoring());
                 }
             }
-            RyvmCommand::Loop { num, length, sub } => match sub {
-                Some(LoopSubcommand::Save { num, name }) => self.save_loop(num, name)?,
-                Some(LoopSubcommand::Load { name, num, play }) => {
+            app::RyvmCommand::Loop { num, length, sub } => match sub {
+                Some(app::LoopSubcommand::Save { num, name }) => self.save_loop(num, name)?,
+                Some(app::LoopSubcommand::Load { name, num, play }) => {
                     self.load_loop(name, num, play)?
                 }
                 None => self.start_loop(num, length),
             },
-            RyvmCommand::Play { loops } => {
+            app::RyvmCommand::Play { loops } => {
                 for (num, lup) in &mut self.loops {
                     if loops.contains(num) {
                         lup.loop_state = LoopState::Playing;
                     }
                 }
             }
-            RyvmCommand::Stop { loops, all, reset } => {
+            app::RyvmCommand::Stop { loops, all, reset } => {
                 if all || reset {
                     let loops: Vec<_> = self.loops.keys().cloned().collect();
                     for num in loops {
@@ -508,8 +515,8 @@ impl State {
                     }
                 }
             }
-            RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
-            RyvmCommand::Tree => {
+            app::RyvmCommand::Ls { unsorted } => self.print_ls(unsorted),
+            app::RyvmCommand::Tree => {
                 for (ch, channel) in self.channels.iter().sorted_by_key(|(ch, _)| *ch) {
                     println!("~~~~ Channel {} ~~~~", ch);
                     let outputs: Vec<String> = channel.outputs().map(Into::into).collect();
@@ -519,7 +526,7 @@ impl State {
                 }
                 self.print_loops();
             }
-            RyvmCommand::Rm {
+            app::RyvmCommand::Rm {
                 id,
                 channel,
                 recursive,
@@ -541,20 +548,22 @@ impl State {
                     }
                 }
             }
-            RyvmCommand::Load { name, channel } => {
+            app::RyvmCommand::Load { name, channel } => {
                 self.load_spec_map_or_on_fly(name.as_str(), channel, false, true)?
             }
-            RyvmCommand::Specs => {
-                open::that(specs_dir()?)?;
+            app::RyvmCommand::Specs => {
+                open::that(library::specs_dir()?)?;
             }
-            RyvmCommand::Samples => {
-                open::that(samples_dir()?)?;
+            app::RyvmCommand::Samples => {
+                open::that(library::samples_dir()?)?;
             }
-            RyvmCommand::Loops => {
-                open::that(loops_dir()?)?;
+            app::RyvmCommand::Loops => {
+                open::that(library::loops_dir()?)?;
             }
-            RyvmCommand::Inputs => list_input_devices()?,
-            RyvmCommand::Output(OutputSubcommand::List) => list_output_devices()?,
+            app::RyvmCommand::Inputs => utility::list_input_devices()?,
+            app::RyvmCommand::Output(app::OutputSubcommand::List) => {
+                utility::list_output_devices()?
+            }
         }
         Ok(())
     }
@@ -568,11 +577,11 @@ impl State {
         name: P,
         channel: Option<u8>,
         do_load_specs: bool,
-    ) -> RyvmResult<()>
+    ) -> crate::Result<()>
     where
         P: AsRef<Path>,
     {
-        let path = spec_path(name)?;
+        let path = library::spec_path(name)?;
         let channel = channel.or_else(|| self.tracked_spec_maps.get(&path).copied().flatten());
         println!("Loading {:?}", path);
         // Load the bytes
@@ -603,12 +612,12 @@ impl State {
         channel: Option<u8>,
         delay: bool,
         do_load_specs: bool,
-    ) -> RyvmResult<()>
+    ) -> crate::Result<()>
     where
         P: AsRef<Path>,
     {
         if let Err(e) = self.load_spec_map(&path, channel, do_load_specs) {
-            match FlyControl::find(&path, channel, delay) {
+            match onfly::FlyControl::find(&path, channel, delay) {
                 Ok(Some(fly)) => {
                     println!("Activate the control you would like to map");
                     self.fly_control = Some(fly)
@@ -618,7 +627,7 @@ impl State {
         }
         Ok(())
     }
-    fn save_loop(&mut self, num: u8, name: Option<Name>) -> RyvmResult<()> {
+    fn save_loop(&mut self, num: u8, name: Option<Name>) -> crate::Result<()> {
         if let Some(lup) = self.loops.get(&num) {
             let name = if let Some(name) = name {
                 name
@@ -626,21 +635,21 @@ impl State {
                 let mut i = 0;
                 loop {
                     let possible = Name::from(&format!("loop-{}", i)).unwrap();
-                    if !loop_path(possible.as_str())?.exists() {
+                    if !library::loop_path(possible.as_str())?.exists() {
                         break possible;
                     }
                     i += 1;
                 }
             };
-            let path = loop_path(name.as_str())?;
+            let path = library::loop_path(name.as_str())?;
             let file = File::create(path)?;
             serde_cbor::to_writer(file, lup)?;
             println!("Saved loop {} as {:?}", num, name);
         }
         Ok(())
     }
-    fn load_loop(&mut self, name: Name, num: Option<u8>, play: bool) -> RyvmResult<()> {
-        let path = loop_path(name.as_str())?;
+    fn load_loop(&mut self, name: Name, num: Option<u8>, play: bool) -> crate::Result<()> {
+        let path = library::loop_path(name.as_str())?;
         let file = File::open(path)?;
         let mut lup: Loop = serde_cbor::from_reader(file)?;
         let num = num.unwrap_or_else(|| {
@@ -734,13 +743,13 @@ impl State {
     }
     pub fn resolve_dynamic_value(
         &self,
-        dyn_val: &DynamicValue,
+        dyn_val: &spec::DynamicValue,
         ch: u8,
         cache: &mut FrameCache,
     ) -> Option<f32> {
         match dyn_val {
-            DynamicValue::Static(f) => Some(*f),
-            DynamicValue::Control {
+            spec::DynamicValue::Static(f) => Some(*f),
+            spec::DynamicValue::Control {
                 controller,
                 index,
                 bounds,
@@ -762,7 +771,7 @@ impl State {
                 Some(f32::from(value) / 127.0 * (max - min) + min)
             })()
             .or(*default),
-            DynamicValue::Output(name) => self
+            spec::DynamicValue::Output(name) => self
                 .channels
                 .get(&ch)
                 .map(|channel| channel.next_from(ch, name, self, cache).left),
@@ -787,7 +796,7 @@ impl State {
             }
         }
     }
-    fn process_watcher(&mut self) -> RyvmResult<()> {
+    fn process_watcher(&mut self) -> crate::Result<()> {
         let events: Vec<_> = self.watcher_queue.lock().drain(..).collect();
         for res in events {
             let event = res?;
@@ -844,15 +853,15 @@ impl Iterator for State {
             // Process action controls separate from the rest
             let control = match control {
                 Control::Action(action, vel) => match action {
-                    Action::Record => {
+                    spec::Action::Record => {
                         self.start_loop(None, None);
                         None
                     }
-                    Action::StopRecording => {
+                    spec::Action::StopRecording => {
                         self.cancel_recording();
                         None
                     }
-                    Action::DeleteLastLoop => {
+                    spec::Action::DeleteLastLoop => {
                         self.cancel_recording();
                         self.loops.pop();
                         if self.loops.is_empty() {
@@ -860,29 +869,29 @@ impl Iterator for State {
                         }
                         None
                     }
-                    Action::RecordLoop { num } => {
+                    spec::Action::RecordLoop { num } => {
                         self.start_loop(Some(num), None);
                         None
                     }
-                    Action::PlayLoop { num } => {
+                    spec::Action::PlayLoop { num } => {
                         if let Some(lup) = self.loops.get_mut(&num) {
                             lup.loop_state = LoopState::Playing;
                         }
                         None
                     }
-                    Action::StopLoop { num } => {
+                    spec::Action::StopLoop { num } => {
                         self.stop_loop(num);
                         None
                     }
-                    Action::ToggleLoop { num } => {
+                    spec::Action::ToggleLoop { num } => {
                         self.toggle_loop(num);
                         None
                     }
-                    Action::Drum { channel: ch, index } => {
+                    spec::Action::Drum { channel: ch, index } => {
                         channel = ch;
                         Some(Control::Pad(index.into(), vel))
                     }
-                    Action::SetOutputChannel { name, channel: ch } => {
+                    spec::Action::SetOutputChannel { name, channel: ch } => {
                         if let Some(midi) = self
                             .midi_names
                             .get(&name)
@@ -895,11 +904,11 @@ impl Iterator for State {
                 },
                 Control::ValuedAction(action, val) => {
                     match action {
-                        ValuedAction::Tempo => self.vars.tempo = f32::from(val) / 0x3f as f32,
-                        ValuedAction::MasterVolume => {
+                        spec::ValuedAction::Tempo => self.vars.tempo = f32::from(val) / 0x3f as f32,
+                        spec::ValuedAction::MasterVolume => {
                             self.vars.master_volume = f32::from(val) / 0x7f as f32
                         }
-                        ValuedAction::LoopSpeed { num } => {
+                        spec::ValuedAction::LoopSpeed { num } => {
                             if let Some(lup) = self.loops.get_mut(&num) {
                                 lup.set_speed(
                                     2_f32.powf((f32::from(val) / 0x7f as f32 * 3.0).round()),
@@ -919,7 +928,7 @@ impl Iterator for State {
                         if default_midi.map_or(true, |p| p == port) {
                             None
                         } else {
-                            Some(name_from_str(midis[&port].name()))
+                            Some(utility::name_from_str(midis[&port].name()))
                         }
                     })
                 }) {
@@ -955,7 +964,9 @@ impl Iterator for State {
         let midis = &mut self.midis;
         for lup in self.loops.values_mut() {
             if lup.loop_state == LoopState::Recording {
-                lup.record(controls.clone(), |port| midis.get(&port).map(Midi::advance));
+                lup.record(controls.clone(), |port| {
+                    midis.get(&port).map(midi::Midi::advance)
+                });
             }
         }
         // Collect loop controls
@@ -1019,7 +1030,7 @@ impl Source for State {
 /// An interface for sending commands to a running ryvm state
 pub struct StateInterface {
     send: mpmc::Sender<String>,
-    recv: mpmc::Receiver<RyvmResult<bool>>,
+    recv: mpmc::Receiver<crate::Result<bool>>,
 }
 
 impl StateInterface {
@@ -1029,13 +1040,13 @@ impl StateInterface {
     ///
     /// This function returns an error if there is an error executing the command
     /// or if the state was dropped
-    pub fn send_command<S>(&self, command: S) -> RyvmResult<bool>
+    pub fn send_command<S>(&self, command: S) -> crate::Result<bool>
     where
         S: Into<String>,
     {
         self.send
             .send(command.into())
-            .map_err(|_| RyvmError::StateDropped)?;
-        self.recv.recv().unwrap_or(Err(RyvmError::StateDropped))
+            .map_err(|_| crate::Error::StateDropped)?;
+        self.recv.recv().unwrap_or(Err(crate::Error::StateDropped))
     }
 }

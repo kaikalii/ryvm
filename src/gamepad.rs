@@ -4,7 +4,7 @@ use crossbeam_channel::{unbounded, Receiver};
 use gilrs::{Axis, Button, Error as GilrsError, Event, EventType, Gilrs};
 use once_cell::sync::Lazy;
 
-use crate::{CloneLock, GamepadControl, CONTROL};
+use crate::{midi::CONTROL, spec::GamepadControl, utility::CloneLock};
 
 pub static GAMEPADS: Lazy<Gamepads> = Lazy::new(|| {
     let (send, recv) = unbounded();

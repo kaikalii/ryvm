@@ -1,4 +1,7 @@
-use std::hash::{Hash, Hasher};
+use std::{
+    hash::{Hash, Hasher},
+    path::PathBuf,
+};
 
 use arrayvec::ArrayString;
 use serde_derive::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ pub const NAME_CAPACITY: usize = 20;
 /// The name of a controller or node
 pub type Name = ArrayString<[u8; NAME_CAPACITY]>;
 
-use crate::default;
+use super::default;
 
 /// A waveform
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,4 +241,11 @@ impl ADSR<DynamicValue> {
             .chain(self.sustain.input())
             .chain(self.release.input())
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SampleDef {
+    pub path: PathBuf,
+    pub loop_start: f32,
+    pub pitch: f32,
 }

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use crate::Name;
+use crate::spec::Name;
 
 /// A Ryvm CLI command
 #[derive(Debug, StructOpt)]

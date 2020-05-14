@@ -5,7 +5,10 @@ use std::{
 
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{colorprintln, Control, Float, Port};
+use crate::{
+    colorprintln,
+    ty::{Control, Float, Port},
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct LoopMaster {

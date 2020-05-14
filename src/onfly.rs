@@ -6,7 +6,10 @@ use std::{
 
 use ropey::Rope;
 
-use crate::{default, Control, DynamicValue, GenericControl, Name, RyvmResult};
+use crate::{
+    spec::{default, DynamicValue, GenericControl},
+    ty::{Control, Name},
+};
 
 #[derive(Debug, Clone)]
 pub struct FlyControl {
@@ -20,7 +23,7 @@ pub struct FlyControl {
 const FLY_PATTERN: &str = "##";
 
 impl FlyControl {
-    pub fn find<P>(path: P, channel: Option<u8>, delay: bool) -> RyvmResult<Option<Self>>
+    pub fn find<P>(path: P, channel: Option<u8>, delay: bool) -> crate::Result<Option<Self>>
     where
         P: AsRef<Path>,
     {
@@ -45,7 +48,7 @@ impl FlyControl {
         &mut self,
         control: Control,
         mut name: impl FnMut() -> Option<Name>,
-    ) -> RyvmResult<bool> {
+    ) -> crate::Result<bool> {
         if self
             .start
             .map_or(false, |start| (Instant::now() - start).as_secs_f32() < 1.0)

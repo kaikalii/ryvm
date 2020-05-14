@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Control, ADSR};
+use crate::{spec::ADSR, ty::Control};
 
 #[derive(Debug, Clone, Copy)]
 enum EnvelopeState {

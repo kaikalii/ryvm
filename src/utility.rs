@@ -10,7 +10,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use rodio::DeviceTrait;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::{InputError, Name, NAME_CAPACITY};
+use crate::{input::InputError, spec::NAME_CAPACITY, ty::Name};
 
 pub trait SampleRange {
     fn to_f32(self) -> f32;

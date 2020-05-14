@@ -1,5 +1,5 @@
 //! All the Ryvm spec default values
-use crate::{DynamicValue, FilterType, ADSR};
+use super::{DynamicValue, FilterType, ADSR};
 
 macro_rules! default {
     (#[$attr:meta] const $constant:ident: $type:ty = $val:expr; $def_fn_name:ident; $is_def_fn_name:ident;) => {

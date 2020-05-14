@@ -1,14 +1,31 @@
-macro_rules! mods {
-    ($($vis:vis $m:ident),*) => ($(mod $m; $vis use $m::*;)*);
-}
-
 mod utility;
-use utility::*;
 
-mods!(
-    app, channel, envelope, error, gamepad, input, library, r#loop, midi, node, onfly, sample,
-    spec, state, track
-);
+mod app;
+mod channel;
+mod envelope;
+mod error;
+mod gamepad;
+mod input;
+mod library;
+mod r#loop;
+mod midi;
+mod node;
+mod onfly;
+mod sample;
+mod spec;
+mod state;
+mod track;
+
+mod ty {
+    pub use crate::{
+        channel::Voice,
+        midi::{Control, Port},
+        spec::Name,
+        track::Letter,
+        utility::Float,
+        Frame,
+    };
+}
 
 use std::io::{stdin, stdout, BufRead, Write};
 
@@ -16,7 +33,9 @@ use colored::Colorize;
 use rodio::DeviceTrait;
 use structopt::StructOpt;
 
-type Frame = u64;
+use error::{RyvmError as Error, RyvmResult as Result};
+
+pub type Frame = u64;
 
 fn main() {
     if let Err(e) = run() {
@@ -25,8 +44,8 @@ fn main() {
     }
 }
 
-fn run() -> RyvmResult<()> {
-    let app = RyvmApp::from_args();
+fn run() -> crate::Result<()> {
+    let app = app::RyvmApp::from_args();
 
     // Supress stderr
     let shh = if app.nosuppress {
@@ -37,12 +56,12 @@ fn run() -> RyvmResult<()> {
 
     // Check subcommand
     match app.sub {
-        Some(RyvmSubcommand::OutputList) => {
-            list_output_devices()?;
+        Some(app::RyvmSubcommand::OutputList) => {
+            utility::list_output_devices()?;
             return Ok(());
         }
-        Some(RyvmSubcommand::InputList) => {
-            list_input_devices()?;
+        Some(app::RyvmSubcommand::InputList) => {
+            utility::list_input_devices()?;
             return Ok(());
         }
         None => {}
@@ -54,7 +73,7 @@ fn run() -> RyvmResult<()> {
     // Initialize device
     let device = if let Some(output) = app.output {
         if let Some(device) = rodio::output_devices()
-            .map_err(InputError::from)?
+            .map_err(input::InputError::from)?
             .find(|dev| {
                 dev.name()
                     .expect("Error getting device name")
@@ -63,15 +82,15 @@ fn run() -> RyvmResult<()> {
         {
             device
         } else {
-            return Err(RyvmError::NoMatchingNode(output));
+            return Err(crate::Error::NoMatchingNode(output));
         }
     } else {
-        rodio::default_output_device().ok_or(RyvmError::NoDefaultOutputNode)?
+        rodio::default_output_device().ok_or(crate::Error::NoDefaultOutputNode)?
     };
 
     // Create the audio sync
     let sink = std::panic::catch_unwind(|| rodio::Sink::new(&device))
-        .map_err(|_| RyvmError::UnableToInitializeNode)?;
+        .map_err(|_| crate::Error::UnableToInitializeNode)?;
 
     colorprintln!(
         "Using audio output device {:?}",
@@ -80,12 +99,12 @@ fn run() -> RyvmResult<()> {
     );
 
     // Initialize state
-    let (state, interface) = State::new(app.file, app.sample_rate)?;
+    let (state, interface) = state::State::new(app.file, app.sample_rate)?;
 
     sink.append(state);
 
     // Main loop
-    for line in stdin().lock().lines().filter_map(Result::ok) {
+    for line in stdin().lock().lines().filter_map(std::result::Result::ok) {
         match interface.send_command(line) {
             Ok(true) => {}
             Ok(false) => break,

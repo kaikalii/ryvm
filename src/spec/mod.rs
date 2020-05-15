@@ -115,6 +115,12 @@ pub enum Spec {
             skip_serializing_if = "default::is_bend_range"
         )]
         bend: DynamicValue,
+        /// The sustain pedal control
+        #[serde(
+            default = "default::sustain_pedal",
+            skip_serializing_if = "default::is_sustain_pedal"
+        )]
+        sustain_pedal: DynamicValue,
     },
     /// A drum machine with a list of paths to sample files
     Drums {
@@ -138,6 +144,12 @@ pub enum Spec {
         /// The optional ADSR envelope
         #[serde(default, skip_serializing_if = "Option::is_none")]
         adsr: Option<ADSR<DynamicValue>>,
+        /// The sustain pedal control
+        #[serde(
+            default = "default::sustain_pedal",
+            skip_serializing_if = "default::is_sustain_pedal"
+        )]
+        sustain_pedal: DynamicValue,
     },
     /// A volume and pan balancer
     Balance {
@@ -180,5 +192,11 @@ pub enum Spec {
             skip_serializing_if = "default::is_adsr_env"
         )]
         adsr: ADSR<DynamicValue>,
+        /// The sustain pedal control
+        #[serde(
+            default = "default::sustain_pedal",
+            skip_serializing_if = "default::is_sustain_pedal"
+        )]
+        sustain_pedal: DynamicValue,
     },
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{spec::ADSR, ty::Control};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EnvelopeState {
     Attack,
     Decay,
@@ -18,6 +18,7 @@ struct NoteEnvelope {
     velocity: u8,
     amplitude: f32,
     t: f32,
+    sustained: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,7 +39,7 @@ pub struct Enveloper {
 
 impl Enveloper {
     /// Register some controls
-    pub fn register<I>(&mut self, iter: I)
+    pub fn register<I>(&mut self, iter: I, sustain: bool)
     where
         I: IntoIterator<Item = Control>,
     {
@@ -53,12 +54,15 @@ impl Enveloper {
                             velocity: v,
                             amplitude: 0.0,
                             t: 0.0,
+                            sustained: false,
                         },
                     );
                 }
                 Control::NoteEnd(id, _) => {
-                    if let Some(ne) = self.envelopes.get_mut(&id) {
-                        ne.state = EnvelopeState::Release;
+                    if !sustain {
+                        if let Some(ne) = self.envelopes.get_mut(&id) {
+                            ne.state = EnvelopeState::Release;
+                        }
                     }
                 }
                 Control::PitchBend(pb) => self.pitch_bend = pb,
@@ -82,7 +86,7 @@ impl Enveloper {
         })
     }
     /// Progress the enveloper to the next frame
-    pub fn progress(&mut self, sample_rate: u32, adsr: ADSR<f32>) {
+    pub fn progress(&mut self, sample_rate: u32, adsr: ADSR<f32>, sustain: bool) {
         const MIN_VAL: f32 = 0.001;
         for ne in self.envelopes.values_mut() {
             let velocity = f32::from(ne.velocity) / 127.0;
@@ -115,7 +119,19 @@ impl Enveloper {
                 EnvelopeState::Done => panic!("EnvelopeState::Done not purged"),
             }
             ne.t += 1.0 / sample_rate as f32;
+            if sustain {
+                ne.sustained = true;
+            }
         }
+        // Release sustained envelopes
+        if !sustain {
+            for ne in self.envelopes.values_mut() {
+                if ne.sustained && ne.state != EnvelopeState::Done {
+                    ne.state = EnvelopeState::Release;
+                }
+            }
+        }
+        // Remove finished envelopes
         self.envelopes
             .retain(|_, ne| !matches!(ne.state, EnvelopeState::Done));
     }

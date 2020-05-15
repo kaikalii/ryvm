@@ -377,6 +377,7 @@ impl State {
                 sustain,
                 release,
                 bend,
+                sustain_pedal,
             } => {
                 let wave = node!(Wave, || node::Wave::new(form));
                 wave.form = form;
@@ -386,6 +387,7 @@ impl State {
                 wave.adsr.sustain = sustain;
                 wave.adsr.release = release;
                 wave.pitch_bend_range = bend;
+                wave.sustain_pedal = sustain_pedal;
             }
             Spec::Drums { paths, folder } => {
                 let drums = node!(DrumMachine, || node::DrumMachine::new());
@@ -414,6 +416,7 @@ impl State {
                 value,
                 filter: filter_type,
                 adsr,
+                sustain_pedal,
             } => {
                 let input = get_input!(input);
                 let filter = node!(Filter, || node::Filter::new(input, value, filter_type));
@@ -421,6 +424,7 @@ impl State {
                 filter.value = value;
                 filter.set_type(filter_type);
                 filter.adsr = adsr;
+                filter.sustain_pedal = sustain_pedal;
             }
             Spec::Balance { input, volume, pan } => {
                 let input = get_input!(input);
@@ -439,11 +443,16 @@ impl State {
                 reverb.size = size;
                 reverb.energy_mul = energy_mul;
             }
-            Spec::Sampler { def, adsr } => {
+            Spec::Sampler {
+                def,
+                adsr,
+                sustain_pedal,
+            } => {
                 self.sample_bank.start(def.path.clone());
                 let sampler = node!(Sampler, || node::Sampler::new(def.clone()));
                 sampler.def = def;
                 sampler.adsr = adsr;
+                sampler.sustain_pedal = sustain_pedal;
             }
         }
         Ok(())

@@ -43,6 +43,8 @@ pub struct Wave {
     pub pitch_bend_range: DynamicValue,
     /// The attack-decay-sustain-release envelope
     pub adsr: ADSR<DynamicValue>,
+    /// The sustain control
+    pub sustain_pedal: DynamicValue,
     enveloper: CloneLock<Enveloper>,
 }
 
@@ -57,6 +59,7 @@ impl Wave {
             adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
             enveloper: CloneLock::new(Enveloper::default()),
             waves: CloneLock::new(vec![0; 10]),
+            sustain_pedal: DynamicValue::Static(0.0),
         }
     }
 }
@@ -124,6 +127,8 @@ pub struct Filter {
     state: FilterState,
     /// The attack-decay-sustain-release envelope
     pub adsr: Option<ADSR<DynamicValue>>,
+    /// The sustain control
+    pub sustain_pedal: DynamicValue,
     enveloper: CloneLock<Enveloper>,
 }
 
@@ -137,6 +142,7 @@ impl Filter {
             state: ty.into(),
             adsr: None,
             enveloper: CloneLock::new(Enveloper::default()),
+            sustain_pedal: DynamicValue::Static(0.0),
         }
     }
     pub fn set_type(&mut self, ty: FilterType) {
@@ -199,6 +205,8 @@ pub struct Sampler {
     pub def: SampleDef,
     /// The attack-decay-sustain-release envelope
     pub adsr: ADSR<DynamicValue>,
+    /// The sustain control
+    pub sustain_pedal: DynamicValue,
     enveloper: CloneLock<Enveloper>,
 }
 
@@ -210,6 +218,7 @@ impl Sampler {
             def,
             adsr: ADSR::default().map(|f| DynamicValue::Static(*f)),
             enveloper: CloneLock::new(Enveloper::default()),
+            sustain_pedal: DynamicValue::Static(0.0),
         }
     }
 }
@@ -243,7 +252,11 @@ impl Node {
                 let mut waves = wave.waves.lock();
 
                 let mut enveloper = wave.enveloper.lock();
-                enveloper.register(cache.channel_controls(channel_num));
+                let sustain = state
+                    .resolve_dynamic_value(&wave.sustain_pedal, channel_num, cache)
+                    .unwrap_or(0.0)
+                    != 0.0;
+                enveloper.register(cache.channel_controls(channel_num), sustain);
                 let adsr = wave
                     .adsr
                     .map_or_default(|value| state.resolve_dynamic_value(value, channel_num, cache));
@@ -284,7 +297,7 @@ impl Node {
                     })
                     .fold(Voice::SILENT, |acc, v| acc + v);
 
-                enveloper.progress(state.vars.sample_rate, adsr);
+                enveloper.progress(state.vars.sample_rate, adsr, sustain);
                 voice
             }
             // Drum Machine
@@ -326,8 +339,12 @@ impl Node {
                 let frame = channel.next_from(channel_num, &filter.input, state, cache);
                 // Determine the value for the filter shape
                 let value = if let Some(adsr) = &filter.adsr {
+                    let sustain = state
+                        .resolve_dynamic_value(&filter.sustain_pedal, channel_num, cache)
+                        .unwrap_or(0.0)
+                        != 0.0;
                     let mut enveloper = filter.enveloper.lock();
-                    enveloper.register(cache.channel_controls(channel_num));
+                    enveloper.register(cache.channel_controls(channel_num), sustain);
                     let adsr = adsr.map_or_default(|value| {
                         state.resolve_dynamic_value(value, channel_num, cache)
                     });
@@ -336,7 +353,7 @@ impl Node {
                         .map(|env_frame| Float(env_frame.amplitude))
                         .max()
                         .map(|f| f.0);
-                    enveloper.progress(state.vars.sample_rate, adsr);
+                    enveloper.progress(state.vars.sample_rate, adsr, sustain);
                     value
                 } else {
                     state.resolve_dynamic_value(&filter.value, channel_num, cache)
@@ -426,7 +443,11 @@ impl Node {
             // Sampler
             Node::Sampler(sampler) => {
                 let mut enveloper = sampler.enveloper.lock();
-                enveloper.register(cache.channel_controls(channel_num));
+                let sustain = state
+                    .resolve_dynamic_value(&sampler.sustain_pedal, channel_num, cache)
+                    .unwrap_or(0.0)
+                    != 0.0;
+                enveloper.register(cache.channel_controls(channel_num), sustain);
                 let adsr = sampler
                     .adsr
                     .map_or_default(|value| state.resolve_dynamic_value(value, channel_num, cache));
@@ -451,7 +472,7 @@ impl Node {
                         }
                         acc
                     });
-                enveloper.progress(state.vars.sample_rate, adsr);
+                enveloper.progress(state.vars.sample_rate, adsr, sustain);
                 output
             }
             // InputPass

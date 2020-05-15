@@ -110,3 +110,10 @@ default! {
     adsr_env;
     is_adsr_env;
 }
+
+default! {
+    /// The default sustain pedal control
+    const SUSTAIN_PEDAL: DynamicValue = DynamicValue::Static(0.0);
+    sustain_pedal;
+    is_sustain_pedal;
+}
